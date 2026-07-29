@@ -22,6 +22,10 @@ const THIN: Partial<ExcelJS.Borders> = {
  * Coerce model-produced string cells to real numbers so Excel can sum/sort
  * them. A cell like "1,234.5" or "42%" arrives as a string; leaving it as text
  * is the most common reason a generated sheet "looks right but won't add up".
+ *
+ * Identifier-shaped values are left alone: coercing them was silent, unrecoverable
+ * data corruption — a SKU "00123" became 123, a zip "07030" became 7030, and an
+ * order id longer than 15 digits was rounded by float64.
  */
 function coerce(value: Cell): Cell {
   if (typeof value !== 'string') return value;
@@ -29,6 +33,8 @@ function coerce(value: Cell): Cell {
   if (s === '') return '';
   const pct = /%$/.test(s);
   const num = s.replace(/[,$€£\s]/g, '').replace(/%$/, '');
+  if (/^0\d/.test(num)) return value; // leading zero → identifier, not a quantity
+  if (num.replace(/[-.]/g, '').length > 15) return value; // beyond float64 precision
   if (/^-?\d+(\.\d+)?$/.test(num)) {
     const n = Number(num);
     return pct ? n / 100 : n;
@@ -38,15 +44,26 @@ function coerce(value: Cell): Cell {
 
 function fillSheet(ws: ExcelJS.Worksheet, rows: Cell[][]): void {
   if (rows.length === 0) return;
-  const width = Math.max(...rows.map((r) => r.length));
-  const pctCols = new Set<number>();
+  // reduce, not `Math.max(...spread)`: one argument per row overflows the call
+  // stack (RangeError) somewhere north of ~100k rows.
+  const width = rows.reduce((max, r) => Math.max(max, r.length), 0);
+  if (width === 0) return;
+  /** Per data column: how many numeric cells, and how many of those were "42%". */
+  const numericByCol = new Map<number, number>();
+  const pctByCol = new Map<number, number>();
 
   rows.forEach((row, ri) => {
     const cells = Array.from({ length: width }, (_, ci) => {
       const raw = row[ci] ?? null;
       if (ri === 0) return raw; // header stays as-is (labels)
       const c = coerce(raw);
-      if (typeof raw === 'string' && /%$/.test(raw.trim()) && typeof c === 'number') pctCols.add(ci + 1);
+      if (typeof c === 'number') {
+        const col = ci + 1;
+        numericByCol.set(col, (numericByCol.get(col) ?? 0) + 1);
+        if (typeof raw === 'string' && /%$/.test(raw.trim())) {
+          pctByCol.set(col, (pctByCol.get(col) ?? 0) + 1);
+        }
+      }
       return c;
     });
     const added = ws.addRow(cells);
@@ -64,9 +81,11 @@ function fillSheet(ws: ExcelJS.Worksheet, rows: Cell[][]): void {
   header.alignment = { vertical: 'middle', wrapText: true };
   header.height = 20;
 
-  // Percentage columns get a percent number format.
-  pctCols.forEach((col) => {
-    ws.getColumn(col).numFmt = '0.0%';
+  // Percent format only when EVERY numeric cell in the column was a percentage.
+  // A mixed "Growth" column ("12%" in one row, a raw count of 20 in another)
+  // used to render the 20 as 2000.0%.
+  pctByCol.forEach((pctCount, col) => {
+    if (pctCount === numericByCol.get(col)) ws.getColumn(col).numFmt = '0.0%';
   });
 
   // Freeze the header row and enable an autofilter over the data extent.
@@ -92,9 +111,17 @@ const createXlsx: ExecutorFn = async (req) => {
 
   const sheets: SheetSpec[] = req.sheets ?? [];
   if (sheets.length > 0) {
+    // Sheet names must be unique in the OOXML package — exceljs doesn't check,
+    // so two sheets called "Data" produced a workbook Excel offers to "repair".
+    const used = new Set<string>();
     sheets.forEach((spec, i) => {
-      const name = (spec.name || `Sheet ${i + 1}`).slice(0, 31).replace(/[\\/?*[\]:]/g, ' ');
-      fillSheet(workbook.addWorksheet(name), spec.rows ?? []);
+      const cleaned = (spec.name || `Sheet ${i + 1}`).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31).trim();
+      let name = cleaned || `Sheet ${i + 1}`;
+      const base = name.slice(0, 27);
+      let n = 2;
+      while (used.has(name.toLowerCase())) name = `${base} (${n++})`;
+      used.add(name.toLowerCase());
+      fillSheet(workbook.addWorksheet(name), Array.isArray(spec.rows) ? spec.rows : []);
     });
   } else if ((req.rows ?? []).length > 0) {
     fillSheet(workbook.addWorksheet('Sheet 1'), req.rows!);

@@ -32,3 +32,8 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# supabase CLI scratch state (linked project ref, pooler URL, tool versions).
+# Machine-local — should never have been committed.
+supabase/.temp/
+supabase/.branches/

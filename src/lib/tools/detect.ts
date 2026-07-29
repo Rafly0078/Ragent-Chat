@@ -41,8 +41,12 @@ export interface DetectResult {
   found: boolean;
 }
 
-/** Parse a plain-text CSV body (one row per line) into rows of strings. */
-function parseCsvBody(text: string): string[][] {
+/**
+ * Parse a plain-text CSV body (one row per line) into rows of strings.
+ * Exported so the CSV executor can use it for the legacy `content` shape —
+ * this module is browser-safe (no server imports).
+ */
+export function parseCsvBody(text: string): string[][] {
   const rows: string[][] = [];
   for (const rawLine of text.split(/\r?\n/)) {
     if (rawLine.trim() === '') continue;

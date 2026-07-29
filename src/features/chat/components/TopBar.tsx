@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, m } from 'framer-motion';
 import {
-  Download,
+  Eraser,
   FileJson,
   FileText,
   MoreVertical,
@@ -132,7 +132,7 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
                 />
                 <div className="my-1 h-px bg-border" />
                 <MenuItem
-                  icon={Download}
+                  icon={Eraser}
                   label="Clear messages"
                   onClick={() => {
                     clearMessages(conversation.id);

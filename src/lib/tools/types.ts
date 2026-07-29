@@ -142,12 +142,15 @@ export const MIME_BY_KIND: Record<ArtifactKind, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  csv: 'text/csv',
-  txt: 'text/plain',
-  md: 'text/markdown',
-  html: 'text/html',
-  json: 'application/json',
-  xml: 'application/xml',
+  // Text types carry an explicit charset: without it the browser decodes the
+  // UTF-8 bytes of a `data:` preview as windows-1252 and non-ASCII shows as
+  // mojibake ("—" → "â€”"). Same value is used as the Storage contentType.
+  csv: 'text/csv; charset=utf-8',
+  txt: 'text/plain; charset=utf-8',
+  md: 'text/markdown; charset=utf-8',
+  html: 'text/html; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  xml: 'application/xml; charset=utf-8',
   zip: 'application/zip',
 };
 
@@ -164,3 +167,20 @@ export const EXT_BY_KIND: Record<ArtifactKind, string> = {
   xml: 'xml',
   zip: 'zip',
 };
+
+const KNOWN_EXT = new RegExp(`\\.(${Object.values(EXT_BY_KIND).join('|')})$`, 'i');
+
+/**
+ * Human title for a generated document.
+ *
+ * `req.name` is a *filename*; using it directly as a heading produced documents
+ * titled "# report.md" / a 24pt cover reading "report.pdf". Only a known
+ * artifact extension is stripped — a plain `.replace(/\.[^.]+$/)` also ate real
+ * content ("Q1 2024 sales v1.2" → "Q1 2024 sales v1").
+ */
+export function displayTitle(req: Pick<GenerateRequest, 'title' | 'name'>): string {
+  const explicit = req.title?.trim();
+  if (explicit) return explicit;
+  const fromName = req.name?.trim().replace(KNOWN_EXT, '').trim();
+  return fromName || 'Document';
+}

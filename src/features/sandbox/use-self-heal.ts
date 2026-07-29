@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { chat } from '@/lib/api/client';
 import { toApiOptions } from '@/lib/api/types';
 import { useChatStore } from '@/lib/store/chat-store';
@@ -10,7 +10,12 @@ import { runSandbox } from '@/lib/sandbox/run';
 import { buildHealMessages } from '@/lib/sandbox/heal-prompt';
 import { isClean, reportSignature, type SandboxReport, type WebSource } from '@/lib/sandbox/types';
 
-export type HealPhase = 'idle' | 'running' | 'healing' | 'done' | 'error';
+/**
+ * `stopped` is distinct from `done`: a user-cancelled run used to land in `done`
+ * with `clean: false`, which the badge rendered as "Masih ada masalah" — telling
+ * the user their code failed an audit they interrupted.
+ */
+export type HealPhase = 'idle' | 'running' | 'healing' | 'done' | 'stopped' | 'error';
 
 export interface HealState {
   phase: HealPhase;
@@ -45,24 +50,54 @@ const INITIAL: HealState = {
 export function useSelfHeal(conversationId: string, initialSource: WebSource) {
   const [state, setState] = useState<HealState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
+  /**
+   * Latest known-good source, so pressing "Audit & perbaiki" a second time
+   * continues from the last fix instead of re-healing the original from scratch
+   * and re-spending the whole iteration budget.
+   */
+  const latestRef = useRef<WebSource | null>(null);
+
+  // Nothing aborted the loop on unmount, so switching conversations mid-run left
+  // it iterating against a detached iframe — burning the 8s timeout per pass and
+  // issuing further model calls for a panel that no longer exists.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    [],
+  );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
-    setState((s) => (s.phase === 'idle' || s.phase === 'done' ? s : { ...s, phase: 'done' }));
+    setState((s) =>
+      s.phase === 'idle' || s.phase === 'done' || s.phase === 'stopped'
+        ? s
+        : { ...s, phase: 'stopped' },
+    );
   }, []);
 
   const run = useCallback(
     async (iframe: HTMLIFrameElement | null) => {
       const settings = useSettings.getState();
-      const maxIterations = settings.sandboxMaxIterations;
+      // Clamp at the point of use. The setter clamps, but `importSettings` and a
+      // hand-edited localStorage entry both bypass it — and a 0/NaN value meant
+      // the loop body never ran, leaving `phase: 'running'` forever with the
+      // spinner stuck at "0/0" and no way out but the stop button.
+      const rawMax = settings.sandboxMaxIterations;
+      const maxIterations = Number.isFinite(rawMax)
+        ? Math.max(1, Math.min(8, Math.round(rawMax)))
+        : 3;
       const convo = useChatStore.getState().conversations.find((c) => c.id === conversationId);
       const model = convo?.model;
 
+      // Supersede any run still in flight before taking the slot.
+      abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
 
-      let source = initialSource;
+      let source = latestRef.current ?? initialSource;
       let lastSignature = '';
 
       setState({ ...INITIAL, phase: 'running', maxIterations, source });
@@ -81,6 +116,7 @@ export function useSelfHeal(conversationId: string, initialSource: WebSource) {
 
         // Clean run — we're done.
         if (isClean(report)) {
+          latestRef.current = source;
           setState((s) => ({ ...s, phase: 'done', clean: true, report, source }));
           abortRef.current = null;
           return;
@@ -134,6 +170,7 @@ export function useSelfHeal(conversationId: string, initialSource: WebSource) {
           return;
         }
         source = fixed;
+        latestRef.current = fixed;
       }
     },
     [conversationId, initialSource],
@@ -142,6 +179,7 @@ export function useSelfHeal(conversationId: string, initialSource: WebSource) {
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    latestRef.current = null;
     setState(INITIAL);
   }, []);
 

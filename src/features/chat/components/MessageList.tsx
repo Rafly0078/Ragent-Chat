@@ -17,8 +17,11 @@ export function MessageList({ conversation, generating, actions }: Props) {
   const messages = conversation.messages;
   const summary = conversation.summary;
   // Depend on the last message's content length so streaming keeps us pinned.
+  // Reasoning length is included too: while a model is still "thinking" the
+  // content stays empty, so without it the view stopped following the visibly
+  // growing reasoning panel.
   const last = messages[messages.length - 1];
-  const scrollDep = `${messages.length}:${last?.content.length ?? 0}`;
+  const scrollDep = `${messages.length}:${last?.content.length ?? 0}:${last?.reasoning?.length ?? 0}`;
   const { ref, atBottom, scrollToBottom, handleScroll } = useAutoScroll<HTMLDivElement>(scrollDep);
 
   // Jump to the bottom instantly when switching conversations.

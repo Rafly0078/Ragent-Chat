@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import { ArrowUp, Brain, FileText, Globe, Loader2, Paperclip, Plus, Square, X, Check, Command } from 'lucide-react';
 import type { Attachment, ThinkingConfig } from '@/types';
-import { fileToAttachment } from '@/lib/utils/files';
+import { attachmentPreview, fileToAttachment } from '@/lib/utils/files';
 import { estimateTokens } from '@/lib/utils/format';
 import { SLASH_COMMANDS, THINKING_EFFORTS } from '@/lib/store/defaults';
 import { useSettings } from '@/lib/store/settings-store';
@@ -249,29 +249,32 @@ export function ChatInput({
         {/* Attachment previews */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 p-2">
-            {attachments.map((a) => (
-              <div
-                key={a.id}
-                className="group/att relative flex items-center gap-2 rounded-xl border border-border bg-border/5 py-1 pl-1 pr-2 text-xs"
-              >
-                {a.previewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.previewUrl} alt={a.name} className="h-9 w-9 rounded-lg object-cover" />
-                ) : (
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-border/5">
-                    <Paperclip className="h-4 w-4 text-content-muted" />
-                  </span>
-                )}
-                <span className="max-w-[120px] truncate text-content-muted">{a.name}</span>
-                <button
-                  onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                  className="rounded-md p-0.5 text-content-subtle hover:text-error"
-                  aria-label={`Remove ${a.name}`}
+            {attachments.map((a) => {
+              const preview = attachmentPreview(a);
+              return (
+                <div
+                  key={a.id}
+                  className="group/att relative flex items-center gap-2 rounded-xl border border-border bg-border/5 py-1 pl-1 pr-2 text-xs"
                 >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+                  {preview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={preview} alt={a.name} className="h-9 w-9 rounded-lg object-cover" />
+                  ) : (
+                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-border/5">
+                      <Paperclip className="h-4 w-4 text-content-muted" />
+                    </span>
+                  )}
+                  <span className="max-w-[120px] truncate text-content-muted">{a.name}</span>
+                  <button
+                    onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                    className="rounded-md p-0.5 text-content-subtle hover:text-error"
+                    aria-label={`Remove ${a.name}`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 

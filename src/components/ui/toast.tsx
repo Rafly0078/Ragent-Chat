@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
 
@@ -23,6 +23,17 @@ export function useToast(): ToastCtx {
   return ctx;
 }
 
+/**
+ * Escape hatch for code that isn't a React component — the Zustand stores and
+ * plain modules can't call `useToast()`, but they do have failures worth
+ * surfacing (e.g. localStorage running out of quota). No-op until the provider
+ * mounts, so it's always safe to call.
+ */
+let externalToast: ((message: string, kind?: ToastKind) => void) | null = null;
+export function notify(message: string, kind: ToastKind = 'info'): void {
+  externalToast?.(message, kind);
+}
+
 const icons = {
   success: CheckCircle2,
   error: XCircle,
@@ -32,8 +43,14 @@ const icons = {
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const counter = useRef(0);
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
   const remove = useCallback((id: number) => {
+    const timer = timers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(id);
+    }
     setToasts((t) => t.filter((x) => x.id !== id));
   }, []);
 
@@ -41,13 +58,34 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (message: string, kind: ToastKind = 'info') => {
       const id = ++counter.current;
       setToasts((t) => [...t, { id, kind, message }]);
-      setTimeout(() => remove(id), 4200);
+      timers.current.set(id, setTimeout(() => remove(id), 4200));
     },
     [remove],
   );
 
+  // Clear any pending dismissals so they can't fire after unmount.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      pending.forEach(clearTimeout);
+      pending.clear();
+    };
+  }, []);
+
+  // Publish/retract the non-React escape hatch alongside the provider's life.
+  useEffect(() => {
+    externalToast = toast;
+    return () => {
+      if (externalToast === toast) externalToast = null;
+    };
+  }, [toast]);
+
+  // Stable context value — otherwise every `useToast()` consumer re-renders
+  // whenever any toast is added or dismissed.
+  const value = useMemo(() => ({ toast }), [toast]);
+
   return (
-    <Ctx.Provider value={{ toast }}>
+    <Ctx.Provider value={value}>
       {children}
       <div
         className="pointer-events-none fixed inset-x-0 bottom-4 z-[100] flex flex-col items-center gap-2 px-4"

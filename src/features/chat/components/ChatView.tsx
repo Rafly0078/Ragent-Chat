@@ -14,6 +14,7 @@ import { ParamsPanel } from './ParamsPanel';
 import { SystemPromptEditor } from './SystemPromptEditor';
 import type { MessageActions } from './MessageBubble';
 import { useToast } from '@/components/ui/toast';
+import { copyText } from '@/lib/utils/clipboard';
 import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import type { Artifact } from '@/lib/tools/types';
 
@@ -45,7 +46,9 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
   const actions: MessageActions = useMemo(
     () => ({
       onCopy: (text) => {
-        void navigator.clipboard.writeText(text);
+        void copyText(text).then((ok) => {
+          if (!ok) toast('Could not copy — the clipboard needs an HTTPS page.', 'error');
+        });
       },
       onEdit: (id, content) => void editUserMessage(id, content),
       onDelete: (id) => deleteMessage(conversation.id, id),
@@ -53,7 +56,7 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
       onContinue: (id) => void continueGeneration(id),
       onRetry: (id) => void regenerate(id),
     }),
-    [conversation.id, deleteMessage, editUserMessage, regenerate, continueGeneration],
+    [conversation.id, deleteMessage, editUserMessage, regenerate, continueGeneration, toast],
   );
 
   // Collect all artifacts from all assistant messages in this conversation

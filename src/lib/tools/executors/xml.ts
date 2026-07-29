@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { ExecutorFn } from './index';
-import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
+import { MIME_BY_KIND, EXT_BY_KIND, displayTitle } from '../types';
 
 function escapeXml(s: string): string {
   return s
@@ -62,7 +62,7 @@ const createXml: ExecutorFn = async (req) => {
     }
   }
 
-  const root = tagName(req.title ?? req.name ?? 'document');
+  const root = tagName(displayTitle(req));
   let inner: string;
   if (data !== null && typeof data === 'object') {
     inner = Object.entries(data as Record<string, unknown>)

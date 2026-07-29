@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { ExecutorFn } from './index';
-import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
+import { MIME_BY_KIND, EXT_BY_KIND, displayTitle } from '../types';
 
 /**
  * create_html — persist the model's HTML as a standalone .html file.
@@ -14,7 +14,7 @@ const createHtml: ExecutorFn = async (req) => {
   const raw = (req.content ?? '').trim();
   const isFullDocument = /<\s*html[\s>]/i.test(raw) || /<!doctype/i.test(raw);
 
-  const title = req.title ?? req.name ?? 'Document';
+  const title = displayTitle(req);
   const html = isFullDocument
     ? raw
     : `<!doctype html>

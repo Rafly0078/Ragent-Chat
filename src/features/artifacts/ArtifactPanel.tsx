@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   AlertTriangle,
@@ -19,11 +19,25 @@ import {
 } from 'lucide-react';
 import type { Artifact, ArtifactKind } from '@/lib/tools/types';
 import { Tooltip } from '@/components/ui/tooltip';
+import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils/cn';
 
 interface Props {
   artifacts: Artifact[];
   onDelete?: (id: string) => void;
+}
+
+/** Cap on the inline text preview so a huge CSV/JSON can't lock up the main thread. */
+const MAX_PREVIEW_CHARS = 200_000;
+
+/** Click a temporary anchor to save `url` as `filename`. */
+function triggerDownload(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 /** Per-kind icon + colour so each file type is recognizable at a glance. */
@@ -54,20 +68,61 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ArtifactCard({ artifact, onDelete }: { artifact: Artifact; onDelete?: (id: string) => void }) {
+function ArtifactCard({
+  artifact,
+  stale,
+  onDelete,
+}: {
+  artifact: Artifact;
+  /** Signed URL could not be renewed — the link is expected to fail. */
+  stale?: boolean;
+  onDelete?: (id: string) => void;
+}) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const isPreviewable = ['html', 'md', 'txt', 'json', 'xml', 'csv'].includes(artifact.kind);
   const { icon: Icon, tile, label } = kindStyle(artifact.kind);
+  const { toast } = useToast();
 
-  const handleDownload = () => {
-    if (!artifact.url) return;
-    const a = document.createElement('a');
-    a.href = artifact.url;
-    a.download = artifact.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  /**
+   * The `download` attribute is ignored for cross-origin URLs, and Supabase
+   * serves signed URLs with `Content-Disposition: inline` — so clicking "Unduh"
+   * used to *navigate the tab* to the file (tearing down the SPA) instead of
+   * saving it. Fetch to a blob and download that.
+   */
+  const handleDownload = async () => {
+    const url = artifact.url;
+    if (!url || downloading) return;
+    if (url.startsWith('data:')) {
+      triggerDownload(url, artifact.name);
+      return;
+    }
+    setDownloading(true);
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const objectUrl = URL.createObjectURL(await res.blob());
+      triggerDownload(objectUrl, artifact.name);
+      // Revoke on the next tick so Safari has time to start the download.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      toast('Gagal mengunduh — tautan mungkin sudah kedaluwarsa. Muat ulang halaman.', 'error');
+    } finally {
+      setDownloading(false);
+    }
   };
+
+  // Decoding a multi-megabyte data: URL is `atob` + a full TextDecoder pass, and
+  // it used to run inline in JSX — i.e. on every re-render of the open modal,
+  // including each animation frame. Memoized and capped.
+  const textPreview = useMemo(() => {
+    if (!previewOpen || artifact.kind === 'html') return '';
+    if (!artifact.url?.startsWith('data:')) return 'Pratinjau tidak tersedia untuk format ini.';
+    const decoded = decodePreview(artifact.url);
+    return decoded.length > MAX_PREVIEW_CHARS
+      ? `${decoded.slice(0, MAX_PREVIEW_CHARS)}\n\n… (pratinjau dipotong — unduh untuk melihat semuanya)`
+      : decoded;
+  }, [previewOpen, artifact.kind, artifact.url]);
 
   return (
     <>
@@ -102,6 +157,14 @@ function ArtifactCard({ artifact, onDelete }: { artifact: Artifact; onDelete?: (
                 </span>
               </Tooltip>
             )}
+            {stale && (
+              <Tooltip side="top" label="Tautan file gagal diperbarui. Muat ulang halaman untuk mencoba lagi.">
+                <span className="inline-flex items-center gap-1 rounded-md bg-error/15 px-1.5 py-0.5 font-medium text-error">
+                  <AlertTriangle className="h-3 w-3" />
+                  Kedaluwarsa
+                </span>
+              </Tooltip>
+            )}
           </div>
         </div>
 
@@ -130,8 +193,8 @@ function ArtifactCard({ artifact, onDelete }: { artifact: Artifact; onDelete?: (
             </Tooltip>
           )}
           <button
-            onClick={handleDownload}
-            disabled={!artifact.url}
+            onClick={() => void handleDownload()}
+            disabled={!artifact.url || downloading}
             className="btn-primary ml-1 flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium disabled:opacity-40"
             aria-label={`Unduh ${artifact.name}`}
           >
@@ -167,8 +230,9 @@ function ArtifactCard({ artifact, onDelete }: { artifact: Artifact; onDelete?: (
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
-                    onClick={handleDownload}
-                    className="btn-ghost flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
+                    onClick={() => void handleDownload()}
+                    disabled={downloading}
+                    className="btn-ghost flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium disabled:opacity-40"
                     aria-label="Unduh"
                   >
                     <Download className="h-3.5 w-3.5" /> Unduh
@@ -184,12 +248,22 @@ function ArtifactCard({ artifact, onDelete }: { artifact: Artifact; onDelete?: (
               </div>
               <div className="scrollbar-thin flex-1 overflow-auto bg-surface-mid/30">
                 {artifact.kind === 'html' ? (
-                  <iframe src={artifact.url} className="h-[70vh] w-full border-0 bg-white" title={artifact.name} />
+                  // `sandbox` is mandatory here: this is model-authored HTML, and
+                  // for a persisted artifact the signed URL is served from the
+                  // Supabase project origin. Without it, scripts in the file could
+                  // navigate the whole app away (phishing) or open popups.
+                  // `allow-scripts` alone (never with `allow-same-origin`) keeps the
+                  // preview functional while pinning the frame to an opaque origin.
+                  <iframe
+                    src={artifact.url}
+                    sandbox="allow-scripts"
+                    referrerPolicy="no-referrer"
+                    className="h-[70vh] w-full border-0 bg-white"
+                    title={artifact.name}
+                  />
                 ) : (
                   <pre className="whitespace-pre-wrap p-4 font-mono text-sm text-content">
-                    {artifact.url.startsWith('data:')
-                      ? decodePreview(artifact.url)
-                      : 'Pratinjau tidak tersedia untuk format ini.'}
+                    {textPreview}
                   </pre>
                 )}
               </div>
@@ -227,6 +301,8 @@ export function ArtifactPanel({ artifacts, onDelete }: Props) {
   // so action tooltips popping above a card aren't cut off by the wrapper.
   const [clip, setClip] = useState(false);
   const [freshUrls, setFreshUrls] = useState<Record<string, string>>({});
+  /** Artifacts whose signed URL could not be renewed — their links are dead. */
+  const [staleIds, setStaleIds] = useState<Set<string>>(new Set());
 
   // Persisted artifacts carry a signed URL that expires. Re-sign on every
   // render of this panel (i.e. every time the conversation is opened) so a
@@ -241,6 +317,7 @@ export function ArtifactPanel({ artifacts, onDelete }: Props) {
   useEffect(() => {
     if (!refreshKey) return;
     let cancelled = false;
+    const controller = new AbortController();
 
     // Fire all URL refresh requests in parallel rather than serially — each
     // is an independent round-trip to /api/artifacts/refresh, so batching
@@ -254,29 +331,39 @@ export function ArtifactPanel({ artifacts, onDelete }: Props) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ bucket: a.bucket, storagePath: a.storagePath }),
+          signal: controller.signal,
         })
           .then((res) => (res.ok ? (res.json() as Promise<{ url?: string }>) : null))
           .then((data) => ({ id: a.id, url: data?.url })),
       ),
-    )
-      .then((results) => {
-        if (cancelled) return;
-        setFreshUrls((prev) => {
-          const next = { ...prev };
-          for (const r of results) {
-            if (r.status === 'fulfilled' && r.value?.url) {
-              next[r.value.id] = r.value.url;
-            }
+    ).then((results) => {
+      if (cancelled) return;
+      // A re-sign failure used to be swallowed twice over, leaving a stale URL
+      // behind an enabled Download button that then 403'd with raw XML. Track
+      // the failures so the card can say so.
+      const failedIds = results
+        .map((r, i) =>
+          r.status === 'fulfilled' && r.value?.url ? null : (refreshable[i]?.id ?? null),
+        )
+        .filter((id): id is string => id !== null);
+      if (failedIds.length > 0) {
+        console.warn('[artifacts] Could not refresh signed URLs for:', failedIds.join(', '));
+      }
+      setStaleIds(new Set(failedIds));
+      setFreshUrls((prev) => {
+        const next = { ...prev };
+        for (const r of results) {
+          if (r.status === 'fulfilled' && r.value?.url) {
+            next[r.value.id] = r.value.url;
           }
-          return next;
-        });
-      })
-      .catch(() => {
-        /* keep whatever URLs we already have */
+        }
+        return next;
       });
+    });
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
@@ -319,6 +406,7 @@ export function ArtifactPanel({ artifacts, onDelete }: Props) {
                 <ArtifactCard
                   key={a.id}
                   artifact={freshUrls[a.id] ? { ...a, url: freshUrls[a.id] } : a}
+                  stale={staleIds.has(a.id)}
                   onDelete={onDelete}
                 />
               ))}

@@ -20,7 +20,7 @@ import {
 } from 'docx';
 import type { ExecutorFn } from './index';
 import { parseInline, parseMarkdown, type Block, type Span } from '@/lib/documents/markdown';
-import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
+import { MIME_BY_KIND, EXT_BY_KIND, displayTitle } from '../types';
 
 const ACCENT = '2563EB';
 const INK = '1A1A16';
@@ -156,7 +156,7 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
 
 const createDocx: ExecutorFn = async (req) => {
   const blocks = parseMarkdown(req.content ?? '');
-  const title = (req.title ?? req.name ?? 'Document').trim() || 'Document';
+  const title = displayTitle(req);
 
   const doc = new Document({
     creator: 'AI Workspace',

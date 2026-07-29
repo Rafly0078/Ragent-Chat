@@ -36,6 +36,14 @@ export function stopActiveGeneration(): void {
   useChatStore.getState().setGenerating(null);
 }
 
+/**
+ * Deadline for the two auxiliary (non-streaming) model calls — context
+ * compaction and search planning. Both run on the same local model as the chat,
+ * where a long summarization can easily outlast the default 30s.
+ */
+const SUMMARY_TIMEOUT_MS = 120_000;
+const PLAN_TIMEOUT_MS = 60_000;
+
 /** Derive a short title from the first user message. */
 function deriveTitle(text: string): string {
   const clean = text.replace(/\s+/g, ' ').trim();
@@ -74,59 +82,62 @@ export function useChat(conversationId: string | null) {
       if (executingRef.current.has(messageId)) return;
       executingRef.current.add(messageId);
 
-      // Strip artifact blocks from displayed content. Keep the original so we
-      // can put it back if execution fails — otherwise a failed directive (e.g.
-      // an unregistered tool) leaves a permanently blank message, since the
-      // content was often ENTIRELY the artifact block ("return only the file").
-      store.getState().updateMessage(convoId, messageId, { content: cleaned });
+      try {
+        // Strip artifact blocks from displayed content. Keep the original so we
+        // can put it back if execution fails — otherwise a failed directive (e.g.
+        // an unregistered tool) leaves a permanently blank message, since the
+        // content was often ENTIRELY the artifact block ("return only the file").
+        store.getState().updateMessage(convoId, messageId, { content: cleaned });
 
-      const results = await Promise.allSettled(
-        requests.map(async (req) => {
-          const res = await fetch('/api/tools/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...req, conversationId: convoId, messageId }),
-          });
-          if (!res.ok) {
-            let detail = `Tool execution failed (${res.status})`;
-            try {
-              const body = (await res.json()) as { error?: string };
-              if (body.error) detail = body.error;
-            } catch {
-              /* non-JSON error body */
+        const results = await Promise.allSettled(
+          requests.map(async (req) => {
+            const res = await fetch('/api/tools/execute', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...req, conversationId: convoId, messageId }),
+            });
+            if (!res.ok) {
+              let detail = `Tool execution failed (${res.status})`;
+              try {
+                const body = (await res.json()) as { error?: string };
+                if (body.error) detail = body.error;
+              } catch {
+                /* non-JSON error body */
+              }
+              throw new Error(detail);
             }
-            throw new Error(detail);
+            const { artifact } = (await res.json()) as { artifact: Artifact };
+            return artifact;
+          }),
+        );
+        const artifacts = results
+          .filter((r): r is PromiseFulfilledResult<Artifact> => r.status === 'fulfilled')
+          .map((r) => r.value);
+        if (artifacts.length > 0) {
+          const msg = store.getState().conversations.find((c) => c.id === convoId)?.messages.find((m) => m.id === messageId);
+          if (msg) {
+            const existing = (msg.metadata?.artifacts as Artifact[]) ?? [];
+            store.getState().updateMessage(convoId, messageId, {
+              metadata: { ...msg.metadata, artifacts: [...existing, ...artifacts] },
+            });
           }
-          const { artifact } = (await res.json()) as { artifact: Artifact };
-          return artifact;
-        }),
-      );
-      const artifacts = results
-        .filter((r): r is PromiseFulfilledResult<Artifact> => r.status === 'fulfilled')
-        .map((r) => r.value);
-      if (artifacts.length > 0) {
-        const msg = store.getState().conversations.find((c) => c.id === convoId)?.messages.find((m) => m.id === messageId);
-        if (msg) {
-          const existing = (msg.metadata?.artifacts as Artifact[]) ?? [];
-          store.getState().updateMessage(convoId, messageId, {
-            metadata: { ...msg.metadata, artifacts: [...existing, ...artifacts] },
-          });
         }
-      }
 
-      // Every directive failed — the stripped content would otherwise be gone
-      // for good. Restore the raw message so the user still sees the code, and
-      // surface why (the failure is silent server-side otherwise).
-      if (artifacts.length === 0) {
-        store.getState().updateMessage(convoId, messageId, { content });
-        const reason = results.find(
-          (r): r is PromiseRejectedResult => r.status === 'rejected',
-        )?.reason;
-        const detail = reason instanceof Error ? reason.message : 'Tool execution failed.';
-        toast(`Couldn't generate the file: ${detail}`, 'error');
+        // Every directive failed — the stripped content would otherwise be gone
+        // for good. Restore the raw message so the user still sees the code, and
+        // surface why (the failure is silent server-side otherwise).
+        if (artifacts.length === 0) {
+          store.getState().updateMessage(convoId, messageId, { content });
+          const reason = results.find(
+            (r): r is PromiseRejectedResult => r.status === 'rejected',
+          )?.reason;
+          const detail = reason instanceof Error ? reason.message : 'Tool execution failed.';
+          toast(`Couldn't generate the file: ${detail}`, 'error');
+        }
+      } finally {
+        // Must always clear, or a message that threw here can never retry.
+        executingRef.current.delete(messageId);
       }
-
-      executingRef.current.delete(messageId);
     },
     [store, toast],
   );
@@ -221,6 +232,11 @@ export function useChat(conversationId: string | null) {
               think: false, // the summary body must be clean prose, no reasoning tokens
             },
             controller.signal,
+            // Summarizing a long transcript on a local model regularly takes
+            // longer than the default 30s deadline. Timing out here silently
+            // fell back to sending the full history, so the user waited 30s for
+            // nothing and the context never actually got compacted.
+            SUMMARY_TIMEOUT_MS,
           );
           if (text.trim()) {
             summary = {
@@ -255,8 +271,10 @@ export function useChat(conversationId: string | null) {
         // that so we don't then fire a doomed stream; other errors are ignored.
         if (err instanceof ApiError && err.kind === 'aborted') {
           s.updateMessage(convoId, assistantId, { streaming: false });
-          s.setGenerating(null);
-          if (activeController === controller) activeController = null;
+          if (activeController === controller) {
+            activeController = null;
+            s.setGenerating(null);
+          }
           return;
         }
       }
@@ -389,8 +407,14 @@ export function useChat(conversationId: string | null) {
           });
         }
       } finally {
-        if (activeController === controller) activeController = null;
-        store.getState().setGenerating(null);
+        // Only the generation that still owns the slot may release it. A newer
+        // stream may already have taken over (regenerate while streaming, or a
+        // fast second send) — clearing `generatingId` unconditionally killed the
+        // stop button and typing indicator for a response still in flight.
+        if (activeController === controller) {
+          activeController = null;
+          store.getState().setGenerating(null);
+        }
       }
     },
     [store, processArtifacts, processPatches, toast],
@@ -425,11 +449,15 @@ export function useChat(conversationId: string | null) {
       if (thinkingEnabled) {
         setMeta({ searching: true, searchPhase: 'planning' });
         try {
-          const raw = await chat({
-            model,
-            messages: buildPlanMessages(userText, history),
-            think: false, // plan JSON must be clean — no reasoning tokens in the body
-          });
+          const raw = await chat(
+            {
+              model,
+              messages: buildPlanMessages(userText, history),
+              think: false, // plan JSON must be clean — no reasoning tokens in the body
+            },
+            undefined,
+            PLAN_TIMEOUT_MS,
+          );
           plan = parsePlan(raw) ?? fallbackPlan(userText);
         } catch {
           plan = fallbackPlan(userText);
@@ -457,6 +485,7 @@ export function useChat(conversationId: string | null) {
       }
 
       const merged = mergeSearchResponses(responses);
+      const context = formatSearchContext(merged);
 
       // Phase 3 — hand off to the reasoning turn. `analyzing` marks the moment
       // the model starts thinking over the gathered data (runStream takes over).
@@ -464,9 +493,9 @@ export function useChat(conversationId: string | null) {
         searching: false,
         searchPhase: 'analyzing',
         sources: toSources(merged),
-        searchContext: formatSearchContext(merged),
+        searchContext: context,
       });
-      return formatSearchContext(merged);
+      return context;
     },
     [store],
   );
@@ -526,8 +555,14 @@ export function useChat(conversationId: string | null) {
           );
         } catch (err) {
           toast(err instanceof Error ? err.message : 'Web search failed', 'error');
+          // Clear only the search keys — a bare object would also wipe `effort`
+          // and anything else already stamped on this message.
+          const msg = store
+            .getState()
+            .conversations.find((c) => c.id === conversationId)
+            ?.messages.find((m) => m.id === assistantMsg.id);
           store.getState().updateMessage(conversationId, assistantMsg.id, {
-            metadata: { searchPhase: undefined, searching: false },
+            metadata: { ...msg?.metadata, searchPhase: undefined, searching: false },
           });
         }
       }
@@ -541,6 +576,17 @@ export function useChat(conversationId: string | null) {
     async (assistantId: string) => {
       if (!conversationId) return;
       const s = store.getState();
+      // Drop artifacts from the previous attempt — `processArtifacts` appends to
+      // whatever is already there, so regenerating three times used to leave
+      // three copies of the same file attached to one message. Everything else
+      // in metadata (notably `searchContext`) has to survive, or the regenerated
+      // answer silently loses the web grounding the original had.
+      const prev = s.conversations
+        .find((c) => c.id === conversationId)
+        ?.messages.find((m) => m.id === assistantId);
+      const metadata = prev?.metadata ? { ...prev.metadata } : undefined;
+      if (metadata) delete metadata.artifacts;
+
       // Reset the assistant message content and re-stream. Clear reasoning too
       // so a regenerated response doesn't append onto the prior attempt's.
       s.updateMessage(conversationId, assistantId, {
@@ -549,6 +595,7 @@ export function useChat(conversationId: string | null) {
         error: undefined,
         streaming: true,
         metrics: undefined,
+        metadata,
       });
       await runStream(conversationId, assistantId);
     },

@@ -3,7 +3,7 @@ import 'server-only';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from 'pdf-lib';
 import type { ExecutorFn } from './index';
 import { parseInline, parseMarkdown, type Block, type Span } from '@/lib/documents/markdown';
-import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
+import { MIME_BY_KIND, EXT_BY_KIND, displayTitle } from '../types';
 
 /**
  * PDF generation with real font metrics. Text is wrapped by measuring glyph
@@ -34,8 +34,33 @@ function toWinAnsi(s: string): string {
   // Decompose accents (é → e +  ́) then drop the combining marks, so accented
   // Latin text degrades to readable base letters instead of being deleted.
   const deaccented = mapped.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+  // Keep only what WinAnsi can actually encode. 0x7F–0x9F look "Latin-1" but
+  // pdf-lib throws on them ("WinAnsi cannot encode ..."), which failed the whole
+  // document; they used to slip through the old \x20-\xFF range.
   // eslint-disable-next-line no-control-regex
-  return deaccented.replace(/[^\x09\x0A\x0D\x20-\xFF]/g, '');
+  return deaccented.replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '');
+}
+
+/** Hard cap on a single code line before it's even measured (see the `code` case). */
+const MAX_CODE_LINE_CHARS = 4000;
+
+/**
+ * The StandardFonts speak WinAnsi only, so CJK / Cyrillic / Arabic / Thai / emoji
+ * cannot be rendered at all — `toWinAnsi` deletes them. Silently shipping a
+ * correctly-paginated PDF with an empty body is the worst possible outcome, so
+ * refuse instead and point the user at a format that can represent the text.
+ */
+function assertRenderable(content: string, title: string): void {
+  const source = `${title}\n${content}`;
+  const meaningful = Array.from(source).filter((ch) => !/\s/.test(ch));
+  if (meaningful.length === 0) return;
+  const dropped = meaningful.length - Array.from(toWinAnsi(source)).filter((ch) => !/\s/.test(ch)).length;
+  if (dropped / meaningful.length > 0.2) {
+    throw new Error(
+      'This text uses characters the PDF generator cannot render (the built-in PDF fonts ' +
+        'only cover Latin-1). Ask for a .docx, .html or .md file instead.',
+    );
+  }
 }
 
 const INK = rgb(0.12, 0.12, 0.12);
@@ -77,8 +102,9 @@ const createPdf: ExecutorFn = async (req) => {
   };
 
   const blocks = parseMarkdown(req.content ?? '');
-  let title = toWinAnsi((req.title ?? req.name ?? 'Document').trim());
+  let title = toWinAnsi(displayTitle(req));
   if (!title) title = 'Document';
+  assertRenderable(req.content ?? '', req.title ?? '');
 
   const marginX = 64;
   const marginTop = 72;
@@ -257,10 +283,22 @@ const createPdf: ExecutorFn = async (req) => {
             height: lead,
             color: CODE_BG,
           });
-          // Clip overly long code lines by measured width rather than char count.
-          let text = toWinAnsi(raw.replace(/\t/g, '  '));
-          while (text && fonts.mono.widthOfTextAtSize(text, size) > contentW - 16) {
-            text = text.slice(0, -1);
+          // Clip overly long code lines by measured width. Binary-search the cut
+          // point: walking back one character at a time re-measured the whole
+          // string on every step, so a single minified/base64 line (20k chars)
+          // burned ~13s of CPU and blocked the event loop for every other
+          // request. Also hard-cap the length before measuring at all.
+          let text = toWinAnsi(raw.replace(/\t/g, '  ')).slice(0, MAX_CODE_LINE_CHARS);
+          const maxW = contentW - 16;
+          if (text && fonts.mono.widthOfTextAtSize(text, size) > maxW) {
+            let lo = 0;
+            let hi = text.length;
+            while (lo < hi) {
+              const mid = (lo + hi + 1) >> 1;
+              if (fonts.mono.widthOfTextAtSize(text.slice(0, mid), size) <= maxW) lo = mid;
+              else hi = mid - 1;
+            }
+            text = text.slice(0, lo);
           }
           page.drawText(text, { x: marginX + 8, y, size, font: fonts.mono, color: CODE_INK });
           y -= lead;
@@ -286,7 +324,9 @@ const createPdf: ExecutorFn = async (req) => {
   };
 
   const renderTable = (b: Extract<Block, { type: 'table' }>) => {
-    const cols = Math.max(b.header.length, ...b.rows.map((r) => r.length), 1);
+    // reduce, not `Math.max(...spread)`: one argument per row blows the call
+    // stack (RangeError) on a large table.
+    const cols = b.rows.reduce((max, r) => Math.max(max, r.length), Math.max(b.header.length, 1));
     const colW = contentW / cols;
     const size = 9.5;
     const cellPad = 5;

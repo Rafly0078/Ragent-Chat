@@ -43,17 +43,20 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
   const autoStarted = useRef(false);
 
   const busy = state.phase === 'running' || state.phase === 'healing';
+  const finished = state.phase === 'done' || state.phase === 'stopped' || state.phase === 'error';
 
   // Show a plain preview until the loop takes over the iframe. Once a run
   // starts, runSandbox drives srcdoc; before that, render the initial code so
-  // the user sees something immediately.
+  // the user sees something immediately. `error`/`stopped` are excluded too —
+  // repainting the *original* code there threw away whatever the last iteration
+  // rendered, exactly when the user needs to see it.
   useEffect(() => {
-    if (streaming || busy || state.phase === 'done') return;
+    if (streaming || busy || finished) return;
     const el = iframeRef.current;
     if (!el) return;
     el.setAttribute('sandbox', 'allow-scripts');
     el.srcdoc = composeDocument(source, buildBootstrap('preview'));
-  }, [source, streaming, busy, state.phase]);
+  }, [source, streaming, busy, finished]);
 
   // Auto-run once when enabled and streaming has finished.
   useEffect(() => {
@@ -99,9 +102,16 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
             </button>
           ) : (
             <>
-              {state.phase === 'done' && (
+              {finished && (
                 <button
-                  onClick={reset}
+                  onClick={() => {
+                    // Actually re-run: `reset` alone only cleared the report and
+                    // repainted the original code, so the control labelled
+                    // "Jalankan ulang" never ran anything.
+                    reset();
+                    autoStarted.current = false;
+                    void run(iframeRef.current);
+                  }}
                   className="btn-ghost flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
                   aria-label="Jalankan ulang"
                 >
@@ -216,6 +226,13 @@ function StatusBadge({
     ) : (
       <span className={cn(base, 'bg-amber-500/15 text-amber-600')}>
         <AlertTriangle className="h-3 w-3" /> Masih ada masalah
+      </span>
+    );
+  }
+  if (state.phase === 'stopped') {
+    return (
+      <span className={cn(base, 'bg-border/20 text-content-muted')}>
+        <Square className="h-3 w-3" /> Dihentikan
       </span>
     );
   }

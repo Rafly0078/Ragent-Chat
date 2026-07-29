@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { SearchResponse, SearchResult } from '@/lib/search/types';
+import { guard } from '@/lib/server/guard';
+import { bodyErrorResponse, readJson } from '@/lib/server/body';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,12 +15,17 @@ export const dynamic = 'force-dynamic';
  *
  * Body: { query: string; maxResults?: number }
  * Returns: SearchResponse (provider-agnostic; see lib/search/types.ts).
+ *
+ * Gated + rate limited: each call costs the owner a metered Tavily credit, so an
+ * unauthenticated caller could previously drain the quota in a loop.
  */
 
 const TAVILY_ENDPOINT = 'https://api.tavily.com/search';
 const DEFAULT_MAX_RESULTS = 5;
 const HARD_MAX_RESULTS = 8;
 const UPSTREAM_TIMEOUT_MS = 20_000;
+/** Tavily rejects very long queries anyway; truncate rather than round-trip. */
+const MAX_QUERY_CHARS = 400;
 
 interface TavilyResult {
   title?: string;
@@ -41,18 +48,24 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const gate = await guard(request, { bucket: 'search', limit: 20, windowMs: 60_000 });
+  if (!gate.ok) return gate.response;
+
   let body: { query?: string; maxResults?: number };
   try {
-    body = (await request.json()) as { query?: string; maxResults?: number };
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    body = await readJson<{ query?: string; maxResults?: number }>(request, 64 * 1024);
+  } catch (err) {
+    return bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
-  const query = body.query?.trim();
+  const query = body.query?.trim().slice(0, MAX_QUERY_CHARS);
   if (!query) {
     return NextResponse.json({ error: 'Missing "query".' }, { status: 400 });
   }
-  const maxResults = Math.min(body.maxResults ?? DEFAULT_MAX_RESULTS, HARD_MAX_RESULTS);
+  const requested = Number(body.maxResults);
+  const maxResults = Number.isFinite(requested)
+    ? Math.min(Math.max(1, Math.floor(requested)), HARD_MAX_RESULTS)
+    : DEFAULT_MAX_RESULTS;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
@@ -75,9 +88,12 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     if (!upstream.ok) {
+      // Don't forward the provider's raw error body to the browser — it can
+      // contain account/quota details. Log it, return a generic message.
       const detail = await upstream.text().catch(() => '');
+      console.error(`[search] Tavily returned ${upstream.status}:`, detail.slice(0, 500));
       return NextResponse.json(
-        { error: `Search provider error (${upstream.status}).`, detail: detail.slice(0, 500) },
+        { error: `Search provider error (${upstream.status}).` },
         { status: 502 },
       );
     }

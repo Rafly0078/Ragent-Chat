@@ -17,15 +17,22 @@ export function buildBootstrap(runId: string): string {
   var CH = ${JSON.stringify(SANDBOX_CHANNEL)};
   var RUN = ${JSON.stringify(runId)};
   var issues = [];
+  var MAX_ISSUES = 25;
   function send(type, payload) {
     try {
       parent.postMessage({ __ch: CH, runId: RUN, type: type, payload: payload }, '*');
     } catch (e) {}
   }
+  // Capped and de-duplicated: an error inside a rAF/setInterval callback fires
+  // once per tick for the whole run, which otherwise produced hundreds of
+  // identical entries and a heal prompt too big for the model call to survive.
   function push(kind, message) {
-    if (!message) return;
+    if (!message || issues.length >= MAX_ISSUES) return;
     var text = String(message);
     if (text.length > 2000) text = text.slice(0, 2000) + '…';
+    for (var i = 0; i < issues.length; i++) {
+      if (issues[i].message === text) return;
+    }
     issues.push({ kind: kind, message: text });
     send('issue', { kind: kind, message: text });
   }
@@ -52,25 +59,35 @@ export function buildBootstrap(runId: string): string {
     try { origWarn.apply(console, arguments); } catch (e) {}
   };
 
-  function finish() {
-    // Blank-render detection: after scripts have had a moment to run, is there
-    // any visible content? An empty/whitespace body with no sized elements is
-    // reported as a blank render so the heal loop can react to a white screen.
-    var blank = false;
+  function isBlank() {
+    // Blank-render detection: is there any visible content? An empty/whitespace
+    // body with no sized elements means a white screen.
     try {
       var body = document.body;
       var text = body ? (body.innerText || '').trim() : '';
       var hasVisual = body ? body.querySelector('img,canvas,svg,video,input,button,table,ul,ol,[style*="background"]') : null;
       var painted = body ? (body.getBoundingClientRect().height > 4) : false;
-      blank = !text && !hasVisual && !painted;
-    } catch (e) {}
-    send('done', { blank: blank });
+      return !text && !hasVisual && !painted;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Poll instead of sampling once at +400ms: anything that paints later (a fetch
+  // for data, an entrance animation, a deferred canvas draw) was reported blank,
+  // and the heal loop then spent a model call "fixing" working code.
+  function settle(attempt) {
+    if (!isBlank() || attempt >= 6) {
+      send('done', { blank: isBlank() });
+      return;
+    }
+    setTimeout(function () { settle(attempt + 1); }, 400);
   }
 
   if (document.readyState === 'complete') {
-    setTimeout(finish, 400);
+    setTimeout(function () { settle(0); }, 400);
   } else {
-    window.addEventListener('load', function () { setTimeout(finish, 400); });
+    window.addEventListener('load', function () { setTimeout(function () { settle(0); }, 400); });
   }
 })();`;
 }

@@ -63,35 +63,54 @@ function isFullDocument(html: string): boolean {
 }
 
 /**
+ * `<style>` / `<script>` are raw-text elements: the HTML parser ends them at the
+ * first `</style` / `</script`, regardless of JavaScript string context. Model
+ * code very often contains `el.innerHTML = '<script>…</script>'`, which used to
+ * cut the injected tag short and dump the remainder into the page as visible
+ * text — after which the heal loop chased syntax errors that weren't in the
+ * model's source and could never converge. `<\/` is a valid escape inside JS
+ * strings and regexes, and inside CSS `</style` only appears in a string anyway.
+ */
+function escapeRawText(code: string): string {
+  return code.replace(/<\/(script|style)/gi, '<\\/$1');
+}
+
+/**
  * Compose a single self-contained HTML document from a WebSource. When the HTML
  * is already a full document, CSS/JS are injected before </head> and </body>
  * respectively; otherwise the fragment is wrapped in a minimal shell. The
  * `bootstrap` script (error-capture wiring) is injected as the FIRST thing in
  * <head> so it catches errors thrown by the page's own scripts.
+ *
+ * Every injection goes through a *replacer function*, never a replacement
+ * string. `String.replace` interprets `$$`, `$&`, `` $` `` and `$'` in the
+ * replacement, so a page whose JS contained `` `$${price}` `` or `'$&'` (both
+ * routine) came out silently corrupted — `` $` `` even spliced the entire
+ * preceding document into the middle of the script.
  */
 export function composeDocument(src: WebSource, bootstrap: string): string {
-  const styleTag = src.css ? `<style>\n${src.css}\n</style>` : '';
-  const scriptTag = src.js ? `<script>\n${src.js}\n</script>` : '';
+  const styleTag = src.css ? `<style>\n${escapeRawText(src.css)}\n</style>` : '';
+  const scriptTag = src.js ? `<script>\n${escapeRawText(src.js)}\n</script>` : '';
   const bootstrapTag = `<script>\n${bootstrap}\n</script>`;
 
   if (isFullDocument(src.html)) {
     let doc = src.html;
     // Bootstrap first, right after <head> (or after <html>, or prepended).
     if (/<\s*head[\s>]/i.test(doc)) {
-      doc = doc.replace(/(<\s*head[^>]*>)/i, `$1\n${bootstrapTag}`);
+      doc = doc.replace(/<\s*head[^>]*>/i, (m) => `${m}\n${bootstrapTag}`);
     } else if (/<\s*html[^>]*>/i.test(doc)) {
-      doc = doc.replace(/(<\s*html[^>]*>)/i, `$1\n<head>${bootstrapTag}</head>`);
+      doc = doc.replace(/<\s*html[^>]*>/i, (m) => `${m}\n<head>${bootstrapTag}</head>`);
     } else {
       doc = `${bootstrapTag}\n${doc}`;
     }
     if (styleTag) {
       doc = /<\/\s*head\s*>/i.test(doc)
-        ? doc.replace(/<\/\s*head\s*>/i, `${styleTag}\n</head>`)
+        ? doc.replace(/<\/\s*head\s*>/i, () => `${styleTag}\n</head>`)
         : `${styleTag}\n${doc}`;
     }
     if (scriptTag) {
       doc = /<\/\s*body\s*>/i.test(doc)
-        ? doc.replace(/<\/\s*body\s*>/i, `${scriptTag}\n</body>`)
+        ? doc.replace(/<\/\s*body\s*>/i, () => `${scriptTag}\n</body>`)
         : `${doc}\n${scriptTag}`;
     }
     return doc;
@@ -112,11 +131,23 @@ ${scriptTag}
 </html>`;
 }
 
+/**
+ * Fence long enough to contain `code` — a generated page that displays a code
+ * sample (or uses a template literal holding ```) closed a plain 3-backtick
+ * fence early, truncating the code sent to the model and the code parsed back.
+ */
+function fenceFor(...code: string[]): string {
+  const longest = code
+    .flatMap((c) => [...c.matchAll(/`+/g)].map((m) => m[0].length))
+    .reduce((max, n) => Math.max(max, n), 2);
+  return '`'.repeat(longest + 1);
+}
+
 /** Serialize a WebSource back into fenced code blocks for a model prompt. */
 export function sourceToBlocks(src: WebSource): string {
   const parts: string[] = [];
-  if (src.html) parts.push('```html\n' + src.html + '\n```');
-  if (src.css) parts.push('```css\n' + src.css + '\n```');
-  if (src.js) parts.push('```js\n' + src.js + '\n```');
+  if (src.html) parts.push(`${fenceFor(src.html)}html\n${src.html}\n${fenceFor(src.html)}`);
+  if (src.css) parts.push(`${fenceFor(src.css)}css\n${src.css}\n${fenceFor(src.css)}`);
+  if (src.js) parts.push(`${fenceFor(src.js)}js\n${src.js}\n${fenceFor(src.js)}`);
   return parts.join('\n\n');
 }

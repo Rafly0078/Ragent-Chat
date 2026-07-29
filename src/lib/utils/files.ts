@@ -1,9 +1,26 @@
+import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Attachment } from '@/types';
 import { uid } from './id';
 
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024; // 12MB
 const MAX_TEXT_BYTES = 2 * 1024 * 1024; // 2MB
 const MAX_OFFICE_BYTES = 25 * 1024 * 1024; // 25MB (zipped Office docs)
+const MAX_PDF_BYTES = 25 * 1024 * 1024; // 25MB — parsed page-by-page on the main thread
+/** Stop accumulating extracted PDF text past this — protects RAM and the prompt. */
+const MAX_PDF_CHARS = 400_000;
+const MAX_PDF_PAGES = 300;
+
+/**
+ * Data URL for previewing an attachment, derived from `base64` rather than
+ * stored alongside it. Keeping a separate `previewUrl` copy meant every image
+ * was held twice (a 12MB photo → ~32MB of strings, all of it persisted), which
+ * is the fastest way to blow the localStorage quota.
+ */
+export function attachmentPreview(att: Attachment): string | undefined {
+  if (att.previewUrl) return att.previewUrl; // legacy attachments already stored one
+  if (att.base64) return `data:${att.type || 'image/png'};base64,${att.base64}`;
+  return undefined;
+}
 
 export function isImage(file: File): boolean {
   return file.type.startsWith('image/');
@@ -74,7 +91,9 @@ export async function fileToAttachment(file: File): Promise<Attachment> {
   if (isImage(file)) {
     if (file.size > MAX_IMAGE_BYTES) throw new Error(`Image "${file.name}" exceeds 12MB.`);
     const dataUrl = await readAsDataUrl(file);
-    return { ...base, previewUrl: dataUrl, base64: dataUrl.split(',')[1] ?? '' };
+    // Only the base64 payload is kept; the preview is derived from it on render
+    // (see `attachmentPreview`) instead of stored as a second full copy.
+    return { ...base, base64: dataUrl.split(',')[1] ?? '' };
   }
 
   if (isText(file)) {
@@ -83,6 +102,11 @@ export async function fileToAttachment(file: File): Promise<Attachment> {
   }
 
   if (isPdf(file)) {
+    // Previously unbounded: a 300MB scanned PDF was read fully into memory and
+    // parsed on the main thread, hanging the tab with no error.
+    if (file.size > MAX_PDF_BYTES) {
+      return { ...base, text: noteFor(file, 'too large to read (over 25MB)') };
+    }
     const text = await extractPdfText(file).catch(() => '');
     return { ...base, text: text || noteFor(file, 'text could not be extracted') };
   }
@@ -105,6 +129,7 @@ function noteFor(file: File, reason?: string): string {
 
 async function extractPdfText(file: File): Promise<string> {
   // Lazy import — pdfjs only downloads (as a separate chunk) when a PDF is added.
+  let doc: PDFDocumentProxy | null = null;
   try {
     const pdfjs = await import('pdfjs-dist');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -112,16 +137,27 @@ async function extractPdfText(file: File): Promise<string> {
       import.meta.url,
     ).toString();
     const buf = await file.arrayBuffer();
-    const doc = await pdfjs.getDocument({ data: buf }).promise;
+    doc = await pdfjs.getDocument({ data: buf }).promise;
     let out = '';
-    for (let i = 1; i <= doc.numPages; i++) {
+    const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
+    for (let i = 1; i <= pages; i++) {
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
       out += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n\n';
+      // Release the page's operator list / font data as we go, or pdf.js keeps
+      // every parsed page alive for the lifetime of the tab.
+      page.cleanup();
+      if (out.length > MAX_PDF_CHARS) {
+        out += `\n[Truncated — only the first ${i} page(s) of "${file.name}" were read.]`;
+        break;
+      }
     }
     return out.trim();
   } catch {
     return '';
+  } finally {
+    // Terminates the dedicated worker too.
+    await doc?.destroy().catch(() => {});
   }
 }
 

@@ -9,6 +9,7 @@ import type {
   ThinkingEffort,
 } from '@/types';
 import { uid } from '@/lib/utils/id';
+import { notify } from '@/components/ui/toast';
 import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, DEFAULT_THINKING } from './defaults';
 
 interface ChatState {
@@ -48,7 +49,12 @@ interface ChatState {
   setSearchQuery: (q: string) => void;
   pushRecentModel: (model: string) => void;
 
-  importConversations: (data: Conversation[], replace?: boolean) => void;
+  /**
+   * Import conversations from untrusted JSON (a user-picked export file).
+   * Accepts `unknown` on purpose — the payload is validated and coerced here,
+   * not by the caller. Returns how many survived validation.
+   */
+  importConversations: (data: unknown, replace?: boolean) => number;
 }
 
 function touch(convo: Conversation): Conversation {
@@ -56,29 +62,126 @@ function touch(convo: Conversation): Conversation {
 }
 
 /**
+ * Strip the heavy, reconstructable parts of a persisted snapshot so the part the
+ * user can't get back — the conversation text — still fits in localStorage.
+ *
+ * The bytes that blow the ~5MB quota are always the same two things: base64
+ * image attachments, and `data:` URLs for artifacts generated in guest mode.
+ * Both are dropped here; message content, titles and params are untouched.
+ */
+function slimSnapshot(json: string): string | null {
+  try {
+    const parsed = JSON.parse(json) as {
+      state?: { conversations?: Conversation[] };
+    };
+    const conversations = parsed.state?.conversations;
+    if (!Array.isArray(conversations)) return null;
+
+    for (const convo of conversations) {
+      for (const msg of convo.messages ?? []) {
+        if (msg.attachments) {
+          msg.attachments = msg.attachments.map((att) => ({
+            ...att,
+            base64: undefined,
+            previewUrl: undefined,
+          }));
+        }
+        const artifacts = msg.metadata?.artifacts;
+        if (Array.isArray(artifacts)) {
+          msg.metadata = {
+            ...msg.metadata,
+            artifacts: artifacts.map((a) => {
+              const art = a as { url?: string };
+              return typeof art.url === 'string' && art.url.startsWith('data:')
+                ? { ...art, url: undefined }
+                : art;
+            }),
+          };
+        }
+      }
+    }
+    return JSON.stringify(parsed);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * A localStorage wrapper that coalesces writes. During streaming the store is
  * updated once per token; without this, `persist` would `JSON.stringify` the
  * entire conversation set on every token, driving RAM and GC pressure through
  * the roof (and hanging the tab) on long chats. Writes are deferred and only
- * the latest value is flushed, at most once per `delayMs`. A `beforeunload`
- * flush guarantees the final state is never lost.
+ * the latest value is flushed, at most once per `delayMs`.
+ *
+ * The flush runs inside a timer, i.e. outside any caller's try/catch, so a
+ * `QuotaExceededError` used to escape as an unhandled exception AND leave
+ * `timer` pinned non-null — after which the `if (timer) return` guard turned
+ * every later write into a silent no-op and the whole session stopped
+ * persisting. Now a failed write degrades to a slimmed snapshot and tells the
+ * user, and the timer state is always reset.
+ *
+ * `pagehide` (not `beforeunload`) does the final flush: mobile browsers freeze
+ * or discard a backgrounded tab without ever firing `beforeunload`, which meant
+ * losing up to `delayMs` of the conversation.
  */
 function throttledStorage(delayMs: number) {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingKey: string | null = null;
   let pendingValue: string | null = null;
+  /** Set once a full write has failed — keep writing the slim form after that. */
+  let degraded = false;
+  let warned = false;
+
+  const tryWrite = (key: string, value: string): boolean => {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const flush = () => {
-    if (pendingKey !== null && pendingValue !== null) {
-      localStorage.setItem(pendingKey, pendingValue);
-    }
+    const key = pendingKey;
+    const value = pendingValue;
+    // Reset first: whatever happens below, the next setItem must be able to
+    // schedule a fresh flush.
     pendingKey = null;
     pendingValue = null;
     timer = null;
+    if (key === null || value === null) return;
+
+    if (!degraded && tryWrite(key, value)) return;
+
+    const slim = slimSnapshot(value);
+    if (slim && tryWrite(key, slim)) {
+      if (!degraded) {
+        degraded = true;
+        console.warn(
+          '[chat-store] localStorage quota exceeded — persisting without image ' +
+            'attachments and inline file data. Message text is unaffected.',
+        );
+        notify(
+          'Local storage is full. Chats are still saved, but attached images and ' +
+            'generated files are no longer kept across reloads — delete some old chats to free space.',
+          'error',
+        );
+      }
+      return;
+    }
+
+    if (!warned) {
+      warned = true;
+      console.error('[chat-store] Could not persist chats to localStorage.');
+      notify('Could not save chats locally — storage is full. Delete some old chats.', 'error');
+    }
   };
 
   if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') flush();
+    });
   }
 
   return {
@@ -117,6 +220,73 @@ export function makeConversation(
     createdAt: now,
     updatedAt: now,
   };
+}
+
+const ROLES = new Set(['system', 'user', 'assistant']);
+
+function sanitizeMessage(raw: unknown): Message | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const m = raw as Partial<Message>;
+  if (typeof m.content !== 'string') return null;
+  if (typeof m.role !== 'string' || !ROLES.has(m.role)) return null;
+  return {
+    ...m,
+    id: typeof m.id === 'string' && m.id ? m.id : uid(),
+    role: m.role,
+    content: m.content,
+    createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
+    // Never restore a "still streaming" flag from a file — nothing is streaming.
+    streaming: false,
+    attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
+  } as Message;
+}
+
+/**
+ * Coerce untrusted JSON (a user-picked export file) into well-formed
+ * conversations. Anything unusable is dropped rather than written to the store:
+ * a single conversation missing `title` or `messages` used to be persisted as-is
+ * and then crash the sidebar on every render — including after a reload, since
+ * the bad data was already in localStorage, leaving no way back into the app.
+ */
+export function sanitizeConversations(raw: unknown): Conversation[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: Conversation[] = [];
+
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const c = item as Partial<Conversation>;
+    const messages = Array.isArray(c.messages)
+      ? c.messages.map(sanitizeMessage).filter((m): m is Message => m !== null)
+      : [];
+
+    // Fresh id on collision so importing a file twice can't produce two
+    // conversations that respond to the same id.
+    let id = typeof c.id === 'string' && c.id ? c.id : uid();
+    if (seen.has(id)) id = uid();
+    seen.add(id);
+
+    const base = makeConversation();
+    out.push({
+      ...base,
+      id,
+      title: typeof c.title === 'string' && c.title.trim() ? c.title : 'Imported chat',
+      messages,
+      model: typeof c.model === 'string' ? c.model : '',
+      systemPrompt: typeof c.systemPrompt === 'string' ? c.systemPrompt : base.systemPrompt,
+      params: { ...DEFAULT_PARAMS, ...(typeof c.params === 'object' && c.params ? c.params : {}) },
+      thinking: { ...DEFAULT_THINKING, ...(typeof c.thinking === 'object' && c.thinking ? c.thinking : {}) },
+      summary:
+        c.summary && typeof c.summary === 'object' && typeof c.summary.text === 'string'
+          ? c.summary
+          : undefined,
+      pinned: c.pinned === true,
+      createdAt: typeof c.createdAt === 'number' ? c.createdAt : base.createdAt,
+      updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : base.updatedAt,
+    });
+  }
+
+  return out;
 }
 
 export const useChatStore = create<ChatState>()(
@@ -291,11 +461,15 @@ export const useChatStore = create<ChatState>()(
           recentModels: [model, ...s.recentModels.filter((m) => m !== model)].slice(0, 6),
         })),
 
-      importConversations: (data, replace) =>
+      importConversations: (data, replace) => {
+        const incoming = sanitizeConversations(data);
+        if (incoming.length === 0) return 0;
         set((s) => ({
-          conversations: replace ? data : [...data, ...s.conversations],
-          activeId: data[0]?.id ?? s.activeId,
-        })),
+          conversations: replace ? incoming : [...incoming, ...s.conversations],
+          activeId: incoming[0]?.id ?? s.activeId,
+        }));
+        return incoming.length;
+      },
     }),
     {
       name: 'ollama-webui:chats',

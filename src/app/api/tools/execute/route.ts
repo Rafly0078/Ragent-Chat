@@ -1,12 +1,47 @@
 import { NextResponse } from 'next/server';
 import { getExecutor } from '@/lib/tools/executors';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import type { GenerateRequest, Artifact, ToolName } from '@/lib/tools/types';
+import { EXT_BY_KIND, type GenerateRequest, type Artifact, type ToolName } from '@/lib/tools/types';
 import { uid } from '@/lib/utils/id';
 import { getTool } from '@/lib/tools/registry';
+import { guard } from '@/lib/server/guard';
+import { bodyErrorResponse, readJson } from '@/lib/server/body';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/** Generation payloads are text; 8MB is far beyond any realistic document. */
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+/**
+ * Ceiling on the guest-mode `data:` URL fallback. That URL is stored inside the
+ * chat message and persisted to localStorage, so a large file silently blew the
+ * ~5MB quota and killed persistence for the whole session.
+ */
+const MAX_INLINE_BYTES = 1_200_000;
+
+const KNOWN_EXT = new RegExp(`\\.(${Object.values(EXT_BY_KIND).join('|')})$`, 'i');
+
+/**
+ * Build a safe filename from the model-supplied `name`.
+ *
+ * `name` reached the storage key unmodified, so `"../../x/evil"` produced an
+ * object path containing `..`, and control characters / quotes flowed into the
+ * DB row and any Content-Disposition built from it. Only a *known* artifact
+ * extension is stripped — the old `/\.[^.]+$/` also ate real content
+ * ("Q1 2024 sales v1.2" → "Q1 2024 sales v1").
+ */
+function safeFilename(raw: string | undefined, ext: string): string {
+  const lastSegment = (raw ?? '').split(/[/\\]/).pop() ?? '';
+  const base = lastSegment
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1F\x7F"*:<>?|]/g, '_')
+    .replace(/^\.+/, '')
+    .replace(KNOWN_EXT, '')
+    .trim()
+    .slice(0, 100)
+    .trim();
+  return `${base || 'document'}.${ext}`;
+}
 
 /**
  * POST /api/tools/execute — Execute a tool (generate a document).
@@ -14,11 +49,16 @@ export const dynamic = 'force-dynamic';
  * Supabase Storage, and returns the Artifact metadata.
  */
 export async function POST(request: Request): Promise<Response> {
+  // Document rendering is real server CPU (pdf-lib, exceljs, pptxgenjs), so this
+  // route is gated and rate limited like the rest.
+  const gate = await guard(request, { bucket: 'tools', limit: 30, windowMs: 60_000 });
+  if (!gate.ok) return gate.response;
+
   let body: GenerateRequest;
   try {
-    body = (await request.json()) as GenerateRequest;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    body = await readJson<GenerateRequest>(request, MAX_BODY_BYTES);
+  } catch (err) {
+    return bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
   if (!body.tool) {
@@ -30,16 +70,8 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: `Unknown tool: ${body.tool}` }, { status: 400 });
   }
 
-  // Get user from Supabase session
   const supabase = await getSupabaseServer();
-  let userId = 'guest';
-
-  if (supabase) {
-    const { data: auth } = await supabase.auth.getUser();
-    if (auth.user) {
-      userId = auth.user.id;
-    }
-  }
+  const userId = gate.userId ?? 'guest';
 
   try {
     const result = await executor(body, {
@@ -50,8 +82,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const artifactId = uid();
     const ext = result.ext;
-    const name = (body.name ?? body.title ?? 'document').replace(/\.[^.]+$/, '');
-    const filename = `${name}.${ext}`;
+    const filename = safeFilename(body.name ?? body.title, ext);
     const storagePath = `${userId}/${artifactId}/${filename}`;
 
     let artifact: Artifact = {
@@ -89,19 +120,26 @@ export async function POST(request: Request): Promise<Response> {
         const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
         const { data: urlData, error: signErr } = await supabase.storage
           .from(bucket)
-          .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+          .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS, { download: filename });
 
-        if (signErr) {
-          console.error(`[tools/execute] Failed to sign URL for ${storagePath}:`, signErr.message);
+        // A signing failure used to still flip `ephemeral` to false with
+        // `url: undefined`, so the client got an artifact it could neither
+        // download nor preview (and ArtifactPanel crashed on `url.startsWith`).
+        // Keep it ephemeral instead and let the data: fallback below handle it.
+        if (signErr || !urlData?.signedUrl) {
+          console.error(
+            `[tools/execute] Failed to sign URL for ${storagePath}:`,
+            signErr?.message ?? 'no URL returned',
+          );
+        } else {
+          artifact = {
+            ...artifact,
+            ephemeral: false,
+            url: urlData.signedUrl,
+            bucket,
+            storagePath,
+          };
         }
-
-        artifact = {
-          ...artifact,
-          ephemeral: false,
-          url: urlData?.signedUrl,
-          bucket,
-          storagePath,
-        };
 
         // Persist artifact metadata to database
         const { error: artifactInsertErr } = await supabase.from('artifacts').insert({
@@ -150,10 +188,20 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
 
-    // For guest mode or if storage upload failed, return as data URL
+    // For guest mode or if storage upload failed, return as data URL. Capped:
+    // this string is persisted inside the chat message.
     if (artifact.ephemeral) {
-      const base64 = result.buffer.toString('base64');
-      artifact.url = `data:${result.mime};base64,${base64}`;
+      if (result.buffer.length > MAX_INLINE_BYTES) {
+        return NextResponse.json(
+          {
+            error:
+              `The generated file is ${(result.buffer.length / 1e6).toFixed(1)} MB — too large to ` +
+              'embed in the chat. Sign in so it can be saved to storage instead.',
+          },
+          { status: 413 },
+        );
+      }
+      artifact.url = `data:${result.mime};base64,${result.buffer.toString('base64')}`;
     }
 
     return NextResponse.json({ artifact }, { status: 200 });

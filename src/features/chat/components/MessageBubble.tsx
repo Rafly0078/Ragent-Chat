@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   AlertCircle,
@@ -24,6 +24,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { SandboxPanel } from '@/features/sandbox/SandboxPanel';
 import { extractWebSource } from '@/lib/sandbox/compose';
 import { TypingIndicator } from './TypingIndicator';
+import { attachmentPreview } from '@/lib/utils/files';
 import { formatDuration, formatNumber } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 
@@ -64,11 +65,17 @@ export const MessageBubble = memo(function MessageBubble({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
   const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+  }, []);
 
   const copy = () => {
     actions.onCopy(message.content);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 1500);
   };
 
   const submitEdit = () => {
@@ -152,12 +159,13 @@ export const MessageBubble = memo(function MessageBubble({
         {/* Attachments */}
         {message.attachments && message.attachments.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
-            {message.attachments.map((a) =>
-              a.previewUrl ? (
+            {message.attachments.map((a) => {
+              const preview = attachmentPreview(a);
+              return preview ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   key={a.id}
-                  src={a.previewUrl}
+                  src={preview}
                   alt={a.name}
                   className="h-24 w-24 rounded-lg border border-border object-cover"
                 />
@@ -168,8 +176,8 @@ export const MessageBubble = memo(function MessageBubble({
                 >
                   {a.name}
                 </span>
-              ),
-            )}
+              );
+            })}
           </div>
         )}
 
@@ -253,7 +261,11 @@ export const MessageBubble = memo(function MessageBubble({
 
         {/* Sandbox: run + auto-fix the message's web code. */}
         {webSource && (
-          <SandboxPanel conversationId={conversationId} source={webSource} />
+          <SandboxPanel
+            conversationId={conversationId}
+            source={webSource}
+            streaming={message.streaming}
+          />
         )}
 
         {/* Metrics */}

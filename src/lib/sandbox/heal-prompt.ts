@@ -18,23 +18,34 @@ Rules:
 - Return it as separate fenced code blocks: one \`\`\`html block, and (only if used) one \`\`\`css block and one \`\`\`js block.
 - Keep the original intent, layout, and features intact — change only what's needed to make it run cleanly.
 - Do not add explanations, comments about the fix, or any prose outside the code blocks.
-- Make sure the page actually renders visible content (no blank screen).`;
+- Make sure the page actually renders visible content (no blank screen).
+- Warnings listed as non-blocking do not need to be silenced. Do not restructure working code for them.`;
 
 function formatIssues(report: SandboxReport): string {
   const lines: string[] = [];
   if (report.blank) {
     lines.push('- The page rendered a BLANK screen (nothing visible). Ensure content is actually shown.');
   }
+  // Warnings are separated out: `isClean` deliberately ignores them, so telling
+  // the model to "fix every reported problem" for a third-party deprecation
+  // notice sent it rewriting code that already ran clean — and it could never
+  // satisfy the instruction, because the warning wasn't its to fix.
+  const warnings: string[] = [];
   for (const issue of report.issues) {
+    if (issue.kind === 'console-warn') {
+      warnings.push(`- [console.warn] ${issue.message}`);
+      continue;
+    }
     const label =
       issue.kind === 'error'
         ? 'Runtime error'
         : issue.kind === 'console-error'
           ? 'console.error'
-          : issue.kind === 'console-warn'
-            ? 'console.warn'
-            : 'Render';
+          : 'Render';
     lines.push(`- [${label}] ${issue.message}`);
+  }
+  if (warnings.length > 0) {
+    lines.push('', 'Non-blocking warnings (informational only, no need to fix):', ...warnings);
   }
   return lines.join('\n');
 }

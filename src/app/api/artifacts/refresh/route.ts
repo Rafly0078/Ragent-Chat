@@ -10,6 +10,9 @@ export const dynamic = 'force-dynamic';
 // is displayed, rather than trusting a URL that may already be stale.
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
+/** The only buckets this app writes to — anything else is a malformed request. */
+const ALLOWED_BUCKETS = new Set(['artifacts', 'exports']);
+
 /**
  * POST /api/artifacts/refresh — mint a fresh signed URL for a previously
  * generated, already-persisted artifact. Supabase signed URLs expire; a URL
@@ -29,6 +32,9 @@ export async function POST(request: Request): Promise<Response> {
   if (!bucket || !storagePath) {
     return NextResponse.json({ error: 'Missing bucket or storagePath.' }, { status: 400 });
   }
+  if (!ALLOWED_BUCKETS.has(bucket)) {
+    return NextResponse.json({ error: 'Unknown bucket.' }, { status: 400 });
+  }
 
   const supabase = await getSupabaseServer();
   if (!supabase) {
@@ -42,7 +48,9 @@ export async function POST(request: Request): Promise<Response> {
 
   // Storage RLS already scopes objects to "<uid>/...", but check here too so
   // we never even attempt to sign a path outside the caller's own folder.
-  if (!storagePath.startsWith(`${auth.user.id}/`)) {
+  // `..` is rejected explicitly: "<uid>/../<other-uid>/f" starts with the right
+  // prefix but resolves elsewhere once the storage layer normalizes it.
+  if (!storagePath.startsWith(`${auth.user.id}/`) || storagePath.includes('..')) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   }
 

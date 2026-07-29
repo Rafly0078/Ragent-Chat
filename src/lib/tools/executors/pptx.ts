@@ -3,7 +3,7 @@ import 'server-only';
 import PptxGenJS from 'pptxgenjs';
 import type { ExecutorFn } from './index';
 import { parseInline } from '@/lib/documents/markdown';
-import { MIME_BY_KIND, EXT_BY_KIND, type SlideSpec } from '../types';
+import { MIME_BY_KIND, EXT_BY_KIND, displayTitle, type SlideSpec } from '../types';
 
 const ACCENT = '2563EB';
 const INK = '1A1A16';
@@ -86,7 +86,7 @@ const createPptx: ExecutorFn = async (req) => {
     slideNumber: { x: PW - 0.9, y: PH - 0.45, color: MUTED, fontSize: 10, fontFace: 'Arial' },
   });
 
-  let deckTitle = (req.title ?? req.name ?? '').trim();
+  let deckTitle = req.title?.trim() || (req.name ? displayTitle(req) : '');
   let slides: SlideSpec[] = req.slides ?? [];
 
   if (slides.length === 0 && req.content) {

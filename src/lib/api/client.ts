@@ -1,5 +1,5 @@
 import type { ModelInfo } from '@/types';
-import { ApiError, DEFAULT_TIMEOUT_MS, apiUrl } from './config';
+import { ApiError, DEFAULT_TIMEOUT_MS, STREAM_IDLE_TIMEOUT_MS, apiUrl } from './config';
 import { parseChatStream } from './stream';
 import type {
   ChatRequest,
@@ -141,51 +141,100 @@ export interface StreamHandlers {
 /**
  * POST /api/chat/stream — stream a chat completion.
  * Returns when the stream ends or is aborted. Deltas are pushed via handlers.
+ *
+ * There is deliberately no overall deadline (a long generation is normal), but
+ * there IS an idle watchdog: if the upstream stops sending for
+ * STREAM_IDLE_TIMEOUT_MS the request is aborted and surfaced as a timeout.
+ * Without it, a tunnel that dies mid-response left the UI "generating" forever
+ * with no error and no way out but the stop button.
  */
 export async function streamChat(
   req: ChatRequest,
   handlers: StreamHandlers,
   signal?: AbortSignal,
 ): Promise<void> {
-  let res: Response;
-  try {
-    const result = await fetchWithFallback(API_CHAT_PATHS, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/x-ndjson, text/event-stream',
-        ...TUNNEL_HEADERS,
-      },
-      body: JSON.stringify({ ...req, stream: true }),
-      signal,
-    });
-    res = result.res;
-  } catch (err) {
-    throw normalize(err);
+  const idle = new AbortController();
+  const onExternalAbort = () => idle.abort(signal?.reason);
+  if (signal) {
+    if (signal.aborted) idle.abort(signal.reason);
+    else signal.addEventListener('abort', onExternalAbort, { once: true });
   }
 
-  await assertOk(res);
-  if (!res.body) throw new ApiError('The server did not return a stream body.', { kind: 'parse' });
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let idleFired = false;
+  const armIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleFired = true;
+      idle.abort(new DOMException('stream idle timeout', 'TimeoutError'));
+    }, STREAM_IDLE_TIMEOUT_MS);
+  };
+  const cleanup = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = null;
+    signal?.removeEventListener('abort', onExternalAbort);
+  };
 
-  let final: ChatStreamChunk = {};
   try {
-    for await (const chunk of parseChatStream(res.body, signal)) {
-      if (chunk.error) throw new ApiError(chunk.error, { kind: 'http', status: res.status });
-      const thinking = chunk.message?.thinking ?? '';
-      if (thinking) handlers.onThinking?.(thinking);
-      const delta = chunk.message?.content ?? chunk.response ?? '';
-      if (delta) handlers.onDelta(delta);
-      if (chunk.done) final = { ...final, ...chunk };
+    let res: Response;
+    try {
+      armIdleTimer();
+      const result = await fetchWithFallback(API_CHAT_PATHS, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/x-ndjson, text/event-stream',
+          ...TUNNEL_HEADERS,
+        },
+        body: JSON.stringify({ ...req, stream: true }),
+        signal: idle.signal,
+      });
+      res = result.res;
+    } catch (err) {
+      throw normalize(err);
     }
-  } catch (err) {
-    throw normalize(err);
+
+    await assertOk(res);
+    if (!res.body) throw new ApiError('The server did not return a stream body.', { kind: 'parse' });
+
+    let final: ChatStreamChunk = {};
+    try {
+      for await (const chunk of parseChatStream(res.body, idle.signal)) {
+        armIdleTimer();
+        if (chunk.error) throw new ApiError(chunk.error, { kind: 'http', status: res.status });
+        const thinking = chunk.message?.thinking ?? '';
+        if (thinking) handlers.onThinking?.(thinking);
+        const delta = chunk.message?.content ?? chunk.response ?? '';
+        if (delta) handlers.onDelta(delta);
+        if (chunk.done) final = { ...final, ...chunk };
+      }
+    } catch (err) {
+      throw normalize(err);
+    }
+    // `parseChatStream` exits cleanly when its signal is already aborted, so an
+    // idle abort can look like a normal end-of-stream. Surface it as a timeout
+    // instead of silently marking a truncated answer complete.
+    if (idleFired) {
+      throw new ApiError('The connection stalled — no data for 2 minutes.', { kind: 'timeout' });
+    }
+    handlers.onDone(final);
+  } finally {
+    cleanup();
   }
-  handlers.onDone(final);
 }
 
-/** POST /api/chat — non-streaming completion (used for auto-title generation). */
-export async function chat(req: ChatRequest, signal?: AbortSignal): Promise<string> {
-  const { signal: s, cancel } = withTimeout(DEFAULT_TIMEOUT_MS, signal);
+/**
+ * POST /api/chat — non-streaming completion. Used for auto-title generation,
+ * context compaction and search planning; those run on the same local model as
+ * the chat itself, so callers can raise the deadline (`timeoutMs`) when the work
+ * is inherently slow (summarizing a long transcript).
+ */
+export async function chat(
+  req: ChatRequest,
+  signal?: AbortSignal,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<string> {
+  const { signal: s, cancel } = withTimeout(timeoutMs, signal);
   try {
     const { res } = await fetchWithFallback(API_CHAT_PATHS, {
       method: 'POST',
