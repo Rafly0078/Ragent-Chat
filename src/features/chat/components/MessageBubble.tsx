@@ -45,10 +45,14 @@ interface Props {
   conversationId: string;
 }
 
+/**
+ * One response metric. Uses the shared `.badge` chrome — this was the fourth
+ * hand-rolled pill in the app with its own radius, padding and type size.
+ */
 function MetricPill({ label, value }: { label: string; value: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-border/5 px-1.5 py-0.5 text-[0.68rem] text-content-subtle">
-      <span className="font-medium tabular-nums text-content-muted">{value}</span>
+    <span className="badge text-content-subtle">
+      <span className="tabular-nums text-content">{value}</span>
       {label}
     </span>
   );
@@ -151,13 +155,16 @@ export const MessageBubble = memo(function MessageBubble({
 
       {/* Body. The user turn is a contained block; the assistant turn runs full
           width with an accent rail, so answers read like a document and prompts
-          read like an aside. */}
+          read like an aside.
+
+          Both edges are stronger than they were: at 25% and 35% over #0000f2
+          they measured ~1.3:1 and could only be found if you knew to look. */}
       <div
         className={cn(
           'min-w-0 flex-1',
           isUser
-            ? 'rounded border-2 border-border/25 bg-surface-raised px-4 py-3'
-            : 'border-l-2 border-accent/35 pl-4',
+            ? 'rounded border-2 border-border/45 bg-surface-raised px-4 py-3'
+            : 'border-l-2 border-accent/70 pl-4',
         )}
       >
         <div className="mb-1.5 flex items-center gap-2">

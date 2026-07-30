@@ -36,7 +36,7 @@ export function LandingFooter() {
         </span>
         <a
           href={REPO_URL}
-          className="type-label focus-ring text-content-muted transition-colors duration-fast hover:text-content"
+          className="type-label focus-ring py-1.5 text-content-muted transition-colors duration-fast hover:text-content"
         >
           Source
         </a>

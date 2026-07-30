@@ -49,19 +49,19 @@ export function LandingNav() {
       >
         <a
           href={REPO_URL}
-          className="type-label focus-ring hidden text-content transition-opacity duration-fast hover:opacity-70 md:block"
+          className="type-label focus-ring hidden py-1.5 text-content transition-opacity duration-fast hover:opacity-70 md:block"
         >
           Source
         </a>
         <a
           href={`${REPO_URL}#readme`}
-          className="type-label focus-ring hidden text-content transition-opacity duration-fast hover:opacity-70 md:block"
+          className="type-label focus-ring hidden py-1.5 text-content transition-opacity duration-fast hover:opacity-70 md:block"
         >
           Docs
         </a>
 
         <div className="flex flex-col items-start gap-1.5 md:items-center">
-          <Link href="/" className="focus-ring block">
+          <Link href="/" className="focus-ring block py-1">
             <span className="type-display block whitespace-nowrap text-[1.35rem] leading-none text-content sm:text-[1.6rem]">
               Ragent AI
             </span>
@@ -69,7 +69,7 @@ export function LandingNav() {
           <a
             href={REPO_URL}
             aria-label="Source on GitHub"
-            className="focus-ring text-content/80 transition-opacity duration-fast hover:opacity-100"
+            className="focus-ring -m-1.5 p-1.5 text-content/80 transition-opacity duration-fast hover:opacity-100"
           >
             <Github className="h-3.5 w-3.5" />
           </a>
@@ -77,7 +77,7 @@ export function LandingNav() {
 
         <a
           href="#capabilities"
-          className="type-label focus-ring hidden text-content transition-opacity duration-fast hover:opacity-70 md:block md:text-right"
+          className="type-label focus-ring hidden py-1.5 text-content transition-opacity duration-fast hover:opacity-70 md:block md:text-right"
         >
           Capabilities
         </a>
@@ -85,7 +85,7 @@ export function LandingNav() {
         <div className="flex items-start justify-end">
           <Link
             href="/chat"
-            className="type-label focus-ring group inline-flex items-center gap-1.5 text-content"
+            className="type-label focus-ring group inline-flex items-center gap-1.5 py-1.5 text-content"
           >
             Open chat
             <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />

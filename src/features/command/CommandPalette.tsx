@@ -5,11 +5,10 @@ import { useRouter } from 'next/navigation';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   MessageSquare,
-  Moon,
   Plus,
   Search,
   Settings2,
-  Sun,
+  Sparkles,
   CornerDownLeft,
 } from 'lucide-react';
 import { useChatStore } from '@/lib/store/chat-store';
@@ -34,8 +33,8 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
   const router = useRouter();
   const conversations = useChatStore((s) => s.conversations);
   const setActive = useChatStore((s) => s.setActive);
-  const theme = useSettings((s) => s.theme);
-  const setTheme = useSettings((s) => s.setTheme);
+  const grain = useSettings((s) => s.animatedBackground);
+  const toggleSetting = useSettings((s) => s.toggle);
 
   const [query, setQuery] = useState('');
   const [cursor, setCursor] = useState(0);
@@ -62,10 +61,15 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
     const actions: Item[] = [
       { id: 'new', label: 'New chat', icon: Plus, run: () => { onNewChat(); onClose(); } },
       {
-        id: 'theme',
-        label: theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme',
-        icon: theme === 'dark' ? Sun : Moon,
-        run: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+        /* Was "Switch to light/dark theme". The product has one canvas and
+           nothing reads `theme` any more, so running that command changed a
+           stored value and produced no visible effect — a dead command in the
+           product's primary command surface. The grain toggle is the Appearance
+           setting that actually does something. */
+        id: 'grain',
+        label: grain ? 'Turn off canvas texture' : 'Turn on canvas texture',
+        icon: Sparkles,
+        run: () => toggleSetting('animatedBackground'),
       },
       {
         id: 'settings',
@@ -85,7 +89,7 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
     const q = query.trim().toLowerCase();
     if (!q) return all;
     return all.filter((i) => i.label.toLowerCase().includes(q));
-  }, [conversations, query, theme, onClose, onNewChat, router, setActive, setTheme]);
+  }, [conversations, query, grain, onClose, onNewChat, router, setActive, toggleSetting]);
 
   useEffect(() => {
     // NaN-safe: `Math.min(NaN, n)` is NaN, so once the cursor went bad it could
@@ -132,7 +136,7 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
           onKeyDown={onKeyDown}
         >
           <m.div
-            className="absolute inset-0 bg-[rgb(4_4_10_/_0.82)]"
+            className="scrim absolute inset-0"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

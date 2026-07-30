@@ -125,6 +125,14 @@
   --shadow: 0 0 0;
   --shadow-alpha: 0;
 
+  /* Modal scrim. One value for four callers: the modal, the command palette, the
+     artifact preview and the mobile sidebar each wrote their own
+     `bg-[rgb(4_4_10_/_0.82)]`, and the sidebar's was 0.7 — so dismissing a
+     drawer dimmed the page less than opening a dialog did. Strong, because it
+     has to isolate a paper panel from a fully saturated field. */
+  --scrim: 4 4 10;
+  --scrim-alpha: 0.8;
+
   /* MOTION — one rhythm for the product. Every CSS transition and every
      framer-motion tween reads these, so timing is a token like colour is.
      Exit runs at ~65% of enter, which is what makes a dismissal feel answered
@@ -320,13 +328,15 @@ h4 {
      inversion (see `.paper`) rather than a tint of the field — a tint measures
      1.04:1 against the field, which would leave an open menu visually merged
      with the page behind it. The rule stays off-white so the panel edge reads
-     against the blue on all four sides. */
+     against the blue on all four sides.
+
+     There is no `:focus-within` border here. It used to swap the rule to acid,
+     which on a paper panel is 1.1:1 — a highlighter outline that got *less*
+     visible against the scrim than the off-white it replaced, on a surface that
+     is modal and therefore always has focus inside it. */
   .popover {
     border: 2px solid rgb(var(--hermes-fg));
     border-radius: var(--radius-sm);
-  }
-  .popover:focus-within {
-    border-color: rgb(var(--hermes-acid));
   }
 
   /* A ruled block on the field: recess fill for the hue step, 2px full-opacity
@@ -342,6 +352,11 @@ h4 {
   .well {
     background-color: rgb(var(--surface-raised));
     border-radius: var(--radius-sm);
+  }
+
+  /* Backdrop behind any floating surface. */
+  .scrim {
+    background-color: rgb(var(--scrim) / var(--scrim-alpha));
   }
 
   .focus-ring {
@@ -563,16 +578,22 @@ h4 {
   border-top: 2px solid rgb(var(--border) / var(--border-strong));
 }
 
-/* Ghosted display word used as decoration behind the hero/footer, exactly the
-   reference's technique (exclusion blend + low opacity + acid colour). */
+/* Ghosted display word used as a page-closing device.
+ *
+ * It is a low-opacity paper wash, not a blend. `mix-blend-mode: exclusion` — the
+ * reference's technique — resolved differently depending on the stacking context
+ * it landed in: solid white inside the landing's isolated `.hermes-canvas`, solid
+ * acid yellow on the settings page, and in neither case ghosted, because nothing
+ * ever set the opacity the effect assumed. A flat 14% paper is predictable on
+ * every surface and produces the intended lighter-blue ghost. */
 .hw-ghost {
   font-family: var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.03em;
   line-height: 0.8;
   white-space: nowrap;
-  mix-blend-mode: exclusion;
   color: rgb(var(--hermes-paper));
+  opacity: 0.14;
   pointer-events: none;
   user-select: none;
 }
@@ -687,6 +708,14 @@ h4 {
   @apply flex items-center justify-between px-3.5 py-2;
   background-color: rgb(0 41 222 / 0.16);
   border-bottom: 1px solid rgb(255 255 255 / 0.1);
+}
+/* highlight.js's github-dark theme paints `.hljs` with its own background, which
+   rendered as a second, differently-coloured dark panel nested inside the code
+   frame. The frame owns the ground here. */
+.code-block pre,
+.code-block pre code,
+.code-block .hljs {
+  background: transparent;
 }
 .diff-add {
   background-color: rgb(61 220 132 / 0.14);

@@ -195,20 +195,27 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
           <Settings2 className="h-4 w-4" /> Settings
         </Link>
         <p className="type-label mt-2 truncate px-2 text-content-subtle">
-          {defaultModel ? `Default: ${defaultModel}` : 'Local models · private by design'}
+          {defaultModel ? `Default: ${defaultModel}` : 'Private by design'}
         </p>
       </div>
     </div>
   );
 
   // Mobile: overlay drawer. Desktop: collapsible inline panel.
+  //
+  // The drawer takes `.popover`, which means the paper tier: white ground, blue
+  // ink, blue New-chat fill. That is deliberate and it follows the one rule the
+  // system has about grounds — persistent chrome sits on the field, floating
+  // surfaces invert to paper. A drawer over a dimmed page is a floating surface,
+  // and at 88vw over a fully saturated field the inversion is what makes it read
+  // as lifted rather than as the page having changed colour.
   if (isMobile) {
     return (
       <AnimatePresence>
         {open && (
           <>
             <m.div
-              className="fixed inset-0 z-40 bg-[rgb(4_4_10_/_0.7)]"
+              className="scrim fixed inset-0 z-40"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -219,7 +226,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
               animate={{ x: 0 }}
               exit={{ x: -SIDEBAR_WIDTH }}
               transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-              className="popover fixed inset-y-0 left-0 z-50 w-72 max-w-[88vw] border-r border-border"
+              className="popover fixed inset-y-0 left-0 z-50 w-72 max-w-[88vw] rounded-none border-y-0 border-l-0"
             >
               {content}
             </m.aside>

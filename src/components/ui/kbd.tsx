@@ -27,8 +27,8 @@ export function Kbd({ children, mod, className }: { children?: string; mod?: boo
         className,
       )}
     >
-      {mod && (apple ? '⌘' : 'Ctrl')}
-      {children}
+      {mod && <span>{apple ? '⌘' : 'Ctrl'}</span>}
+      {children && <span>{children}</span>}
     </kbd>
   );
 }
