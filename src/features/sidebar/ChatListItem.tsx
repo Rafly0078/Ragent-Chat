@@ -91,19 +91,34 @@ export const ChatListItem = memo(function ChatListItem({
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.18 }}
       className={cn(
-        'group/item relative flex items-center gap-1 rounded-md border-2 border-transparent py-1 pl-2.5 pr-1 text-sm transition-colors',
-        active ? 'border-border bg-accent/20 text-content shadow-subtle' : 'text-content-muted hover:border-border/30 hover:bg-surface-raised',
+        'group/item relative flex items-center gap-1 rounded py-1 pl-3 pr-1 text-sm transition-colors',
+        active
+          ? 'bg-accent/14 text-content'
+          : 'text-content-muted hover:bg-border/[0.06] hover:text-content',
       )}
     >
+      {/* Active state is a 2px accent rail down the leading edge, not a border
+          box. It survives at any row height, never shifts the text, and reads
+          instantly down a long list — a full outline on every row turns the
+          sidebar into a ladder. */}
+      <span
+        aria-hidden
+        className={cn(
+          'absolute inset-y-1 left-0 w-[2px] rounded-full transition-colors',
+          active ? 'bg-accent' : 'bg-transparent',
+        )}
+      />
       <button
         onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
         aria-current={active}
       >
         {pinned ? (
           <Pin className="h-3.5 w-3.5 shrink-0 text-accent" />
         ) : (
-          <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+          <MessageSquare
+            className={cn('h-3.5 w-3.5 shrink-0 transition-colors', active ? 'text-accent' : 'opacity-55')}
+          />
         )}
         {editing ? (
           <input
@@ -211,13 +226,13 @@ export const ChatListItem = memo(function ChatListItem({
                           deleteConversation(id);
                           setMenuOpen(false);
                         }}
-                        className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-error/15 text-xs font-medium text-error hover:bg-error/25"
+                        className="btn-destructive btn-sm flex-1"
                       >
                         <Check className="h-3.5 w-3.5" /> Delete
                       </button>
                       <button
                         onClick={() => setConfirming(false)}
-                        className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-content-subtle hover:bg-border/10 hover:text-content"
+                        className="btn-ghost btn-sm flex-1"
                       >
                         <X className="h-3.5 w-3.5" /> Cancel
                       </button>
@@ -249,8 +264,10 @@ function MenuRow({
       role="menuitem"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-colors hover:bg-border/5',
-        danger ? 'text-error hover:bg-error/10' : 'text-content',
+        'type-label flex w-full items-center gap-2.5 rounded px-3 py-2.5 text-left transition-colors',
+        danger
+          ? 'text-error hover:bg-error/15'
+          : 'text-content-muted hover:bg-accent/12 hover:text-content',
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />

@@ -10,6 +10,7 @@ import { ChatListItem } from './ChatListItem';
 import { dateBucket } from '@/lib/utils/format';
 import { useHydrated } from '@/lib/hooks/use-hydrated';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
+import { Kbd } from '@/components/ui/kbd';
 
 interface Props {
   open: boolean;
@@ -91,47 +92,53 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 
   const content = (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-4">
-        <div className="accent-gradient flex h-10 w-10 items-center justify-center rounded-md border-[3px] border-border shadow-card">
+      {/* Header — logo, wordmark, and on mobile the close affordance. */}
+      <div className="flex items-center gap-2.5 px-4 pb-3.5 pt-4">
+        <div className="accent-gradient flex h-8 w-8 items-center justify-center rounded">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/noun-atom-8300355 (1).png" alt="" width={24} height={24} className="h-6 w-6" />
+          <img src="/noun-atom-8300355 (1).png" alt="" width={20} height={20} className="h-5 w-5" />
         </div>
-        <span className="type-display flex-1 text-lg text-content">Ragent</span>
+        <span className="type-display flex-1 text-lg leading-none text-content">Ragent</span>
         {isMobile && (
-          <button onClick={onClose} className="btn-ghost h-10 w-10 rounded-lg" aria-label="Close sidebar">
-            <X className="h-5 w-5" />
+          <button onClick={onClose} className="btn-ghost btn-sm btn-icon" aria-label="Close sidebar">
+            <X className="h-4 w-4" />
           </button>
         )}
       </div>
 
-      {/* New chat */}
+      {/* The sidebar's single accented action. */}
       <div className="px-4">
-        <button onClick={onNewChat} className="btn-primary h-11 w-full rounded-md">
+        <button onClick={onNewChat} className="btn-primary btn-lg w-full">
           <Plus className="h-4 w-4" /> New chat
         </button>
       </div>
 
-      {/* Search */}
-      <div className="px-4 py-4">
+      {/* Search. The chip advertises the shortcut that actually focuses this
+          field (Ctrl/Cmd+F in use-keyboard-shortcuts) — it hides while typing so
+          it never sits under the clear button. */}
+      <div className="px-4 pb-2 pt-3.5">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-subtle" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-content-subtle" />
           <input
             id="sidebar-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search chats…"
             aria-label="Search conversations"
-            className="input h-9 pl-9 pr-8"
+            className="input h-9 pl-9 pr-14 text-sm"
           />
-          {query && (
+          {query ? (
             <button
               onClick={() => setQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-content-subtle hover:text-content"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-content-subtle transition-colors duration-fast hover:text-content"
               aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
             </button>
+          ) : (
+            <Kbd mod className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+              F
+            </Kbd>
           )}
         </div>
       </div>
@@ -183,12 +190,12 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-border px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <Link href="/settings" className="btn-ghost h-9 w-full justify-start">
+      <div className="border-t-2 border-border px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+        <Link href="/settings" className="btn-ghost btn-md w-full justify-start gap-2.5">
           <Settings2 className="h-4 w-4" /> Settings
         </Link>
-        <p className="mt-2 px-2 text-[0.68rem] text-content-subtle">
-          {defaultModel ? `Default: ${defaultModel}` : 'Local models • private by design'}
+        <p className="type-label mt-2 truncate px-2 text-content-subtle">
+          {defaultModel ? `Default: ${defaultModel}` : 'Local models · private by design'}
         </p>
       </div>
     </div>
@@ -201,7 +208,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
         {open && (
           <>
             <m.div
-              className="fixed inset-0 z-40 bg-[rgb(0_0_58_/_0.7)]"
+              className="fixed inset-0 z-40 bg-[rgb(4_4_10_/_0.7)]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -239,10 +246,8 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-2">
-      <p className="px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-wide text-content-subtle">
-        {title}
-      </p>
-      <div className="space-y-0.5">{children}</div>
+      <p className="type-label px-3 pb-1.5 pt-2.5 text-content-subtle">{title}</p>
+      <div className="space-y-px">{children}</div>
     </div>
   );
 }
