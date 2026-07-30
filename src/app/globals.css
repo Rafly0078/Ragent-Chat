@@ -68,70 +68,128 @@
 }
 
 /* ---------------------------------------------------------------------------
-   THE CANVAS — one palette for the whole product.
+   THE CANVAS — one field, #0000f2, everywhere: landing, chat, settings, panels.
+   The reference has no light/dark pair, and neither does this.
 
-   #0000f2 is the page everywhere: landing, chat, settings, panels. There is no
-   light/dark pair, because the reference has no light/dark pair — it has one
-   field. Every value below is measured, not guessed:
+   The hard constraint the whole system is built around: #0000f2 has relative
+   luminance .064, and a translucent lift on top of it barely moves that number.
+   Measured on the field:
 
-     content   #f5f5f5 on the field ............ 8.44:1
-     muted     #b5b5f4 ....................... 4.77:1   (AA text)
-     subtle    #9b9bf7 ....................... 3.69:1   (AA non-text only)
-     acid      #edff45 ....................... 8.32:1
-     paper fill vs field ..................... 9.20:1
-     blue ink on a paper fill ................ 9.20:1
-     content on the #0029de panel wash ....... 8.12:1
+     #0029de recess fill ...... 1.04:1    a HUE step, not a luminance step
+     acid @14% wash ........... 1.02:1    likewise
 
-   The reference's own muted foreground is #f5f5f5 at 0.6 alpha, which measures
-   3.38:1 and fails AA — hence 0.75 (#b5b5f4) here instead.
+   So a fill can never be the thing that separates a surface from its ground.
+   Four tiers, in the order they carry weight:
+
+     PAPER   #ffffff fill, blue ink ..... 9.20:1   the top tier — primary
+             actions and floating surfaces. One per region, or it stops meaning
+             "this is the thing".
+     RULE    2px #f5f5f5, full opacity .. 8.44:1   every boundary that has to
+             be perceivable is a rule, not a fill.
+     GROUND  #0000f2 ...................... the field.
+     RECESS  #0029de ...................... wells INSIDE a ruled block. A
+             supporting hue step; never the only cue.
+
+   Text on the field, all measured:
+     content #f5f5f5 .. 8.44:1     acid   #edff45 .. 8.32:1
+     muted   #c9c9f4 .. 5.76:1     subtle #b5b5f4 .. 4.77:1
+   The reference's own muted (#f5f5f5 at .6 alpha) is 3.38:1 and fails AA, so
+   these are opaque values rather than alphas.
 --------------------------------------------------------------------------- */
 :root {
   --surface: var(--hermes-blue);
-  /* Translucent panel wash, the reference's own #0029de. Deliberately near
-     identical in luminance to the field: panels are delineated by 2px rules,
-     not by a lighter box. */
   --surface-raised: var(--hermes-deep);
   --surface-overlay: var(--hermes-deep);
   --surface-mid: var(--hermes-blue);
 
   --border: var(--hermes-fg);
-  --border-alpha: 0.28;
-  --border-strong: 1;
+  --border-alpha: 0.28; /* decorative dividers */
+  --border-strong: 1; /* functional outlines — 8.44:1 */
 
   --content: var(--hermes-fg);
-  /* Three steps, every one of them AA *as text*. An automated sweep of the
-     rendered pages caught the previous `subtle` (#9b9bf7, 3.69:1) being used for
-     real 11-12px labels — "Today", "Text model", the caveat lines — not just
-     decoration, so both tiers were raised until they pass. */
-  --content-muted: 201 201 244; /* 5.76:1 */
-  --content-subtle: 181 181 244; /* 4.77:1 */
+  --content-muted: 201 201 244;
+  --content-subtle: 181 181 244;
 
-  /* Accent TEXT/icons are acid; accent FILLS are paper with blue ink on top.
-     Two tokens because no single colour does both jobs on this field. */
-  --accent: var(--hermes-acid);
-  --accent-soft: var(--hermes-acid);
-  --accent-solid: var(--hermes-paper);
+  --accent: var(--hermes-acid); /* text, icons, rails, rings */
+  --accent-soft: 243 255 128; /* accent-text hover */
+  --accent-solid: var(--hermes-paper); /* fills, carrying --accent-fg ink */
+  --accent-hover: var(--hermes-grey); /* the fill's hover step */
   --accent-fg: var(--hermes-blue);
   --acid: var(--hermes-acid);
 
-  /* Lightened so each clears AA on the field (#ff6b6b measured only 3.32:1). */
   --success: 125 255 195;
   --warning: 255 209 102;
   --error: 255 179 179;
 
-  /* No soft shadows in this language — depth is flat colour and 2px rules. */
+  /* No soft shadows in this language — depth is paper, rules and hue. */
   --shadow: 0 0 0;
   --shadow-alpha: 0;
+
+  /* MOTION — one rhythm for the product. Every CSS transition and every
+     framer-motion tween reads these, so timing is a token like colour is.
+     Exit runs at ~65% of enter, which is what makes a dismissal feel answered
+     rather than sluggish. */
+  --dur-instant: 90ms;
+  --dur-fast: 140ms;
+  --dur: 200ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1); /* entering */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exiting */
+  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1); /* moving in place */
 }
 
-/*
- * `.hermes-canvas` no longer carries the palette — the palette is global now.
- * It survives as the landing page's container-query + isolation context, which
- * the fluid `--u` unit and the grain blend need.
- */
+/* The landing opts into a container-query context so the reference's fluid `--u`
+   unit measures the page rather than the viewport. The colour tokens are already
+   the field's, so this class is now purely containment + isolation. */
 .hermes-canvas {
+  background-color: rgb(var(--surface));
+  color: rgb(var(--content));
   container-type: inline-size;
   isolation: isolate;
+}
+
+/* ---------------------------------------------------------------------------
+   THE PAPER TIER — the inversion that gives a one-colour product a top layer.
+
+   Menus, dialogs, the command palette and the model list flip the entire token
+   set to blue-ink-on-white instead of tinting themselves. Because every
+   component reads `rgb(var(--content))` / `--border` / `--accent` rather than a
+   literal, one class re-grounds everything inside it with zero component edits.
+
+   Measured on #ffffff: ink 9.20:1, muted 7.62:1, subtle 5.43:1, error 5.88:1,
+   success 5.39:1, warning 6.33:1. Translucent washes finally work in here —
+   paper and blue are 8x apart in luminance, so `hover:bg-accent/12` reads as a
+   real state change instead of the hue flicker it is out on the field.
+--------------------------------------------------------------------------- */
+.paper,
+.popover {
+  --surface: var(--hermes-paper);
+  --surface-raised: var(--hermes-grey);
+  --surface-overlay: var(--hermes-paper);
+  --surface-mid: var(--hermes-paper);
+
+  --border: var(--hermes-blue);
+  --border-alpha: 0.2;
+  --border-strong: 1;
+
+  --content: var(--hermes-blue);
+  --content-muted: 58 58 214;
+  --content-subtle: 90 90 214;
+
+  --accent: var(--hermes-blue);
+  --accent-soft: var(--hermes-deep);
+  --accent-solid: var(--hermes-blue);
+  --accent-hover: var(--hermes-deep);
+  --accent-fg: var(--hermes-paper);
+
+  /* The field's status colours are pastels chosen to sit on blue; on paper they
+     are invisible, so each one gets a dark counterpart of the same hue. */
+  --success: 11 122 75;
+  --warning: 138 83 0;
+  --error: 200 16 46;
+
+  background-color: rgb(var(--surface));
+  color: rgb(var(--content));
 }
 
 /* Default border colour for anything opting into a border utility. */
@@ -258,45 +316,31 @@ h4 {
     border-right: 2px solid rgb(var(--border) / var(--border-strong));
   }
 
-  /* Floating surfaces INVERT to paper — the reference specifies exactly this
-     for its dropdowns (--hermes-dropdown-bg: white, --hermes-dropdown-fg: blue).
-     Redeclaring the tokens here re-themes the whole subtree, so every
-     `text-content` / `bg-surface` / `border-border` inside a menu or dialog
-     becomes blue-on-paper with no per-component edits.
-     Measured: blue ink 9.20:1, muted ink 11.70:1, subtle ink 8.69:1. */
+  /* Floating surfaces: menus, dialogs, palette, model list. They take the paper
+     inversion (see `.paper`) rather than a tint of the field — a tint measures
+     1.04:1 against the field, which would leave an open menu visually merged
+     with the page behind it. The rule stays off-white so the panel edge reads
+     against the blue on all four sides. */
   .popover {
-    --surface: var(--hermes-fg);
-    --surface-raised: var(--hermes-paper);
-    --surface-overlay: var(--hermes-fg);
-    --surface-mid: var(--hermes-fg);
-    --content: var(--hermes-blue);
-    --content-muted: 0 25 160;
-    --content-subtle: 60 60 140;
-    --border: var(--hermes-blue);
-    --border-alpha: 0.18;
-    --border-strong: 1;
-    --accent: var(--hermes-blue);
-    --accent-soft: var(--hermes-deep);
-    --accent-solid: var(--hermes-blue);
-    --accent-fg: var(--hermes-fg);
-    /* Raw acid is unreadable on paper; darken it for this subtree only. */
-    --acid: 130 145 0;
-    --success: 16 122 66;
-    --warning: 158 84 0;
-    --error: 190 30 45;
-
-    background-color: rgb(var(--hermes-fg));
-    color: rgb(var(--hermes-blue));
-    border: 2px solid rgb(var(--hermes-blue));
+    border: 2px solid rgb(var(--hermes-fg));
     border-radius: var(--radius-sm);
   }
   .popover:focus-within {
-    border-color: rgb(var(--hermes-deep));
+    border-color: rgb(var(--hermes-acid));
   }
 
+  /* A ruled block on the field: recess fill for the hue step, 2px full-opacity
+     rule for the boundary that actually does the work. */
   .card {
     background-color: rgb(var(--surface-raised));
     border: 2px solid rgb(var(--border) / var(--border-strong));
+    border-radius: var(--radius-sm);
+  }
+
+  /* A well nested INSIDE a ruled block — inputs, code frames, meta strips. No
+     rule of its own, because a rule inside a rule reads as a mistake. */
+  .well {
+    background-color: rgb(var(--surface-raised));
     border-radius: var(--radius-sm);
   }
 
@@ -305,70 +349,167 @@ h4 {
   }
 
   /* -----------------------------------------------------------------------
-     BUTTONS — mono caps, square, transform-only motion.
+     BUTTONS — one system, four variants, one size scale.
+
+       primary      accent-filled, for the single most important action
+       surface      outlined, for secondary actions
+       ghost        no chrome until hovered, for icon buttons and menu rows
+       destructive  outlined in the error colour, filled only on hover
+
+     Size comes from `.btn-sm` / `.btn-md` / `.btn-lg` so height, padding and
+     type scale together instead of every caller inventing its own. Existing
+     `h-9` / `h-11` utilities still win where they are already applied, which is
+     what keeps this a restyle rather than a refactor.
   ----------------------------------------------------------------------- */
   .btn {
     @apply focus-ring inline-flex select-none items-center justify-center gap-2 disabled:pointer-events-none disabled:opacity-40;
     font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
+    line-height: 1;
     border-radius: var(--radius-sm);
+    border: 2px solid transparent;
     transition:
-      transform 0.15s cubic-bezier(0, 0, 0.2, 1),
-      background-color 0.15s ease,
-      color 0.15s ease,
-      border-color 0.15s ease,
-      opacity 0.15s ease;
+      background-color var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-instant) var(--ease-out),
+      opacity var(--dur-fast) var(--ease-out);
   }
+  .btn-sm { height: 2rem; padding-inline: 0.625rem; font-size: 0.7rem; }
+  .btn-md { height: 2.25rem; padding-inline: 0.875rem; }
+  .btn-lg { height: 2.75rem; padding-inline: 1.25rem; font-size: 0.8rem; }
+  /* Marketing scale. The landing's three CTAs each carried their own px/py pair
+     before this, which is how one page ends up with three button heights. */
+  .btn-xl { height: 3rem; padding-inline: 1.75rem; font-size: 0.8rem; }
+  /* Icon-only: keep it square at each step. */
+  .btn-icon { padding-inline: 0; aspect-ratio: 1; }
 
-  .btn-ghost {
-    @apply btn text-content-muted;
-  }
-  .btn-ghost:hover {
-    background-color: rgb(var(--border) / 0.08);
-    color: rgb(var(--content));
-  }
-
-  .btn-surface {
-    @apply btn text-content;
-    background-color: transparent;
-    border: 2px solid rgb(var(--border) / var(--border-strong));
-  }
-  .btn-surface:hover {
-    background-color: rgb(var(--border) / 0.08);
-  }
-  .btn-surface:active {
-    transform: translateY(1px);
-  }
-
-  /* The one loud control on any screen: signature blue block, off-white mono
-     caps. 8.4:1 measured. */
+  /* Primary is the paper tier: white fill, blue ink, 9.20:1. The border matches
+     the fill because paper already carries its own boundary against the field —
+     a contrasting edge here just makes the button look outlined. */
   .btn-primary {
     @apply btn;
     background-color: rgb(var(--accent-solid));
     color: rgb(var(--accent-fg));
-    border: 2px solid rgb(var(--accent-solid));
+    border-color: rgb(var(--accent-solid));
   }
   .btn-primary:hover {
+    background-color: rgb(var(--accent-hover));
+    border-color: rgb(var(--accent-hover));
+  }
+  .btn-primary:active { transform: translateY(1px); }
+  /* Disabled primary drops the fill entirely instead of fading it. Paper at 40%
+     over this field still reads as a filled, pressable block — it looked like a
+     pressed state, not an unavailable one. An outline says "not yet". */
+  .btn-primary:disabled {
+    opacity: 1;
+    background-color: transparent;
+    border-color: rgb(var(--border) / 0.45);
+    color: rgb(var(--content-subtle));
+  }
+
+  /* Secondary inverts to paper on hover instead of taking a wash. A wash of any
+     colour is ~1.1:1 against this field, so it cannot be the signal; promoting
+     the button one tier can. It is also what the reference's own outlined
+     buttons do. */
+  .btn-surface {
+    @apply btn text-content;
+    background-color: transparent;
+    border-color: rgb(var(--border) / var(--border-strong));
+  }
+  .btn-surface:hover {
     background-color: rgb(var(--accent-solid));
-    border-color: rgb(var(--content));
+    border-color: rgb(var(--accent-solid));
+    color: rgb(var(--accent-fg));
   }
-  .btn-primary:active {
-    transform: translateY(1px);
+  .btn-surface:active { transform: translateY(1px); }
+
+  /* Ghost earns a rule on hover. The border is already 2px transparent, so it
+     appears without shifting anything — the crispest available state change on
+     a field where fills barely register. */
+  .btn-ghost {
+    @apply btn text-content-muted;
   }
+  .btn-ghost:hover {
+    background-color: rgb(var(--border) / 0.14);
+    border-color: rgb(var(--border) / var(--border-strong));
+    color: rgb(var(--content));
+  }
+  .btn-ghost:active { transform: translateY(1px); }
+
+  /* Destructive reads as an outline at rest so it never competes with primary,
+     then commits to a full fill with blue ink on hover (5.41:1). */
+  .btn-destructive {
+    @apply btn;
+    background-color: transparent;
+    color: rgb(var(--error));
+    border-color: rgb(var(--error));
+  }
+  .btn-destructive:hover {
+    background-color: rgb(var(--error));
+    border-color: rgb(var(--error));
+    color: rgb(var(--hermes-blue));
+  }
+  .btn-destructive:active { transform: translateY(1px); }
 
   /* -----------------------------------------------------------------------
      FORMS
   ----------------------------------------------------------------------- */
+  /* An input is a well: recess fill so it reads as something you type INTO, with
+     the rule doing the boundary work. Focus swaps the rule to acid — the one
+     high-chroma colour on the field, so a focused field is unmistakable. */
   .input {
     @apply focus-ring w-full px-3 py-2 text-sm text-content transition-colors placeholder:text-content-subtle;
-    background-color: rgb(var(--surface));
+    background-color: rgb(var(--surface-raised));
     border: 2px solid rgb(var(--border) / var(--border-strong));
     border-radius: var(--radius-sm);
   }
   .input:focus {
     border-color: rgb(var(--accent));
+  }
+
+  /* -----------------------------------------------------------------------
+     BADGE + STATUS — the two smallest reusable marks in the product.
+
+     `.badge` is the mono-caps pill used for model names, counts and labels.
+     `.status-dot` takes its colour from `--tone`, which callers set to a status
+     token; that keeps one shape and one animation for every running/ok/failed
+     indicator instead of a bespoke dot per feature.
+  ----------------------------------------------------------------------- */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-1.5 py-0.5;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.66rem;
+    line-height: 1.4;
+    border-radius: var(--radius-sm);
+    background-color: rgb(var(--border) / 0.12);
+    color: rgb(var(--content-muted));
+  }
+  .badge-outline {
+    background-color: transparent;
+    border: 1px solid rgb(var(--border) / var(--border-strong));
+  }
+
+  .status-dot {
+    --tone: var(--content-subtle);
+    @apply inline-block h-2 w-2 shrink-0;
+    border-radius: 9999px;
+    background-color: rgb(var(--tone));
+  }
+  .status-running {
+    --tone: var(--acid);
+    animation: status-pulse 1.1s var(--ease-inout) infinite;
+  }
+  .status-ok { --tone: var(--success); }
+  .status-warn { --tone: var(--warning); }
+  .status-failed { --tone: var(--error); }
+  @keyframes status-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.72); }
   }
 
   .cv-auto {
@@ -382,21 +523,23 @@ h4 {
 }
 
 /* ---------------------------------------------------------------------------
-   ACCENT CONTRAST — the one place the signature blue needs care.
+   ACCENT SPLIT — why `--accent` and `--accent-solid` are two tokens.
 
-   #0000f2 measures 2.15:1 on the dark canvas, so `--accent` in the dark theme
-   is a lightened companion (#6a6aff, 4.8:1) and every `text-accent` /
-   `border-accent` / `ring-accent` in the app inherits a readable colour with no
-   component edits. Fills are the opposite case: there the blue sits UNDER
-   off-white text, which measures 8.4:1, so `bg-accent` is redirected back to
-   the signature value. Two rules, applied centrally, instead of auditing 70+
-   call sites.
+   On this field they can never be one colour. Accent TEXT has to be light
+   enough to read on #0000f2, so it is acid (#edff45, 8.32:1). An accent FILL
+   has to be light enough to carry blue ink, so it is paper (#ffffff, 9.20:1).
+   Redirecting `bg-accent` centrally means every `bg-accent` fill in the app —
+   avatar tiles, logo blocks, active chips — lands on paper without touching a
+   single call site, while `text-accent` / `border-accent` / `ring-accent` keep
+   the acid.
 --------------------------------------------------------------------------- */
 .bg-accent {
   background-color: rgb(var(--accent-solid));
 }
-/* Keep translucent accent washes (bg-accent/15 etc.) on the lighter blue —
-   the signature value is too dark to register as a tint on near-black. */
+/* Translucent accent washes (`bg-accent/15` and friends) are left alone, but be
+   aware of what they can and cannot do out here: any wash over this field lands
+   within 1.2:1 of it, so a wash is decoration. Where a state has to be legible,
+   use a rule, a rail, or the paper tier. */
 
 /* ---------------------------------------------------------------------------
    LANDING PRIMITIVES
@@ -429,7 +572,7 @@ h4 {
   line-height: 0.8;
   white-space: nowrap;
   mix-blend-mode: exclusion;
-  color: rgb(var(--paper));
+  color: rgb(var(--hermes-paper));
   pointer-events: none;
   user-select: none;
 }
@@ -598,15 +741,18 @@ h4 {
 }
 
 /* ---------------------------------------------------------------------------
-   PROMPT SUGGESTION CARDS (empty state). Four flat blocks in the Hermes
-   palette rather than four tints of one colour.
+   PROMPT SUGGESTION CARDS (empty state). Four recessed blocks on the field, each
+   ruled, each led by an acid numeral.
 --------------------------------------------------------------------------- */
 @layer components {
   /* One uniform surface for all four. Four different tints read as four
-     unrelated blocks on a near-black canvas; the acid numeral is the only
-     accent each card needs, and the reference's own option cards are uniform
-     for the same reason. Kept as separate class names so the component's
-     tone-cycling logic keeps working. */
+     unrelated blocks, and out here a tint is only a hue flicker anyway — the
+     acid numeral is the only accent each card needs, and the reference's own
+     option cards are uniform for the same reason. Kept as four class names so
+     the component's tone-cycling logic keeps working.
+
+     Hover promotes the rule from decorative to full opacity rather than
+     changing the fill, so the affordance survives on a flat ground. */
   .prompt-card-paper,
   .prompt-card-coral,
   .prompt-card-sun,
@@ -623,11 +769,11 @@ h4 {
 .reasoning-shimmer {
   background-image: linear-gradient(
     100deg,
-    rgb(var(--accent) / 0.6) 0%,
-    rgb(var(--accent)) 30%,
+    rgb(var(--content-muted)) 0%,
+    rgb(var(--content)) 30%,
     rgb(var(--acid)) 50%,
-    rgb(var(--accent)) 70%,
-    rgb(var(--accent) / 0.6) 100%
+    rgb(var(--content)) 70%,
+    rgb(var(--content-muted)) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;

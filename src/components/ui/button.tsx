@@ -15,15 +15,20 @@ const variants: Record<Variant, string> = {
   primary: 'btn-primary',
   ghost: 'btn-ghost',
   surface: 'btn-surface',
-  danger:
-    'btn bg-error/10 text-error hover:bg-error/20 border border-error/20',
+  danger: 'btn-destructive',
 };
 
+/**
+ * Sizes map onto the `.btn-*` scale in globals.css instead of restating heights
+ * and padding here. Before this, a `<Button size="md">` was 40px and a
+ * hand-written `.btn-ghost .btn-md` was 36px, so the same nominal size rendered
+ * two different buttons depending on which one a caller reached for.
+ */
 const sizes: Record<Size, string> = {
-  sm: 'h-8 px-3 text-xs',
-  md: 'h-10 px-4',
-  lg: 'h-12 px-6 text-base',
-  icon: 'h-9 w-9',
+  sm: 'btn-sm',
+  md: 'btn-md',
+  lg: 'btn-lg',
+  icon: 'btn-md btn-icon',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(

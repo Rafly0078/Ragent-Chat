@@ -19,11 +19,19 @@ const config: Config = {
           DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
           soft: 'rgb(var(--accent-soft) / <alpha-value>)',
           fg: 'rgb(var(--accent-fg) / <alpha-value>)',
-          /** Signature #0000f2 — for FILLS only; it fails contrast as text on dark. */
+          /** The fill tier. On the #0000f2 field this resolves to paper. */
           solid: 'rgb(var(--accent-solid) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
         },
         /** Acid yellow #edff45 — the reference's true accent. Highlights, never body text. */
         acid: 'rgb(var(--acid) / <alpha-value>)',
+        /**
+         * The two fixed poles of the palette, context-independent. `paper` and
+         * `ink` exist so the landing's white-block-on-blue inversions stop being
+         * `bg-white text-[#0000f2]` literals.
+         */
+        paper: 'rgb(var(--hermes-paper) / <alpha-value>)',
+        ink: 'rgb(var(--hermes-blue) / <alpha-value>)',
         surface: {
           DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
           raised: 'rgb(var(--surface-raised) / <alpha-value>)',
@@ -85,6 +93,24 @@ const config: Config = {
         /** 4-way inset rule, transcribed from --hermes-outline-inset. */
         rule: '2px 0 0 0 rgb(var(--border)), -2px 0 0 0 rgb(var(--border)), 0 2px 0 0 rgb(var(--border)), 0 -2px 0 0 rgb(var(--border))',
       },
+      /**
+       * Motion tokens, so `duration-*` / `ease-*` utilities and the CSS
+       * component classes read from the same four values. Anything that animates
+       * in this product picks one of these; nothing invents its own timing.
+       */
+      transitionDuration: {
+        instant: 'var(--dur-instant)',
+        fast: 'var(--dur-fast)',
+        DEFAULT: 'var(--dur)',
+        base: 'var(--dur)',
+        slow: 'var(--dur-slow)',
+      },
+      transitionTimingFunction: {
+        DEFAULT: 'var(--ease-out)',
+        out: 'var(--ease-out)',
+        in: 'var(--ease-in)',
+        inout: 'var(--ease-inout)',
+      },
       keyframes: {
         'fade-in': {
           from: { opacity: '0', transform: 'translateY(6px)' },
@@ -106,6 +132,12 @@ const config: Config = {
           from: { transform: 'rotate(0deg)' },
           to: { transform: 'rotate(360deg)' },
         },
+        // Streaming placeholder: transform-only sweep, no layout, no repaint of
+        // anything but the bar itself.
+        scan: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(300%)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.2s ease-out both',
@@ -113,6 +145,7 @@ const config: Config = {
         'bounce-dot': 'bounce-dot 1.2s infinite ease-in-out',
         'rise-in': 'rise-in 0.5s cubic-bezier(0, 0, 0.2, 1) both',
         'orbit-slow': 'orbit-slow 120s linear infinite',
+        scan: 'scan 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite',
       },
     },
   },
