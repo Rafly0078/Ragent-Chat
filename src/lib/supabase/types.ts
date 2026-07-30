@@ -49,6 +49,10 @@ export type ConversationRow = {
   model: string;
   system_prompt: string;
   params: GenerationParams | Record<string, never>;
+  /** Added in 0005. jsonb — validated in mappers.ts, not trusted. */
+  thinking: unknown;
+  /** Added in 0005. jsonb — the running compaction summary, or null. */
+  summary: unknown;
   folder: string | null;
   pinned: boolean;
   favorite: boolean;
@@ -67,6 +71,10 @@ export type MessageRow = {
   model: string | null;
   metrics: MessageMetrics | null;
   error: string | null;
+  /** Added in 0005. The model's extended-thinking output. */
+  reasoning: string | null;
+  /** Added in 0005. jsonb — search sources/context, effort, etc. */
+  metadata: unknown;
   parent_id: string | null;
   seq: number;
   created_at: Timestamptz;
@@ -216,6 +224,7 @@ export interface Database {
         WithDefaults<
           ConversationRow,
           'id' | 'workspace_id' | 'title' | 'model' | 'system_prompt' | 'params' | 'folder'
+          | 'thinking' | 'summary'
           | 'pinned' | 'favorite' | 'archived' | 'parent_id' | 'created_at' | 'updated_at'
         >,
         Partial<ConversationRow>
@@ -224,7 +233,8 @@ export interface Database {
         MessageRow,
         WithDefaults<
           MessageRow,
-          'id' | 'content' | 'model' | 'metrics' | 'error' | 'parent_id' | 'seq' | 'created_at' | 'updated_at'
+          'id' | 'content' | 'model' | 'metrics' | 'error' | 'reasoning' | 'metadata'
+          | 'parent_id' | 'seq' | 'created_at' | 'updated_at'
         >,
         Partial<MessageRow>
       >;

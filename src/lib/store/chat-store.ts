@@ -322,7 +322,10 @@ export const useChatStore = create<ChatState>()(
       togglePin: (id) =>
         set((s) => ({
           conversations: s.conversations.map((c) =>
-            c.id === id ? { ...c, pinned: !c.pinned } : c,
+            // `touch` matters: the sync layer diffs on `updatedAt`, so without it
+            // a pin was written to localStorage but never to Supabase, and was
+            // lost on the next hydrate or on another device.
+            c.id === id ? touch({ ...c, pinned: !c.pinned }) : c,
           ),
         })),
 
@@ -382,7 +385,10 @@ export const useChatStore = create<ChatState>()(
       setConversationSummary: (id, summary) =>
         set((s) => ({
           conversations: s.conversations.map((c) =>
-            c.id === id ? { ...c, summary: summary ?? undefined } : c,
+            // Touched so the new summary actually syncs — the diff is on
+            // `updatedAt`, so a fresh compaction was otherwise never persisted
+            // remotely and the whole history got re-summarized after every reload.
+            c.id === id ? touch({ ...c, summary: summary ?? undefined }) : c,
           ),
         })),
 

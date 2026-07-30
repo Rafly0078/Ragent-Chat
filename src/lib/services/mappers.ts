@@ -3,7 +3,15 @@
  * the rest of the app only ever deals with the domain types in @/types.
  */
 
-import type { Conversation, GenerationParams, Message, Role, ThinkingConfig } from '@/types';
+import type {
+  Conversation,
+  ConversationSummary,
+  GenerationParams,
+  Message,
+  Role,
+  ThinkingConfig,
+  ThinkingEffort,
+} from '@/types';
 import { DEFAULT_PARAMS, DEFAULT_THINKING } from '@/lib/store/defaults';
 import type { ArtifactKind, Artifact } from '@/lib/tools/types';
 import type { ArtifactRow, ConversationRow, MessageRow } from '@/lib/supabase/types';
@@ -35,15 +43,49 @@ function safeMetrics(raw: unknown): Message['metrics'] {
   return Object.values(out).some((v) => v !== undefined) ? out : undefined;
 }
 
+const EFFORTS: ThinkingEffort[] = ['low', 'medium', 'high', 'max'];
+
+/** Coerce the `thinking` jsonb column into a valid ThinkingConfig. */
+function safeThinking(raw: unknown): ThinkingConfig {
+  if (!raw || typeof raw !== 'object') return { ...DEFAULT_THINKING };
+  const src = raw as Record<string, unknown>;
+  return {
+    enabled: src.enabled === true,
+    effort: EFFORTS.includes(src.effort as ThinkingEffort)
+      ? (src.effort as ThinkingEffort)
+      : DEFAULT_THINKING.effort,
+  };
+}
+
+/** Coerce the `summary` jsonb column; both string fields are required to be useful. */
+function safeSummary(raw: unknown): ConversationSummary | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const src = raw as Record<string, unknown>;
+  if (typeof src.text !== 'string' || !src.text.trim()) return undefined;
+  if (typeof src.upToMessageId !== 'string' || !src.upToMessageId) return undefined;
+  return {
+    text: src.text,
+    upToMessageId: src.upToMessageId,
+    createdAt: typeof src.createdAt === 'number' ? src.createdAt : Date.now(),
+    tokensAtSummary:
+      typeof src.tokensAtSummary === 'number' ? src.tokensAtSummary : undefined,
+  };
+}
+
+/**
+ * `metadata` is a plain object or nothing — the column is jsonb, so it could
+ * legitimately hold an array or a scalar, which the rest of the app would then
+ * spread incorrectly.
+ */
+function safeMetadata(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out = raw as Record<string, unknown>;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export function rowToConversation(row: ConversationRow, messages: Message[]): Conversation {
   const rawParams = row.params && typeof row.params === 'object' ? row.params : {};
   const params = { ...DEFAULT_PARAMS, ...(rawParams as Partial<GenerationParams>) };
-  // NOTE: `thinking` and `summary` have no columns yet, so both are lost on every
-  // cloud round-trip (extended thinking silently reverts to off, and the
-  // compaction summary is rebuilt from scratch). See
-  // supabase/migrations/0005_sync_fidelity.sql — it is written but NOT applied,
-  // because pushing it touches the live database.
-  const thinking: ThinkingConfig = { ...DEFAULT_THINKING };
   return {
     id: row.id,
     title: row.title,
@@ -51,7 +93,8 @@ export function rowToConversation(row: ConversationRow, messages: Message[]): Co
     model: row.model,
     systemPrompt: row.system_prompt,
     params,
-    thinking,
+    thinking: safeThinking(row.thinking),
+    summary: safeSummary(row.summary),
     pinned: row.pinned,
     createdAt: isoToMs(row.created_at),
     updatedAt: isoToMs(row.updated_at),
@@ -70,6 +113,11 @@ export function rowToMessage(row: MessageRow): Message {
     // `metrics.tokensPerSecond.toFixed(1)` — a string there took down the
     // message list.
     metrics: safeMetrics(row.metrics),
+    reasoning: row.reasoning ?? undefined,
+    // `artifacts` is deliberately absent here — the artifacts TABLE is the
+    // source of truth and loadConversations merges it in afterwards. Persisting
+    // it in metadata too would show every generated file twice.
+    metadata: safeMetadata(row.metadata),
     error: row.error ?? undefined,
   };
 }
@@ -109,6 +157,8 @@ export function conversationToRow(
     model: convo.model,
     system_prompt: convo.systemPrompt,
     params: convo.params,
+    thinking: convo.thinking ?? DEFAULT_THINKING,
+    summary: convo.summary ?? null,
     pinned: convo.pinned,
     created_at: msToIso(convo.createdAt),
     updated_at: msToIso(convo.updatedAt),
@@ -121,6 +171,10 @@ export function messageToRow(
   userId: string,
   seq: number,
 ): Omit<MessageRow, 'updated_at' | 'parent_id'> {
+  // Strip `artifacts`: they have their own table (written by /api/tools/execute)
+  // and loadConversations re-attaches them, so keeping a copy here would show
+  // every generated file twice.
+  const { artifacts: _artifacts, ...metadata } = msg.metadata ?? {};
   return {
     id: msg.id,
     conversation_id: convoId,
@@ -130,6 +184,8 @@ export function messageToRow(
     model: msg.model ?? null,
     metrics: msg.metrics ?? null,
     error: msg.error ?? null,
+    reasoning: msg.reasoning ?? null,
+    metadata: Object.keys(metadata).length > 0 ? metadata : {},
     seq,
     created_at: msToIso(msg.createdAt),
   };
