@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Check, Copy } from 'lucide-react';
+import { copyText } from '@/lib/utils/clipboard';
 import { cn } from '@/lib/utils/cn';
 
 /**
@@ -27,15 +28,29 @@ export function CodeBlock({
   className?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(raw);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard unavailable */
-    }
+    // `copyText` falls back to a hidden textarea: `navigator.clipboard` is
+    // undefined on any non-HTTPS origin, which includes reaching a self-hosted
+    // instance over plain HTTP on a LAN address. Failures are now visible instead
+    // of the button silently doing nothing.
+    const ok = await copyText(raw);
+    setCopied(ok);
+    setFailed(!ok);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      setCopied(false);
+      setFailed(false);
+    }, 1600);
   };
 
   return (
@@ -48,18 +63,24 @@ export function CodeBlock({
           </span>
         </div>
         <button
-          onClick={copy}
+          onClick={() => void copy()}
           className={cn(
             'focus-ring flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs transition-colors',
             copied
               ? 'text-success'
-              : 'text-white/55 hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-white/90'
+              : failed
+                ? 'text-error'
+                : 'text-white/55 hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-white/90'
           )}
           aria-label="Copy code"
         >
           {copied ? (
             <>
               <Check className="h-3.5 w-3.5" /> Copied
+            </>
+          ) : failed ? (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5" /> Copy failed
             </>
           ) : (
             <>

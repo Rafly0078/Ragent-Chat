@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ModelInfo } from '@/types';
 import { fetchModels } from '@/lib/api/client';
 import { ApiError, apiConfigured } from '@/lib/api/config';
@@ -58,8 +58,11 @@ export function useModels(): ModelsState {
   const [loading, setLoading] = useState(!cache);
   const [error, setError] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState<boolean>(ownerCache ?? false);
+  /** Only the newest load may clear `loading` or write results. */
+  const generation = useRef(0);
 
   const load = useCallback(async (signal?: AbortSignal) => {
+    const gen = ++generation.current;
     if (!apiConfigured()) {
       setError('Set NEXT_PUBLIC_API_URL to a reachable API (not localhost) to load models.');
       setLoading(false);
@@ -74,14 +77,19 @@ export function useModels(): ModelsState {
         fetchModels(signal),
         fetchModelLabels(signal),
       ]);
+      if (gen !== generation.current) return;
       const merged = applyLabels(list, labels);
       cache = merged;
       setModels(merged);
     } catch (err) {
       if (err instanceof ApiError && err.kind === 'aborted') return;
+      if (gen !== generation.current) return;
       setError(err instanceof ApiError ? err.userMessage : 'Failed to load models.');
     } finally {
-      setLoading(false);
+      // Guarded: an aborted or superseded load used to flip `loading` off while a
+      // newer request was still in flight, so the picker showed "No models found"
+      // instead of the skeleton.
+      if (gen === generation.current) setLoading(false);
     }
   }, []);
 
@@ -90,6 +98,10 @@ export function useModels(): ModelsState {
     if (!cache) void load(ctrl.signal);
     if (ownerCache === null) {
       void fetchIsOwner(ctrl.signal).then((v) => {
+        // `fetchIsOwner` swallows AbortError and returns false, so an unmount
+        // before the request settled used to cache `false` permanently — the
+        // owner's rename controls then never appeared again until a full reload.
+        if (ctrl.signal.aborted) return;
         ownerCache = v;
         setIsOwner(v);
       });

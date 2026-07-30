@@ -21,6 +21,16 @@ interface Props {
   conversationId: string | null;
 }
 
+/** Click a temporary anchor to save `url` as `filename`. */
+function clickDownload(url: string, filename: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
   const {
     originalFile,
@@ -58,14 +68,27 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
     });
   };
 
-  const handleDownload = () => {
-    if (!generatedArtifact?.url) return;
-    const a = document.createElement('a');
-    a.href = generatedArtifact.url;
-    a.download = generatedArtifact.name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  /**
+   * Same problem as the artifact panel: the `download` attribute is ignored for
+   * cross-origin URLs and Supabase serves signed URLs inline, so this navigated
+   * the tab to the file instead of saving it. Fetch to a blob first.
+   */
+  const handleDownload = async () => {
+    const url = generatedArtifact?.url;
+    if (!url || !generatedArtifact) return;
+    if (url.startsWith('data:')) {
+      clickDownload(url, generatedArtifact.name);
+      return;
+    }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const objectUrl = URL.createObjectURL(await res.blob());
+      clickDownload(objectUrl, generatedArtifact.name);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      clickDownload(url, generatedArtifact.name); // last resort
+    }
   };
 
   return (
@@ -75,9 +98,19 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
         <StepRow
           number={1}
           title="Upload document"
-          status={step === 'idle' ? 'active' : step === 'extracting' ? 'processing' : 'done'}
+          status={
+            step === 'idle'
+              ? 'active'
+              : step === 'extracting'
+                ? 'processing'
+                : // 'error' used to map to 'done', putting a green check on step 1
+                  // directly above the red extraction error.
+                  step === 'error'
+                  ? 'active'
+                  : 'done'
+          }
         >
-          {step === 'idle' && (
+          {(step === 'idle' || step === 'error') && (
             <>
               <input
                 ref={fileRef}
@@ -88,13 +121,22 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
               />
               <button
                 onClick={() => fileRef.current?.click()}
+                // The label promised drag-and-drop that was never implemented, so
+                // a dropped file hit the page default and navigated the browser
+                // away from the app, destroying all unsaved state.
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const dropped = e.dataTransfer.files?.[0];
+                  if (dropped) void extractContent(dropped);
+                }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-sm text-content-muted transition-colors hover:border-accent/50 hover:text-content"
               >
                 <Upload className="h-5 w-5" />
                 Click to upload or drag and drop
               </button>
               <p className="mt-1 text-[0.7rem] text-content-subtle">
-                Supports: PDF, DOCX, XLSX, PPTX, TXT, MD, CSV
+                Supports: PDF, DOCX, XLSX, PPTX, TXT, MD, CSV · max 25 MB
               </p>
             </>
           )}
@@ -104,7 +146,7 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
               Extracting content from {originalFile?.name}…
             </div>
           )}
-          {(step === 'extracted' || step === 'improving' || step === 'improved' || step === 'generating' || step === 'done' || step === 'error') && originalFile && (
+          {(step === 'extracted' || step === 'improving' || step === 'improved' || step === 'generating' || step === 'done') && originalFile && (
             <div className="flex items-center gap-2 rounded-xl border-2 border-border bg-surface-raised p-3">
               <FileText className="h-5 w-5 text-accent" />
               <div className="min-w-0 flex-1">
@@ -208,7 +250,7 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
                     {generatedArtifact.kind.toUpperCase()} · {(generatedArtifact.size / 1024).toFixed(1)} KB
                   </p>
                 </div>
-                <Button variant="primary" onClick={handleDownload} className="h-8 px-3 text-xs">
+                <Button variant="primary" onClick={() => void handleDownload()} className="h-8 px-3 text-xs">
                   <Download className="h-3.5 w-3.5" /> Download
                 </Button>
               </div>

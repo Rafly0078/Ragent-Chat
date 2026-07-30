@@ -85,13 +85,23 @@ export function DownloadManager({ downloads, onRetry, onDelete, onDownload }: Pr
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-content">{item.name}</p>
-              <div className="flex items-center gap-2 text-[0.7rem]">
+              {/* aria-live: a screen-reader user otherwise got no notification
+                  when a download became available or failed — the only cue was a
+                  colour change. */}
+              <div className="flex items-center gap-2 text-[0.7rem]" aria-live="polite">
                 <span className={cn('font-medium', statusColor(item.status))}>{statusLabel(item.status)}</span>
                 {item.size > 0 && <span className="text-content-subtle">{formatBytes(item.size)}</span>}
                 {item.error && <span className="text-error">{item.error}</span>}
               </div>
               {item.status === 'processing' && (
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/10">
+                <div
+                  className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/10"
+                  role="progressbar"
+                  aria-valuenow={Math.round(item.progress)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`${item.name} progress`}
+                >
                   <div
                     className="h-full rounded-full bg-accent transition-all duration-300"
                     style={{ width: `${item.progress}%` }}
@@ -99,7 +109,11 @@ export function DownloadManager({ downloads, onRetry, onDelete, onDownload }: Pr
                 </div>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover/dl:opacity-100">
+            {/* Reveal on hover only where hover actually exists, and always on
+                focus. Hiding these behind `opacity-0` left touch users with no
+                reachable Download button at all — the whole point of this panel —
+                and made keyboard focus invisible. */}
+            <div className="flex shrink-0 items-center gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-within:opacity-100 [@media(hover:hover)]:group-hover/dl:opacity-100">
               {item.status === 'ready' && item.url && (
                 <Tooltip label="Download">
                   <button

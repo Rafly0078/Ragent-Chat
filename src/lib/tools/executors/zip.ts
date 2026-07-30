@@ -9,9 +9,14 @@ const zipProject: ExecutorFn = async (req) => {
   const files = req.files ?? [];
 
   for (const file of files) {
-    // Normalize paths: strip leading slashes and collapse .. so a stray path
-    // can't try to escape the archive root.
-    const path = file.path.replace(/^[/\\]+/, '').replace(/\.\.[/\\]/g, '');
+    // Normalize segment-wise rather than pattern-stripping. The old single pass
+    // (`.replace(/^[/\\]+/,'').replace(/\.\.[/\\]/g,'')`) missed overlapping
+    // sequences — "....//....//home/x" survived as "../../home/x" — and left a
+    // Windows drive prefix ("C:\Windows\evil.dll") completely intact.
+    const path = String(file?.path ?? '')
+      .split(/[/\\]+/)
+      .filter((seg) => seg && seg !== '.' && seg !== '..' && !/^[a-zA-Z]:$/.test(seg))
+      .join('/');
     if (path) zip.file(path, file.content ?? '');
   }
 

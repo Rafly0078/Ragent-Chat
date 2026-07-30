@@ -15,8 +15,16 @@ const createHtml: ExecutorFn = async (req) => {
   const isFullDocument = /<\s*html[\s>]/i.test(raw) || /<!doctype/i.test(raw);
 
   const title = displayTitle(req);
-  const html = isFullDocument
+  // A full document that omits <meta charset> is UTF-8 on disk but decoded as
+  // windows-1252 when opened over file:// — "Ringkasan — Q3" renders as "â€”".
+  // The wrapped-fragment branch already declares it; do the same here.
+  const withCharset = /<meta[^>]+charset/i.test(raw)
     ? raw
+    : /<head[^>]*>/i.test(raw)
+      ? raw.replace(/<head[^>]*>/i, (m) => `${m}\n<meta charset="utf-8" />`)
+      : `﻿${raw}`; // no <head> to inject into — a BOM still pins the encoding
+  const html = isFullDocument
+    ? withCharset
     : `<!doctype html>
 <html lang="en">
 <head>

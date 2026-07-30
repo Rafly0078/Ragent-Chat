@@ -115,9 +115,14 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
         b.align?.[ci] === 'right' ? AlignmentType.RIGHT :
         b.align?.[ci] === 'center' ? AlignmentType.CENTER :
         AlignmentType.LEFT;
+      // Widen to the longest row instead of clipping to the header. A table whose
+      // data rows carry more cells than the header (common when the model forgets
+      // a header column) silently lost the extras here, while the PDF executor
+      // kept them — so PDF and DOCX exports of the same markdown disagreed.
+      const cols = b.rows.reduce((max, r) => Math.max(max, r.length), b.header.length);
       const headerRow = new TableRow({
         tableHeader: true,
-        children: b.header.map(
+        children: Array.from({ length: cols }, (_, ci) => b.header[ci] ?? '').map(
           (h, ci) =>
             new TableCell({
               children: [new Paragraph({ alignment: alignFor(ci), children: parseInline(h).flatMap((s) => spanToRuns({ ...s, bold: true })) })],
@@ -129,7 +134,7 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
       const dataRows = b.rows.map(
         (row, ri) =>
           new TableRow({
-            children: Array.from({ length: b.header.length }, (_, ci) => row[ci] ?? '').map(
+            children: Array.from({ length: cols }, (_, ci) => row[ci] ?? '').map(
               (cell, ci) =>
                 new TableCell({
                   children: [new Paragraph({ alignment: alignFor(ci), children: inlineRuns(cell) })],

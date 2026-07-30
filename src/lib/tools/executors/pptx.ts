@@ -25,7 +25,7 @@ function runs(text: string, base: { fontSize: number; color: string }) {
   }));
 }
 
-/** Split Markdown content into slides on `#`/`##` headings, bullets under each. */
+/** Split Markdown content into slides on headings, bullets under each. */
 function slidesFromMarkdown(md: string): { deckTitle?: string; slides: SlideSpec[] } {
   const lines = md.split('\n');
   const slides: SlideSpec[] = [];
@@ -33,32 +33,42 @@ function slidesFromMarkdown(md: string): { deckTitle?: string; slides: SlideSpec
   let current: SlideSpec | null = null;
   let bodyBuf: string[] = [];
 
+  // Body prose is kept even when the slide also has bullets. The old guard
+  // (`!(current.bullets && current.bullets.length)`) discarded it as soon as one
+  // bullet was collected, so "Revenue grew 12% YoY." vanished from a slide whose
+  // next line happened to be "- APAC +18%".
   const flushBody = () => {
-    if (current && bodyBuf.length && !(current.bullets && current.bullets.length)) {
-      current.body = bodyBuf.join('\n').trim();
-    }
+    if (current && bodyBuf.length) current.body = bodyBuf.join('\n').trim();
     bodyBuf = [];
   };
 
   for (const raw of lines) {
     const line = raw.trimEnd();
-    const h1 = line.match(/^#\s+(.+)/);
-    const h2 = line.match(/^#{2}\s+(.+)/);
-    const h3 = line.match(/^#{3}\s+(.+)/);
+    // Match all six heading levels; h4-h6 used to fall through to the body
+    // branch and render literally as "#### Detail".
+    const heading = line.match(/^(#{1,6})\s+(.+)/);
+    const level = heading ? heading[1]!.length : 0;
     const bullet = line.match(/^\s*[-*+]\s+(.+)/);
     const numbered = line.match(/^\s*\d+[.)]\s+(.+)/);
 
-    if (h1 && !deckTitle && slides.length === 0 && !current) {
-      deckTitle = h1[1]!.trim();
+    if (level === 1 && !deckTitle && slides.length === 0 && !current) {
+      deckTitle = heading![2]!.trim();
       continue;
     }
-    if (h1 || h2 || h3) {
+    if (level > 0 && level <= 3) {
       flushBody();
       if (current) slides.push(current);
-      current = { title: (h1?.[1] ?? h2?.[1] ?? h3?.[1] ?? '').trim(), bullets: [] };
-    } else if ((bullet || numbered) && current) {
+      current = { title: heading![2]!.trim(), bullets: [] };
+    } else if (level > 3 && current) {
+      // Deeper headings become bullets on the current slide rather than prose.
+      current.bullets!.push(heading![2]!.trim());
+    } else if (bullet || numbered) {
+      // Open an implicit slide rather than dropping content that precedes the
+      // first heading.
+      if (!current) current = { title: deckTitle ?? '', bullets: [] };
       current.bullets!.push((bullet?.[1] ?? numbered?.[1] ?? '').trim());
-    } else if (line.trim() && current) {
+    } else if (line.trim()) {
+      if (!current) current = { title: deckTitle ?? '', bullets: [] };
       bodyBuf.push(line.trim());
     }
   }
@@ -119,9 +129,24 @@ const createPptx: ExecutorFn = async (req) => {
         x: 0.8, y: 0.5, w: PW - 1.6, h: 0.9, bold: true, valign: 'middle', fontFace: 'Arial',
       });
     }
-    if (slide.bullets?.length) {
+    const hasBullets = Boolean(slide.bullets?.length);
+    // Render body AND bullets when both exist (body above, bullets below) — the
+    // old `else if` dropped the prose entirely.
+    if (slide.body) {
+      s.addText(runs(slide.body, { fontSize: 16, color: BODY }), {
+        x: 0.8,
+        y: 1.8,
+        w: PW - 1.6,
+        h: hasBullets ? 1.1 : PH - 2.6,
+        valign: 'top',
+        fontFace: 'Arial',
+        lineSpacingMultiple: 1.2,
+      });
+    }
+    if (hasBullets) {
+      const bulletsY = slide.body ? 3.0 : 1.8;
       s.addText(
-        slide.bullets.flatMap((b) => {
+        slide.bullets!.flatMap((b) => {
           const r = runs(b, { fontSize: 18, color: BODY });
           // First run of each bullet carries the bullet + paragraph break.
           return r.map((run, j) => ({
@@ -135,12 +160,8 @@ const createPptx: ExecutorFn = async (req) => {
             },
           }));
         }),
-        { x: 0.8, y: 1.8, w: PW - 1.6, h: PH - 2.6, valign: 'top', fontFace: 'Arial' },
+        { x: 0.8, y: bulletsY, w: PW - 1.6, h: PH - bulletsY - 0.8, valign: 'top', fontFace: 'Arial' },
       );
-    } else if (slide.body) {
-      s.addText(runs(slide.body, { fontSize: 16, color: BODY }), {
-        x: 0.8, y: 1.8, w: PW - 1.6, h: PH - 2.6, valign: 'top', fontFace: 'Arial', lineSpacingMultiple: 1.2,
-      });
     }
   }
 

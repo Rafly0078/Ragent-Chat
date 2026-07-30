@@ -4,12 +4,19 @@ import type { ExecutorFn } from './index';
 import { MIME_BY_KIND, EXT_BY_KIND, displayTitle } from '../types';
 
 function escapeXml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return (
+    s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;')
+      // Characters XML 1.0 forbids outright. A stray \x07 from scraped text
+      // produced a file every parser rejects with "PCDATA invalid Char value 7"
+      // — the same failure mode tagName() exists to prevent.
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+  );
 }
 
 /**
@@ -24,21 +31,21 @@ function tagName(key: string): string {
   return name;
 }
 
-/** Singularize a wrapper name for its array items (Items → Item, else <item>). */
-function itemName(key: string): string {
-  const singular = key.replace(/ies$/i, 'y').replace(/s$/i, '');
-  return tagName(singular || 'item');
-}
+/** Cap recursion so a deeply nested payload can't blow the stack. */
+const MAX_DEPTH = 64;
 
 function nodeToXml(key: string, value: unknown, indent: number): string {
   const pad = '  '.repeat(indent);
   const tag = tagName(key);
 
   if (value === null || value === undefined) return `${pad}<${tag}/>`;
+  if (indent > MAX_DEPTH) return `${pad}<${tag}>${escapeXml(String(value))}</${tag}>`;
 
   if (Array.isArray(value)) {
-    const child = itemName(key);
-    const items = value.map((v) => nodeToXml(child, v, indent + 1)).join('\n');
+    // Always `item`. The old singularizer mangled real names — "data" → "dat",
+    // "status" → "statu", "address" → "addres", "series" → "sery" — and those
+    // bogus tags ended up in the delivered file.
+    const items = value.map((v) => nodeToXml('item', v, indent + 1)).join('\n');
     return `${pad}<${tag}>\n${items}\n${pad}</${tag}>`;
   }
 
@@ -64,13 +71,14 @@ const createXml: ExecutorFn = async (req) => {
 
   const root = tagName(displayTitle(req));
   let inner: string;
-  if (data !== null && typeof data === 'object') {
+  if (Array.isArray(data)) {
+    // Checked FIRST: the object-entries branch used to run for arrays too, build
+    // the whole tree with nonsense <_0>/<_1> tags, and then throw it away.
+    inner = data.map((v) => nodeToXml('item', v, 1)).join('\n');
+  } else if (data !== null && typeof data === 'object') {
     inner = Object.entries(data as Record<string, unknown>)
       .map(([k, v]) => nodeToXml(k, v, 1))
       .join('\n');
-    if (Array.isArray(data)) {
-      inner = data.map((v) => nodeToXml('item', v, 1)).join('\n');
-    }
   } else {
     inner = `  ${escapeXml(String(data))}`;
   }

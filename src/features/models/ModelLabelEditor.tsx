@@ -129,7 +129,10 @@ export function ModelLabelEditor({
             <span className="block text-sm font-medium text-content">Hide from list</span>
             <span className="text-xs text-content-muted">Everyone stops seeing this model.</span>
           </div>
-          <Switch checked={hidden} onChange={setHidden} />
+          {/* `label` gives the switch an accessible name — without it a screen
+              reader announced only "switch, off" with no hint what it controls,
+              since the adjacent text isn't associated with the button. */}
+          <Switch checked={hidden} onChange={setHidden} label="Hide from list" />
         </div>
       </div>
     </Modal>

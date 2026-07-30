@@ -6,12 +6,17 @@ import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
 const createJson: ExecutorFn = async (req) => {
   let data = req.data ?? req.content ?? '';
 
-  // If content is a string, try to parse it as JSON
-  if (typeof data === 'string') {
+  // A string that *looks* like JSON is meant to BE JSON, so a parse failure is a
+  // real error rather than something to swallow. Keeping it as a string produced
+  // a .json file containing a quoted blob (`"{\"total\": 42,}"`) and a 200 OK,
+  // so the UI offered a successful-looking download of the wrong thing.
+  if (typeof data === 'string' && /^\s*[[{]/.test(data)) {
     try {
       data = JSON.parse(data);
-    } catch {
-      // Keep as string
+    } catch (err) {
+      throw new Error(
+        `The content isn't valid JSON: ${err instanceof Error ? err.message : 'parse failed'}`,
+      );
     }
   }
 

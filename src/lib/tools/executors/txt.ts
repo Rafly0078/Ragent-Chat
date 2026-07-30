@@ -7,8 +7,19 @@ import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
 const createTxt: ExecutorFn = async (req) => {
   let text = req.content ?? '';
 
-  // If content looks like markdown, strip formatting for plain text
-  if (text.includes('#') || text.includes('```') || text.includes('**')) {
+  // Only strip markdown when the content actually has block structure. The old
+  // test (`includes('#') || includes('```') || includes('**')`) fired on any
+  // plain-text file that merely mentioned a CSS colour, an issue number or a
+  // shell comment — and the paragraph branch joins a block's lines with spaces,
+  // so "Ticket #42\nStatus: open" came back as one reflowed line.
+  const looksMarkdown =
+    /^\s{0,3}#{1,6}\s/m.test(text) ||
+    /^\s*```/m.test(text) ||
+    /^\s{0,3}([-*+]|\d+[.)])\s/m.test(text) ||
+    /^\s{0,3}>\s/m.test(text) ||
+    /\|.*\|/.test(text);
+
+  if (looksMarkdown) {
     const blocks = parseMarkdown(text);
     const lines: string[] = [];
     for (const b of blocks) {
@@ -18,7 +29,8 @@ const createTxt: ExecutorFn = async (req) => {
           lines.push('');
           break;
         case 'paragraph':
-          lines.push(stripInline(b.text));
+          // Preserve source line breaks rather than emitting one long line.
+          for (const line of b.text.split('\n')) lines.push(stripInline(line));
           lines.push('');
           break;
         case 'list':
