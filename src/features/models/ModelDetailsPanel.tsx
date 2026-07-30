@@ -105,7 +105,7 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
           {details.parameters && (
             <div>
               <p className="mb-2 text-xs font-medium text-content-muted uppercase tracking-wide">Generation Parameters</p>
-              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border-2 border-border bg-black/40 p-3 font-mono text-xs text-content-subtle">
+              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border-2 border-border bg-[rgb(0_0_58_/_0.5)] p-3 font-mono text-xs text-content-subtle">
                 {details.parameters}
               </pre>
             </div>
@@ -115,7 +115,7 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
           {details.template && (
             <div>
               <p className="mb-2 text-xs font-medium text-content-muted uppercase tracking-wide">Template</p>
-              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border-2 border-border bg-black/40 p-3 font-mono text-xs text-content-subtle">
+              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border-2 border-border bg-[rgb(0_0_58_/_0.5)] p-3 font-mono text-xs text-content-subtle">
                 {details.template}
               </pre>
             </div>

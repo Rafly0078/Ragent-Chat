@@ -132,7 +132,7 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
           onKeyDown={onKeyDown}
         >
           <m.div
-            className="absolute inset-0 bg-black/70"
+            className="absolute inset-0 bg-[rgb(0_0_58_/_0.88)]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}

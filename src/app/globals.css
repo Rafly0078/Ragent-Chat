@@ -22,15 +22,13 @@
                                       and type is calc(N * var(--u))
      noise                  feTurbulence baseFrequency .72, 4 octaves, saturate 0
 
-   Two surfaces, one language:
-     LANDING (.hermes-canvas)  full #0000f2 field, off-white type, acid accent
-     CHAT (dark / light)       near-black or paper canvas; #0000f2 for FILLS
+   ONE canvas: #0000f2 everywhere — landing, chat, settings, panels. There is no
+   light/dark pair because the reference has none.
 
-   Contrast note: #0000f2 is very dark (relative luminance .064). It is
-   excellent as a fill under off-white text (8.4:1) and as text on paper
-   (9.2:1), but only 2.15:1 as text on near-black — so the dark theme uses a
-   lightened companion for text/icons/borders and reserves the signature blue
-   for filled surfaces. See ACCENT CONTRAST below.
+   Contrast note: #0000f2 has relative luminance .064, so it can only ever be a
+   GROUND, never a foreground on itself. Accent text is therefore acid
+   (#edff45, 8.32:1) and accent fills are paper (#ffffff) with blue ink on top
+   (9.20:1). Floating surfaces invert wholesale to paper — see `.popover`.
 =========================================================================== */
 
 /* ---------------------------------------------------------------------------
@@ -70,82 +68,30 @@
 }
 
 /* ---------------------------------------------------------------------------
-   CHAT — dark theme (default). Near-black with a faint blue cast so the
-   signature blue reads as part of the same family rather than an intrusion.
-   Measured contrast on #0a0a0c: content 18.1:1, muted 8.4:1, accent 4.8:1.
+   THE CANVAS — one palette for the whole product.
+
+   #0000f2 is the page everywhere: landing, chat, settings, panels. There is no
+   light/dark pair, because the reference has no light/dark pair — it has one
+   field. Every value below is measured, not guessed:
+
+     content   #f5f5f5 on the field ............ 8.44:1
+     muted     #b5b5f4 ....................... 4.77:1   (AA text)
+     subtle    #9b9bf7 ....................... 3.69:1   (AA non-text only)
+     acid      #edff45 ....................... 8.32:1
+     paper fill vs field ..................... 9.20:1
+     blue ink on a paper fill ................ 9.20:1
+     content on the #0029de panel wash ....... 8.12:1
+
+   The reference's own muted foreground is #f5f5f5 at 0.6 alpha, which measures
+   3.38:1 and fails AA — hence 0.75 (#b5b5f4) here instead.
 --------------------------------------------------------------------------- */
-.dark,
 :root {
-  --surface: 10 10 12;
-  --surface-raised: 18 18 24;
-  --surface-overlay: 26 26 34;
-  --surface-mid: 13 13 18;
-
-  --border: 245 245 245;
-  --border-alpha: 0.12;
-  --border-strong: 0.22;
-
-  --content: 245 245 245;
-  --content-muted: 168 168 184;
-  --content-subtle: 120 120 138;
-
-  /* Text/icon/border blue — lightened so it clears AA on near-black. */
-  --accent: 106 106 255;
-  --accent-soft: 143 143 255;
-  /* Signature blue, fills only. */
-  --accent-solid: 0 0 242;
-  --accent-fg: 245 245 245;
-  --acid: 237 255 69;
-
-  --success: 61 220 132;
-  --warning: 245 181 68;
-  --error: 255 107 107;
-
-  /* No soft shadows in this language — depth is flat colour and 2px rules. */
-  --shadow: 0 0 0;
-  --shadow-alpha: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   CHAT — light theme (paper). Here #0000f2 needs no help: 9.2:1 on white,
-   so the signature blue doubles as text, border and fill.
---------------------------------------------------------------------------- */
-.light {
-  --surface: 236 234 245; /* --hermes-grey-100 */
-  --surface-raised: 255 255 255; /* --hermes-paper */
-  --surface-overlay: 255 255 255;
-  --surface-mid: 255 255 255;
-
-  --border: 11 11 15;
-  --border-alpha: 0.14;
-  --border-strong: 1;
-
-  --content: 11 11 15;
-  --content-muted: 74 74 90;
-  --content-subtle: 108 108 124;
-
-  --accent: 0 0 242;
-  --accent-soft: 0 41 222;
-  --accent-solid: 0 0 242;
-  --accent-fg: 245 245 245;
-  --acid: 202 220 0; /* darkened acid — raw #edff45 is unreadable on paper */
-
-  --success: 16 122 66;
-  --warning: 158 84 0;
-  --error: 190 30 45;
-
-  --shadow: 11 11 15;
-  --shadow-alpha: 0;
-}
-
-/* ---------------------------------------------------------------------------
-   LANDING — the full electric-blue field. Scoped to a class so the chat is
-   never dragged onto a saturated canvas.
---------------------------------------------------------------------------- */
-.hermes-canvas {
   --surface: var(--hermes-blue);
-  --surface-raised: var(--hermes-blue);
-  --surface-overlay: var(--hermes-paper);
+  /* Translucent panel wash, the reference's own #0029de. Deliberately near
+     identical in luminance to the field: panels are delineated by 2px rules,
+     not by a lighter box. */
+  --surface-raised: var(--hermes-deep);
+  --surface-overlay: var(--hermes-deep);
   --surface-mid: var(--hermes-blue);
 
   --border: var(--hermes-fg);
@@ -153,18 +99,37 @@
   --border-strong: 1;
 
   --content: var(--hermes-fg);
-  /* 0.75 alpha, not the reference's 0.6 — 0.6 measures 3.38:1 and fails AA. */
-  --content-muted: 181 181 244;
-  --content-subtle: 155 155 247;
+  /* Three steps, every one of them AA *as text*. An automated sweep of the
+     rendered pages caught the previous `subtle` (#9b9bf7, 3.69:1) being used for
+     real 11-12px labels — "Today", "Text model", the caveat lines — not just
+     decoration, so both tiers were raised until they pass. */
+  --content-muted: 201 201 244; /* 5.76:1 */
+  --content-subtle: 181 181 244; /* 4.77:1 */
 
+  /* Accent TEXT/icons are acid; accent FILLS are paper with blue ink on top.
+     Two tokens because no single colour does both jobs on this field. */
   --accent: var(--hermes-acid);
   --accent-soft: var(--hermes-acid);
   --accent-solid: var(--hermes-paper);
   --accent-fg: var(--hermes-blue);
   --acid: var(--hermes-acid);
 
-  background-color: rgb(var(--hermes-blue));
-  color: rgb(var(--hermes-fg));
+  /* Lightened so each clears AA on the field (#ff6b6b measured only 3.32:1). */
+  --success: 125 255 195;
+  --warning: 255 209 102;
+  --error: 255 179 179;
+
+  /* No soft shadows in this language — depth is flat colour and 2px rules. */
+  --shadow: 0 0 0;
+  --shadow-alpha: 0;
+}
+
+/*
+ * `.hermes-canvas` no longer carries the palette — the palette is global now.
+ * It survives as the landing page's container-query + isolation context, which
+ * the fluid `--u` unit and the grain blend need.
+ */
+.hermes-canvas {
   container-type: inline-size;
   isolation: isolate;
 }
@@ -293,14 +258,40 @@ h4 {
     border-right: 2px solid rgb(var(--border) / var(--border-strong));
   }
 
-  /* Floating solid surface: menus, dialogs, palette, model list. */
+  /* Floating surfaces INVERT to paper — the reference specifies exactly this
+     for its dropdowns (--hermes-dropdown-bg: white, --hermes-dropdown-fg: blue).
+     Redeclaring the tokens here re-themes the whole subtree, so every
+     `text-content` / `bg-surface` / `border-border` inside a menu or dialog
+     becomes blue-on-paper with no per-component edits.
+     Measured: blue ink 9.20:1, muted ink 11.70:1, subtle ink 8.69:1. */
   .popover {
-    background-color: rgb(var(--surface-overlay));
-    border: 2px solid rgb(var(--border) / var(--border-strong));
+    --surface: var(--hermes-fg);
+    --surface-raised: var(--hermes-paper);
+    --surface-overlay: var(--hermes-fg);
+    --surface-mid: var(--hermes-fg);
+    --content: var(--hermes-blue);
+    --content-muted: 0 25 160;
+    --content-subtle: 60 60 140;
+    --border: var(--hermes-blue);
+    --border-alpha: 0.18;
+    --border-strong: 1;
+    --accent: var(--hermes-blue);
+    --accent-soft: var(--hermes-deep);
+    --accent-solid: var(--hermes-blue);
+    --accent-fg: var(--hermes-fg);
+    /* Raw acid is unreadable on paper; darken it for this subtree only. */
+    --acid: 130 145 0;
+    --success: 16 122 66;
+    --warning: 158 84 0;
+    --error: 190 30 45;
+
+    background-color: rgb(var(--hermes-fg));
+    color: rgb(var(--hermes-blue));
+    border: 2px solid rgb(var(--hermes-blue));
     border-radius: var(--radius-sm);
   }
   .popover:focus-within {
-    border-color: rgb(var(--accent) / 0.6);
+    border-color: rgb(var(--hermes-deep));
   }
 
   .card {
@@ -401,7 +392,7 @@ h4 {
    the signature value. Two rules, applied centrally, instead of auditing 70+
    call sites.
 --------------------------------------------------------------------------- */
-.dark .bg-accent {
+.bg-accent {
   background-color: rgb(var(--accent-solid));
 }
 /* Keep translucent accent washes (bg-accent/15 etc.) on the lighter blue —
@@ -539,10 +530,14 @@ h4 {
    CODE BLOCKS — square frame over a fixed dark canvas (the highlight.js
    "github-dark" palette needs a dark backdrop in both themes).
 --------------------------------------------------------------------------- */
+/* The one deliberate dark inset on the blue field. highlight.js's github-dark
+   token palette needs a dark ground, and syntax colour is the whole point of a
+   code block. The inset itself is only 2.2:1 against the field, so the 2px
+   full-opacity rule (8.44:1) is what actually delineates it. */
 .code-block {
   @apply my-4 overflow-hidden;
   background-color: #06060d;
-  border: 2px solid rgb(var(--border) / var(--border-strong));
+  border: 2px solid rgb(var(--hermes-fg));
   border-radius: var(--radius-sm);
 }
 .code-block-header {

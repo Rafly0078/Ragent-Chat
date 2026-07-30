@@ -159,20 +159,20 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(() => localStorage),
-      version: 2,
+      version: 3,
       /**
-       * v1 -> v2: the design system was rebased on the Hermes palette, where the
-       * signature accent is electric blue. Anyone still on the *old default*
-       * ('coral') is moved to the new default so the redesign actually lands;
-       * a deliberately-picked accent is left alone. Same for the old light
-       * default, since the chat canvas is now designed dark-first.
+       * v* -> v3: the product moved to a single #0000f2 canvas, so the old
+       * accents no longer exist (most failed contrast on the field) and the
+       * theme setting no longer drives anything. Any accent that isn't one of
+       * the current presets falls back to the default rather than leaving
+       * `--accent` pointing at a colour that fails AA on blue.
        */
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
-        const state = persisted as { accent?: string; theme?: string };
-        if (version < 2) {
-          if (state.accent === 'coral' || state.accent === 'blue') state.accent = 'electric';
-          if (state.theme === 'light') state.theme = 'dark';
+        const state = persisted as { accent?: string };
+        if (version < 3) {
+          const known = new Set(ACCENT_PRESETS.map((a) => a.value));
+          if (!state.accent || !known.has(state.accent)) state.accent = ACCENT_PRESETS[0]!.value;
         }
         return state;
       },

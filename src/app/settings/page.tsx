@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
-import { useSettings, type ThemeMode } from '@/lib/store/settings-store';
+import { useSettings } from '@/lib/store/settings-store';
 import { useChatStore } from '@/lib/store/chat-store';
 import { ACCENT_PRESETS } from '@/lib/store/defaults';
 import { useModels } from '@/features/models/use-models';
@@ -125,8 +125,8 @@ export default function SettingsPage() {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-content">Settings</h1>
-            <p className="text-sm text-content-muted">Synced to your account when signed in; local otherwise.</p>
+            <h1 className="type-display text-[clamp(1.75rem,4vw,2.5rem)] text-content">Settings</h1>
+            <p className="mt-2 text-sm text-content-muted">Synced to your account when signed in; local otherwise.</p>
           </div>
         </div>
 
@@ -166,21 +166,12 @@ export default function SettingsPage() {
         {/* Appearance */}
         {active === 'appearance' && (
         <Section icon={Palette} title="Appearance">
-          <Field label="Theme">
-            <div className="flex gap-2">
-              {(['dark', 'light', 'system'] as ThemeMode[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => s.setTheme(t)}
-                  className={cn(
-                    'btn-surface h-9 flex-1 capitalize',
-                    s.theme === t && 'border-accent/50 bg-accent/10 text-content',
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
+          <Field label="Canvas">
+            <p className="text-sm leading-6 text-content-muted">
+              One canvas, everywhere: the electric-blue field with off-white type. There is no
+              light/dark switch because the design has no light/dark pair &mdash; only the accent
+              below is adjustable.
+            </p>
           </Field>
 
           <Field label="Accent color">
@@ -431,11 +422,11 @@ function Section({
     <m.section
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass mb-6 rounded-3xl p-5 shadow-card sm:p-6"
+      className="glass mb-6 p-5 sm:p-6"
     >
       <div className="mb-4 flex items-center gap-2">
         <Icon className="h-5 w-5 text-accent" />
-        <h2 className="text-lg font-semibold tracking-tight text-content">{title}</h2>
+        <h2 className="type-display text-xl text-content">{title}</h2>
       </div>
       <div className="space-y-5">{children}</div>
     </m.section>
@@ -453,7 +444,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium text-content">{label}</label>
+      <label className="type-label mb-2 block text-content">{label}</label>
       {hint && <p className="mb-2 text-xs text-content-subtle">{hint}</p>}
       {children}
     </div>

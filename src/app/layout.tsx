@@ -79,32 +79,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  themeColor: [
-    // #eceaf5 paper / #0a0a0c near-black — the two chat canvases.
-    { media: '(prefers-color-scheme: light)', color: '#eceaf5' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0a0c' },
-  ],
+  // One canvas, so one theme colour: the field itself.
+  themeColor: '#0000f2',
 };
-
-/**
- * Runs before first paint to set the theme class from persisted settings,
- * eliminating the wrong-theme flash on reload. Mirrors ThemeManager's
- * resolution so the two never disagree. Kept dependency-free and inlined; any
- * throw is swallowed so a corrupt store can't block rendering.
- */
-const NO_FLASH_THEME = `(function(){try{var t='dark';var raw=localStorage.getItem('ollama-webui:settings');if(raw){var s=JSON.parse(raw);t=(s&&s.state&&s.state.theme)||'dark';}var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;r.classList.toggle('dark',d);r.classList.toggle('light',!d);}catch(e){}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${display.variable} ${sans.variable} ${mono.variable} dark`}
-      suppressHydrationWarning
-    >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME }} />
-      </head>
-      <body className="min-h-[100dvh] antialiased">
+    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+      <body className="min-h-[100dvh] bg-surface text-content antialiased">
         <ServiceWorkerRegister />
         <Providers>{children}</Providers>
       </body>

@@ -211,7 +211,7 @@ function ArtifactCard({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4"
+            className="fixed inset-0 z-[90] flex items-center justify-center bg-[rgb(0_0_58_/_0.88)] p-4"
             onClick={() => setPreviewOpen(false)}
           >
             <m.div

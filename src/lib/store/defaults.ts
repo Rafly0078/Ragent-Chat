@@ -35,17 +35,15 @@ Formatting:
 - Reply in the same language the user writes in.`;
 
 /**
- * Runtime-themeable accents.
+ * Runtime-themeable accents, all measured against the #0000f2 field.
  *
- *   rgb   the value used for TEXT, icons, borders and rings. Must clear 4.5:1
- *         on the dark canvas (#0a0a0c), so the saturated brand value is not
- *         always usable here.
- *   soft  hover/secondary tint of the same hue.
- *   solid the saturated brand value, used only as a FILL under `--accent-fg`.
+ *   rgb   accent TEXT and icons. Must clear 4.5:1 on the field, which rules out
+ *         every mid-tone — Coral measured 3.01:1 and Violet 2.33:1, so they are
+ *         gone rather than shipped failing.
+ *   soft  hover/secondary tint.
+ *   solid accent FILLS, which carry blue ink on top, so they must be near-paper.
  *
- * "Electric" is the Hermes signature #0000f2. It only appears as `solid`:
- * measured against #0a0a0c it is 2.15:1 as text but 8.4:1 as a fill beneath
- * off-white, which is exactly why the two are separate tokens.
+ * Acid (#edff45, 8.32:1) is the reference's own accent and the default.
  */
 export const ACCENT_PRESETS: {
   name: string;
@@ -54,16 +52,12 @@ export const ACCENT_PRESETS: {
   soft: string;
   solid: string;
 }[] = [
-  { name: 'Electric', value: 'electric', rgb: '106 106 255', soft: '143 143 255', solid: '0 0 242' },
-  { name: 'Acid', value: 'acid', rgb: '237 255 69', soft: '243 255 128', solid: '237 255 69' },
-  { name: 'Coral', value: 'coral', rgb: '255 90 95', soft: '235 67 75', solid: '255 90 95' },
-  { name: 'Sun', value: 'sun', rgb: '233 183 33', soft: '255 213 69', solid: '233 183 33' },
-  { name: 'Cobalt', value: 'cobalt', rgb: '96 165 250', soft: '147 197 253', solid: '37 99 235' },
-  { name: 'Violet', value: 'violet', rgb: '168 85 247', soft: '196 141 253', solid: '124 58 237' },
-  { name: 'Emerald', value: 'emerald', rgb: '52 211 153', soft: '110 231 183', solid: '5 150 105' },
-  { name: 'Rose', value: 'rose', rgb: '251 113 133', soft: '253 164 175', solid: '225 29 72' },
-  { name: 'Amber', value: 'amber', rgb: '251 191 36', soft: '253 211 77', solid: '217 119 6' },
-  { name: 'Cyan', value: 'cyan', rgb: '34 211 238', soft: '103 232 249', solid: '8 145 178' },
+  { name: 'Acid', value: 'acid', rgb: '237 255 69', soft: '243 255 128', solid: '255 255 255' },
+  { name: 'Paper', value: 'paper', rgb: '245 245 245', soft: '255 255 255', solid: '255 255 255' },
+  { name: 'Mint', value: 'mint', rgb: '125 255 195', soft: '168 255 215', solid: '235 255 246' },
+  { name: 'Sky', value: 'sky', rgb: '165 232 255', soft: '200 242 255', solid: '235 250 255' },
+  { name: 'Peach', value: 'peach', rgb: '255 207 168', soft: '255 226 200', solid: '255 244 235' },
+  { name: 'Lilac', value: 'lilac', rgb: '217 194 255', soft: '232 217 255', solid: '246 240 255' },
 ];
 
 export const DEFAULT_PRESETS: PromptPreset[] = [

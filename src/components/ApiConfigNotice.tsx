@@ -12,7 +12,7 @@ export function ApiConfigNotice() {
         title="API endpoint not configured"
         message="This app talks to an external API that forwards to your local Ollama server. Set the NEXT_PUBLIC_API_URL environment variable to a reachable HTTPS endpoint (not localhost) and reload."
       >
-        <div className="mt-4 rounded-xl border border-border bg-black/30 p-3 text-left">
+        <div className="mt-4 rounded-xl border border-border bg-[rgb(0_0_58_/_0.45)] p-3 text-left">
           <code className="text-xs text-accent-soft">
             NEXT_PUBLIC_API_URL={API_BASE_URL || 'https://my-ollama-api.example.com'}
           </code>

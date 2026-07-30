@@ -39,7 +39,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 + i * 0.05 }}
             onClick={() => onPick(s.prompt)}
-            className={`focus-ring group min-h-32 border-2 border-border/25 p-5 text-left transition-colors hover:border-border/60 ${PROMPT_CARD_TONES[i]}`}
+            className={`focus-ring group min-h-32 border-2 border-content/25 p-5 text-left transition-colors hover:border-content/60 ${PROMPT_CARD_TONES[i]}`}
           >
             <p className="type-label mb-2 text-acid">{`0${i + 1}`}</p>
             <p className="type-display text-[1.35rem] text-content">{s.title}</p>

@@ -201,7 +201,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
         {open && (
           <>
             <m.div
-              className="fixed inset-0 z-40 bg-black/60"
+              className="fixed inset-0 z-40 bg-[rgb(0_0_58_/_0.7)]"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}

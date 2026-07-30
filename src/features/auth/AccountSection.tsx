@@ -19,11 +19,11 @@ export function AccountSection() {
     <m.section
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="glass mb-6 rounded-3xl p-5 shadow-card sm:p-6"
+      className="glass mb-6 p-5 sm:p-6"
     >
       <div className="mb-4 flex items-center gap-2">
         <UserIcon className="h-5 w-5 text-accent" />
-        <h2 className="text-lg font-semibold tracking-tight text-content">Account</h2>
+        <h2 className="type-display text-xl text-content">Account</h2>
       </div>
 
       {!auth.enabled ? (
