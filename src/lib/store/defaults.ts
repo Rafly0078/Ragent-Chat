@@ -34,16 +34,36 @@ Formatting:
 - Use LaTeX for math ($inline$ and $$block$$).
 - Reply in the same language the user writes in.`;
 
-export const ACCENT_PRESETS: { name: string; value: string; rgb: string; soft: string }[] = [
-  { name: 'Coral', value: 'coral', rgb: '255 90 95', soft: '235 67 75' },
-  { name: 'Sun', value: 'sun', rgb: '233 183 33', soft: '255 213 69' },
-  { name: 'Cobalt', value: 'cobalt', rgb: '37 99 235', soft: '96 165 250' },
-  { name: 'Violet', value: 'violet', rgb: '124 58 237', soft: '168 85 247' }, // #7C3AED / #A855F7
-  { name: 'Blue', value: 'blue', rgb: '37 99 235', soft: '96 165 250' },
-  { name: 'Emerald', value: 'emerald', rgb: '5 150 105', soft: '52 211 153' },
-  { name: 'Rose', value: 'rose', rgb: '225 29 72', soft: '251 113 133' },
-  { name: 'Amber', value: 'amber', rgb: '217 119 6', soft: '251 191 36' },
-  { name: 'Cyan', value: 'cyan', rgb: '8 145 178', soft: '34 211 238' },
+/**
+ * Runtime-themeable accents.
+ *
+ *   rgb   the value used for TEXT, icons, borders and rings. Must clear 4.5:1
+ *         on the dark canvas (#0a0a0c), so the saturated brand value is not
+ *         always usable here.
+ *   soft  hover/secondary tint of the same hue.
+ *   solid the saturated brand value, used only as a FILL under `--accent-fg`.
+ *
+ * "Electric" is the Hermes signature #0000f2. It only appears as `solid`:
+ * measured against #0a0a0c it is 2.15:1 as text but 8.4:1 as a fill beneath
+ * off-white, which is exactly why the two are separate tokens.
+ */
+export const ACCENT_PRESETS: {
+  name: string;
+  value: string;
+  rgb: string;
+  soft: string;
+  solid: string;
+}[] = [
+  { name: 'Electric', value: 'electric', rgb: '106 106 255', soft: '143 143 255', solid: '0 0 242' },
+  { name: 'Acid', value: 'acid', rgb: '237 255 69', soft: '243 255 128', solid: '237 255 69' },
+  { name: 'Coral', value: 'coral', rgb: '255 90 95', soft: '235 67 75', solid: '255 90 95' },
+  { name: 'Sun', value: 'sun', rgb: '233 183 33', soft: '255 213 69', solid: '233 183 33' },
+  { name: 'Cobalt', value: 'cobalt', rgb: '96 165 250', soft: '147 197 253', solid: '37 99 235' },
+  { name: 'Violet', value: 'violet', rgb: '168 85 247', soft: '196 141 253', solid: '124 58 237' },
+  { name: 'Emerald', value: 'emerald', rgb: '52 211 153', soft: '110 231 183', solid: '5 150 105' },
+  { name: 'Rose', value: 'rose', rgb: '251 113 133', soft: '253 164 175', solid: '225 29 72' },
+  { name: 'Amber', value: 'amber', rgb: '251 191 36', soft: '253 211 77', solid: '217 119 6' },
+  { name: 'Cyan', value: 'cyan', rgb: '34 211 238', soft: '103 232 249', solid: '8 145 178' },
 ];
 
 export const DEFAULT_PRESETS: PromptPreset[] = [

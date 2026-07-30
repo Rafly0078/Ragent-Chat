@@ -8,7 +8,7 @@ export default function NotFound() {
       <p className="max-w-sm text-sm text-content-muted">
         The page you&apos;re looking for doesn&apos;t exist.
       </p>
-      <Link href="/" className="btn-primary mt-2 h-10 px-5">
+      <Link href="/chat" className="btn-primary mt-2 h-10 px-5">
         Back to chat
       </Link>
     </div>

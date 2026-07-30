@@ -20,31 +20,27 @@ export function AmbientBackground() {
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-surface">
-      {/* Two soft radial gradients — one accent-tinted top glow, one cool base. */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(80% 55% at 50% -10%, rgb(var(--accent) / 0.10), transparent 60%),' +
-            'radial-gradient(60% 50% at 100% 0%, rgb(var(--accent-soft) / 0.06), transparent 55%)',
-        }}
-      />
+      {/* The reference has no soft glows anywhere — depth comes from flat colour
+          and film grain. So: one flat wash of the signature blue anchored to the
+          top edge (no blur, no radial falloff to muddy the canvas), then grain
+          at the reference's own feTurbulence settings. */}
       {hydrated && glow && (
         <div
-          className="absolute left-1/2 top-[-20%] h-[42vh] w-[42vh] -translate-x-1/2 rounded-full opacity-[0.14]"
+          className="absolute inset-x-0 top-0 h-[38vh]"
           style={{
-            background: 'rgb(var(--accent))',
-            // A single, static soft glow. `filter` is set once, never animated.
-            filter: 'blur(80px)',
+            background:
+              'linear-gradient(to bottom, rgb(var(--accent-solid) / 0.22), transparent)',
           }}
         />
       )}
-      {/* Subtle noise texture via an inline SVG data URI (no network request). */}
+
+      {/* Grain: baseFrequency .72 / 4 octaves / desaturated, tiled — the same
+          filter the reference uses, so both surfaces share one texture. */}
       <div
-        className="absolute inset-0 opacity-[0.015] mix-blend-soft-light"
+        className="absolute inset-0 opacity-[0.035] mix-blend-overlay"
         style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+          backgroundImage: 'var(--hw-noise)',
+          backgroundSize: 'var(--hw-noise-tile) var(--hw-noise-tile)',
         }}
       />
     </div>

@@ -118,7 +118,7 @@ export function AuthDialog({
 
   const title = mode === 'signup' ? 'Create account' : mode === 'magic' ? 'Email sign-in link' : 'Sign in';
   const description = mandatory
-    ? 'Sign in to use Ollama Chat — an account is required.'
+    ? 'Sign in to use Ragent — an account is required.'
     : 'Sync your workspace across devices.';
 
   return (

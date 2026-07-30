@@ -148,7 +148,7 @@ export const MessageBubble = memo(function MessageBubble({
       {/* Body */}
       <div className={cn('min-w-0 flex-1', isUser && 'border-[3px] border-border bg-surface-raised px-4 py-3 shadow-card')}>
         <div className="mb-1 flex items-center gap-2 text-xs">
-          <span className="font-bold uppercase tracking-[0.08em] text-content">{isUser ? 'You' : 'Ollama'}</span>
+          <span className="type-label text-content">{isUser ? 'You' : 'Ollama'}</span>
           {message.model && !isUser && (
             <span className="rounded-md bg-border/5 px-1.5 py-0.5 font-mono text-[0.68rem] text-content-subtle">
               {message.model.replace(/:latest$/, '')}

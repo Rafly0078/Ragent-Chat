@@ -3,100 +3,179 @@
 @tailwind utilities;
 
 /* ===========================================================================
-   OLLAMA CHAT — NEO BRUTALISM DESIGN SYSTEM
-   Monochrome surfaces + one violet accent (#7C3AED). Thick edges, hard
-   offset shadows (0 blur = GPU-cheap, never animated), sharp 8–16px corners,
-   tactile pressable controls.
+   HERMES-DERIVED DESIGN SYSTEM
 
-   Architecture (drives the whole app through shared classes — no per-component
-   styling needed):
-     Design Tokens → Colors → Base/Typography → Elevation → Buttons → Forms →
-     Cards/Chrome → Chat → Markdown → Scrollbars → Utilities → Responsive
-   Colors are RGB triplets so Tailwind's <alpha-value> keeps working. Accent is
-   themeable at runtime by ThemeManager via --accent / --accent-soft.
+   Every value in the TOKENS block below is transcribed from the stylesheet of
+   hermes-agent.nousresearch.com (Nous Research), not invented:
+
+     --color-hermes         #0000f2   the ELECTRIC BLUE — a full canvas there,
+                                      not an accent on dark
+     --color-hermes-fg      #f5f5f5   off-white foreground
+     --color-hermes-accent  #edff45   acid yellow — the real accent
+     --color-hermes-paper   #ffffff   paper for cards and buttons
+     --hermes-grey-100      #eceaf5
+     #0029de + alpha                  deeper blue for translucent fills
+     radius                 0 | 4px | 1rem   (the only three it uses)
+     tracking               .03em display · .1em/.14em/.18em mono
+     leading                .8 | .88 | 1 | 1.4 | 1.5
+     --u                    max(100cqw / 2360, .58px)  fluid unit; all spacing
+                                      and type is calc(N * var(--u))
+     noise                  feTurbulence baseFrequency .72, 4 octaves, saturate 0
+
+   Two surfaces, one language:
+     LANDING (.hermes-canvas)  full #0000f2 field, off-white type, acid accent
+     CHAT (dark / light)       near-black or paper canvas; #0000f2 for FILLS
+
+   Contrast note: #0000f2 is very dark (relative luminance .064). It is
+   excellent as a fill under off-white text (8.4:1) and as text on paper
+   (9.2:1), but only 2.15:1 as text on near-black — so the dark theme uses a
+   lightened companion for text/icons/borders and reserves the signature blue
+   for filled surfaces. See ACCENT CONTRAST below.
 =========================================================================== */
 
 /* ---------------------------------------------------------------------------
-   DESIGN TOKENS — shared across themes
+   TOKENS — shared across every theme
 --------------------------------------------------------------------------- */
 :root {
-  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
+  --font-display: 'Bodoni Moda', 'Times New Roman', serif;
+  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Courier Prime', ui-monospace, 'SFMono-Regular', monospace;
 
-  /* One accent, no gradient. Soft = hover/highlight tint of the same hue. */
-  --accent: 124 58 237; /* #7C3AED */
-  --accent-soft: 139 92 246; /* #8B5CF6 — used for hover, not decoration */
-  --accent-fg: 27 26 22;
+  /* Raw palette, verbatim from the reference. */
+  --hermes-blue: 0 0 242;
+  --hermes-fg: 245 245 245;
+  --hermes-acid: 237 255 69;
+  --hermes-paper: 255 255 255;
+  --hermes-grey: 236 234 245;
+  --hermes-deep: 0 41 222;
 
-  --success: 34 197 94; /* #22C55E */
-  --warning: 245 158 11; /* #F59E0B */
-  --error: 239 68 68; /* #EF4444 */
+  /* Fluid unit system, verbatim. `--u` needs a container-query context; the
+     fallback anchor keeps it sane before containment resolves. */
+  --vsq: calc(0.5vw + 0.5vh);
+  --u-anchor: 0.58px;
+  --u: max(calc(100cqw / 2360), var(--u-anchor));
+  --hw-gutter: calc(210 * var(--u));
+  --hw-gap: calc(30 * var(--u));
+  --hw-edge: calc(93 * var(--u));
+  --hw-frame: calc(2.5 * var(--vsq));
 
-  /* Radius scale — sharp, within the 8–16px brief. */
-  --radius-sm: 0.125rem;
-  --radius-md: 0.25rem;
-  --radius-lg: 0.375rem;
-  --radius-xl: 0.5rem;
+  /* Radius scale — the reference only ever uses these three. */
+  --radius-none: 0;
+  --radius-sm: 4px;
+  --radius-lg: 1rem;
+
+  /* Tiled film grain. Same filter parameters as the reference. */
+  --hw-noise-tile: 12.8rem;
+  --hw-noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---------------------------------------------------------------------------
-   COLORS — Dark theme (default). Background #111111 per brief.
-   border-alpha  = incidental dividers / hairlines
-   border-strong = the 2px brutalist edge on cards, panels, controls
-   shadow*       = hard offset shadow color (black on dark for quiet depth)
+   CHAT — dark theme (default). Near-black with a faint blue cast so the
+   signature blue reads as part of the same family rather than an intrusion.
+   Measured contrast on #0a0a0c: content 18.1:1, muted 8.4:1, accent 4.8:1.
 --------------------------------------------------------------------------- */
 .dark,
 :root {
-  --surface: 17 17 17; /* #111111 app background */
-  --surface-raised: 26 26 26; /* #1A1A1A cards pop off the bg */
-  --surface-overlay: 34 34 34; /* #222222 menus / hover */
-  --surface-mid: 22 22 22; /* #161616 chrome (sidebar / top bar / dock) */
+  --surface: 10 10 12;
+  --surface-raised: 18 18 24;
+  --surface-overlay: 26 26 34;
+  --surface-mid: 13 13 18;
 
-  --border: 255 255 255;
-  --border-alpha: 0.1; /* subtle dividers */
-  --border-strong: 0.2; /* refined bright edge — defined, never blinding */
+  --border: 245 245 245;
+  --border-alpha: 0.12;
+  --border-strong: 0.22;
 
-  --content: 250 250 250; /* #FAFAFA */
-  --content-muted: 163 163 163; /* #A3A3A3 */
-  --content-subtle: 115 115 115; /* #737373 */
+  --content: 245 245 245;
+  --content-muted: 168 168 184;
+  --content-subtle: 120 120 138;
 
-  --shadow: 0 0 0; /* black hard shadow reads as depth on #111 */
-  --shadow-alpha: 0.55;
+  /* Text/icon/border blue — lightened so it clears AA on near-black. */
+  --accent: 106 106 255;
+  --accent-soft: 143 143 255;
+  /* Signature blue, fills only. */
+  --accent-solid: 0 0 242;
+  --accent-fg: 245 245 245;
+  --acid: 237 255 69;
+
+  --success: 61 220 132;
+  --warning: 245 181 68;
+  --error: 255 107 107;
+
+  /* No soft shadows in this language — depth is flat colour and 2px rules. */
+  --shadow: 0 0 0;
+  --shadow-alpha: 0;
 }
 
 /* ---------------------------------------------------------------------------
-   COLORS — Light theme. Background #F5F5F5, true black brutalist borders.
+   CHAT — light theme (paper). Here #0000f2 needs no help: 9.2:1 on white,
+   so the signature blue doubles as text, border and fill.
 --------------------------------------------------------------------------- */
 .light {
-  --surface: 245 245 245; /* #F5F5F5 */
-  --surface-raised: 255 255 255; /* #FFFFFF */
+  --surface: 236 234 245; /* --hermes-grey-100 */
+  --surface-raised: 255 255 255; /* --hermes-paper */
   --surface-overlay: 255 255 255;
   --surface-mid: 255 255 255;
 
-  --border: 17 17 17; /* #111111 ink */
+  --border: 11 11 15;
   --border-alpha: 0.14;
-  --border-strong: 0.92; /* bold, near-solid black edges */
+  --border-strong: 1;
 
-  --content: 17 17 17; /* #111111 */
-  --content-muted: 82 82 91; /* slate-600 */
-  --content-subtle: 120 120 128;
+  --content: 11 11 15;
+  --content-muted: 74 74 90;
+  --content-subtle: 108 108 124;
 
-  --shadow: 17 17 17; /* ink hard shadow — classic neo-brutalism */
-  --shadow-alpha: 0.9;
+  --accent: 0 0 242;
+  --accent-soft: 0 41 222;
+  --accent-solid: 0 0 242;
+  --accent-fg: 245 245 245;
+  --acid: 202 220 0; /* darkened acid — raw #edff45 is unreadable on paper */
 
-  /* Darker semantic tones hold AA contrast on light surfaces. */
-  --success: 22 163 74; /* green-600 */
-  --warning: 217 119 6; /* amber-600 */
-  --error: 220 38 38; /* red-600 */
+  --success: 16 122 66;
+  --warning: 158 84 0;
+  --error: 190 30 45;
+
+  --shadow: 11 11 15;
+  --shadow-alpha: 0;
 }
 
-/* Default border color for any element that opts into a border utility. */
+/* ---------------------------------------------------------------------------
+   LANDING — the full electric-blue field. Scoped to a class so the chat is
+   never dragged onto a saturated canvas.
+--------------------------------------------------------------------------- */
+.hermes-canvas {
+  --surface: var(--hermes-blue);
+  --surface-raised: var(--hermes-blue);
+  --surface-overlay: var(--hermes-paper);
+  --surface-mid: var(--hermes-blue);
+
+  --border: var(--hermes-fg);
+  --border-alpha: 0.28;
+  --border-strong: 1;
+
+  --content: var(--hermes-fg);
+  /* 0.75 alpha, not the reference's 0.6 — 0.6 measures 3.38:1 and fails AA. */
+  --content-muted: 181 181 244;
+  --content-subtle: 155 155 247;
+
+  --accent: var(--hermes-acid);
+  --accent-soft: var(--hermes-acid);
+  --accent-solid: var(--hermes-paper);
+  --accent-fg: var(--hermes-blue);
+  --acid: var(--hermes-acid);
+
+  background-color: rgb(var(--hermes-blue));
+  color: rgb(var(--hermes-fg));
+  container-type: inline-size;
+  isolation: isolate;
+}
+
+/* Default border colour for anything opting into a border utility. */
 * {
   border-color: rgb(var(--border) / var(--border-alpha));
 }
 
 /* ---------------------------------------------------------------------------
-   BASE — cursors, tap behaviour, selection, caret
+   BASE
 --------------------------------------------------------------------------- */
 @layer base {
   button:not(:disabled),
@@ -112,13 +191,11 @@
   input,
   textarea,
   select {
-    /* Removes the 300ms tap delay for a native feel. */
     touch-action: manipulation;
   }
 
-  /* Accent text selection + input caret — cheap micro-delight. */
   ::selection {
-    background-color: rgb(var(--accent) / 0.28);
+    background-color: rgb(var(--accent) / 0.3);
     color: rgb(var(--content));
   }
   input,
@@ -131,19 +208,46 @@ body {
   background-color: rgb(var(--surface));
   color: rgb(var(--content));
   font-family: var(--font-sans);
-  font-size: 16px; /* comfortable base; blocks iOS input auto-zoom */
+  font-size: 16px; /* blocks iOS input auto-zoom */
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overscroll-behavior-y: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Tighter, balanced headings everywhere. */
+/* The display face is set in caps at .03em tracking and very tight leading —
+   that combination IS the reference's voice, so it lives on the element. */
+.type-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 0.88;
+  font-synthesis: none;
+  text-wrap: balance;
+}
+
+/* Mono label: nav items, eyebrows, metadata, buttons. */
+.type-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: clamp(0.68rem, calc(18 * var(--u)), 0.92rem);
+  line-height: 1.4;
+}
+.type-eyebrow {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: clamp(0.68rem, calc(18 * var(--u)), 0.92rem);
+  line-height: 1.4;
+  color: rgb(var(--content-muted));
+}
+
 h1,
 h2,
 h3,
 h4 {
-  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 
@@ -163,22 +267,23 @@ h4 {
   }
 }
 
+
+
 /* ---------------------------------------------------------------------------
-   COMPONENT CLASSES
-   Every surface in the app composes one of these. Restyle here = restyle app.
+   COMPONENT CLASSES — every surface in the app composes one of these, so
+   restyling here restyles the app.
 --------------------------------------------------------------------------- */
 @layer components {
-  /* Flat accent (was a gradient). One strong colour, monochrome elsewhere. */
+  /* Flat signature blue. Used for avatar/logo tiles and any solid accent block. */
   .accent-gradient {
-    background-color: rgb(var(--accent));
+    background-color: rgb(var(--accent-solid));
   }
 
-  /* Persistent chrome: sidebar, top bar, input dock. Solid — no backdrop blur. */
+  /* Persistent chrome: sidebar, top bar, input dock. Flat, ruled, no blur. */
   .glass {
     background-color: rgb(var(--surface-mid));
     border: 2px solid rgb(var(--border) / var(--border-strong));
   }
-  /* Scoped crisp edges survive the components' own `border-0`. */
   header.glass {
     border: 0;
     border-bottom: 2px solid rgb(var(--border) / var(--border-strong));
@@ -187,117 +292,170 @@ h4 {
     border: 0;
     border-right: 2px solid rgb(var(--border) / var(--border-strong));
   }
-  /* Prompt-suggestion cards (button.glass) get a tactile hard shadow. */
-  button.glass {
-    box-shadow: 3px 3px 0 0 rgb(var(--shadow) / var(--shadow-alpha));
-  }
 
-  /* Floating solid surface: menus, dialogs, palettes, model list, slash menu. */
+  /* Floating solid surface: menus, dialogs, palette, model list. */
   .popover {
     background-color: rgb(var(--surface-overlay));
     border: 2px solid rgb(var(--border) / var(--border-strong));
+    border-radius: var(--radius-sm);
   }
-  /* Gentle accent edge when a control inside is focused (e.g. prompt dock). */
   .popover:focus-within {
-    border-color: rgb(var(--accent) / 0.55);
+    border-color: rgb(var(--accent) / 0.6);
   }
 
-  /* Layered content card. */
   .card {
     background-color: rgb(var(--surface-raised));
     border: 2px solid rgb(var(--border) / var(--border-strong));
-    box-shadow: 4px 4px 0 0 rgb(var(--shadow) / var(--shadow-alpha));
+    border-radius: var(--radius-sm);
   }
 
-  /* Strong, always-visible keyboard focus. */
   .focus-ring {
     @apply outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   }
 
   /* -----------------------------------------------------------------------
-     BUTTONS — transform-only motion (150ms). Shadow/filter never animated.
-     Raised variants (surface/primary) lift on hover, press on active.
+     BUTTONS — mono caps, square, transform-only motion.
   ----------------------------------------------------------------------- */
   .btn {
-    @apply focus-ring inline-flex select-none items-center justify-center gap-2 rounded-xl text-sm font-medium disabled:pointer-events-none disabled:opacity-50;
+    @apply focus-ring inline-flex select-none items-center justify-center gap-2 disabled:pointer-events-none disabled:opacity-40;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-size: 0.78rem;
+    border-radius: var(--radius-sm);
     transition:
-      transform 0.15s ease,
+      transform 0.15s cubic-bezier(0, 0, 0.2, 1),
       background-color 0.15s ease,
       color 0.15s ease,
+      border-color 0.15s ease,
       opacity 0.15s ease;
-  }
-  .btn:active {
-    transform: translateY(1px);
   }
 
   .btn-ghost {
     @apply btn text-content-muted;
   }
   .btn-ghost:hover {
-    background-color: rgb(var(--border) / 0.06);
+    background-color: rgb(var(--border) / 0.08);
     color: rgb(var(--content));
   }
 
   .btn-surface {
     @apply btn text-content;
-    background-color: rgb(var(--surface-raised));
+    background-color: transparent;
     border: 2px solid rgb(var(--border) / var(--border-strong));
-    box-shadow: 2px 2px 0 0 rgb(var(--shadow) / var(--shadow-alpha));
   }
   .btn-surface:hover {
-    transform: translate(-1px, -1px);
-    background-color: rgb(var(--surface-overlay));
+    background-color: rgb(var(--border) / 0.08);
   }
   .btn-surface:active {
-    transform: translate(1px, 1px);
+    transform: translateY(1px);
   }
 
+  /* The one loud control on any screen: signature blue block, off-white mono
+     caps. 8.4:1 measured. */
   .btn-primary {
-    @apply btn text-accent-fg;
-    background-color: rgb(var(--accent));
-    border: 2px solid rgb(var(--border) / var(--border-strong));
-    box-shadow: 2px 2px 0 0 rgb(var(--shadow) / var(--shadow-alpha));
+    @apply btn;
+    background-color: rgb(var(--accent-solid));
+    color: rgb(var(--accent-fg));
+    border: 2px solid rgb(var(--accent-solid));
   }
   .btn-primary:hover {
-    transform: translate(-1px, -1px);
-    background-color: rgb(var(--accent-soft));
+    background-color: rgb(var(--accent-solid));
+    border-color: rgb(var(--content));
   }
   .btn-primary:active {
-    transform: translate(1px, 1px);
+    transform: translateY(1px);
   }
 
   /* -----------------------------------------------------------------------
      FORMS
   ----------------------------------------------------------------------- */
   .input {
-    @apply focus-ring w-full rounded-xl px-3 py-2 text-sm text-content transition-colors placeholder:text-content-subtle;
+    @apply focus-ring w-full px-3 py-2 text-sm text-content transition-colors placeholder:text-content-subtle;
     background-color: rgb(var(--surface));
     border: 2px solid rgb(var(--border) / var(--border-strong));
+    border-radius: var(--radius-sm);
   }
   .input:focus {
-    border-color: rgb(var(--accent) / 0.7);
+    border-color: rgb(var(--accent));
   }
 
-  /* Native zero-JS windowing for long chat history. */
   .cv-auto {
     content-visibility: auto;
     contain-intrinsic-size: 0 320px;
   }
 
-  /* Comfortable, premium reading column (~860px). */
   .chat-container {
     @apply mx-auto w-full max-w-[860px] px-4 sm:px-6;
   }
 }
 
-@layer utilities {
-  .rounded-xl { border-radius: 0.25rem; }
-  .rounded-2xl { border-radius: 0.375rem; }
-  .rounded-3xl { border-radius: 0.5rem; }
+/* ---------------------------------------------------------------------------
+   ACCENT CONTRAST — the one place the signature blue needs care.
+
+   #0000f2 measures 2.15:1 on the dark canvas, so `--accent` in the dark theme
+   is a lightened companion (#6a6aff, 4.8:1) and every `text-accent` /
+   `border-accent` / `ring-accent` in the app inherits a readable colour with no
+   component edits. Fills are the opposite case: there the blue sits UNDER
+   off-white text, which measures 8.4:1, so `bg-accent` is redirected back to
+   the signature value. Two rules, applied centrally, instead of auditing 70+
+   call sites.
+--------------------------------------------------------------------------- */
+.dark .bg-accent {
+  background-color: rgb(var(--accent-solid));
+}
+/* Keep translucent accent washes (bg-accent/15 etc.) on the lighter blue —
+   the signature value is too dark to register as a tint on near-black. */
+
+/* ---------------------------------------------------------------------------
+   LANDING PRIMITIVES
+--------------------------------------------------------------------------- */
+/* Tiled grain over the blue field. Pointer-events off; sits above the flat
+   colour, below content. */
+.hermes-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--hw-noise);
+  background-size: var(--hw-noise-tile) var(--hw-noise-tile);
+  opacity: 0.28;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Hairline rule matching the reference's 2px full-opacity outline. */
+.hw-rule {
+  border-top: 2px solid rgb(var(--border) / var(--border-strong));
+}
+
+/* Ghosted display word used as decoration behind the hero/footer, exactly the
+   reference's technique (exclusion blend + low opacity + acid colour). */
+.hw-ghost {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 0.8;
+  white-space: nowrap;
+  mix-blend-mode: exclusion;
+  color: rgb(var(--paper));
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Numbered feature row: the number is set in the display face at a size that
+   makes it a graphic element, not a list marker. */
+.hw-numeral {
+  font-family: var(--font-display);
+  line-height: 0.8;
+  letter-spacing: 0.03em;
+  font-size: clamp(2.5rem, calc(96 * var(--u)), 6rem);
+  color: rgb(var(--content) / 0.32);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------------------------------------------------------------------------
-   SCROLLBARS — slim, brutalist thumb
+   SCROLLBARS
 --------------------------------------------------------------------------- */
 .scrollbar-thin {
   scrollbar-width: thin;
@@ -309,12 +467,11 @@ h4 {
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
   background-color: rgb(var(--content-subtle) / 0.4);
-  border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(var(--content-subtle) / 0.65);
+  background-color: rgb(var(--content-subtle) / 0.7);
 }
 
 /* ---------------------------------------------------------------------------
@@ -323,70 +480,50 @@ h4 {
 .prose-chat {
   @apply text-base leading-7 text-content;
 }
-.prose-chat > *:first-child {
-  margin-top: 0;
-}
-.prose-chat > *:last-child {
-  margin-bottom: 0;
-}
-.prose-chat p {
-  margin: 0.8em 0;
-}
+.prose-chat > *:first-child { margin-top: 0; }
+.prose-chat > *:last-child { margin-bottom: 0; }
+.prose-chat p { margin: 0.8em 0; }
+
+/* Answer headings borrow the display face so a long reply reads like a
+   document set in the same voice as the rest of the product. */
 .prose-chat h1,
 .prose-chat h2,
 .prose-chat h3,
 .prose-chat h4 {
-  @apply font-bold tracking-tight text-content;
-  margin: 1.5em 0 0.6em;
-  line-height: 1.25;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  color: rgb(var(--content));
+  margin: 1.6em 0 0.6em;
 }
-.prose-chat h1 {
-  @apply text-2xl;
-}
-.prose-chat h2 {
-  @apply text-xl;
-}
-.prose-chat h3 {
-  @apply text-lg;
-}
+.prose-chat h1 { @apply text-3xl; }
+.prose-chat h2 { @apply text-2xl; }
+.prose-chat h3 { @apply text-xl; }
 .prose-chat ul,
-.prose-chat ol {
-  margin: 0.8em 0;
-  padding-left: 1.5em;
-}
-.prose-chat ul {
-  list-style: disc;
-}
-.prose-chat ol {
-  list-style: decimal;
-}
-.prose-chat li {
-  margin: 0.35em 0;
-}
-.prose-chat li::marker {
-  color: rgb(var(--accent));
-}
+.prose-chat ol { margin: 0.8em 0; padding-left: 1.5em; }
+.prose-chat ul { list-style: disc; }
+.prose-chat ol { list-style: decimal; }
+.prose-chat li { margin: 0.35em 0; }
+.prose-chat li::marker { color: rgb(var(--accent)); }
 .prose-chat a {
   @apply font-medium text-accent underline decoration-2 underline-offset-2;
-  text-decoration-color: rgb(var(--accent) / 0.4);
+  text-decoration-color: rgb(var(--accent) / 0.45);
 }
-.prose-chat a:hover {
-  text-decoration-color: rgb(var(--accent));
-}
+.prose-chat a:hover { text-decoration-color: rgb(var(--accent)); }
 .prose-chat blockquote {
   margin: 1.2em 0;
   padding: 0.5em 1em;
-  border-left: 4px solid rgb(var(--accent));
-  background-color: rgb(var(--accent) / 0.06);
+  border-left: 2px solid rgb(var(--accent));
+  background-color: rgb(var(--accent) / 0.07);
   color: rgb(var(--content-muted));
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 .prose-chat hr {
   @apply my-6;
   border: 0;
   border-top: 2px solid rgb(var(--border) / var(--border-strong));
 }
-/* Inline code — brutalist chip with an edge. */
 .prose-chat code:not(pre code) {
   padding: 0.15em 0.4em;
   border-radius: var(--radius-sm);
@@ -394,56 +531,41 @@ h4 {
   background-color: rgb(var(--border) / 0.08);
   font-family: var(--font-mono);
   font-size: 0.85em;
-  color: rgb(var(--accent-soft));
-}
-.dark .prose-chat code:not(pre code) {
-  color: rgb(var(--accent-soft));
-}
-.light .prose-chat code:not(pre code) {
   color: rgb(var(--accent));
 }
-.prose-chat pre {
-  margin: 0;
-  background: transparent;
-}
+.prose-chat pre { margin: 0; background: transparent; }
 
 /* ---------------------------------------------------------------------------
-   CODE BLOCKS — brutalist card frame around a fixed-dark canvas. Border/shadow
-   follow the app theme; the inner surface stays dark in both themes since the
-   highlight.js "github-dark" token palette needs a dark backdrop to read.
+   CODE BLOCKS — square frame over a fixed dark canvas (the highlight.js
+   "github-dark" palette needs a dark backdrop in both themes).
 --------------------------------------------------------------------------- */
 .code-block {
-  @apply my-4 overflow-hidden rounded-xl;
-  background-color: #0d1117;
+  @apply my-4 overflow-hidden;
+  background-color: #06060d;
   border: 2px solid rgb(var(--border) / var(--border-strong));
-  box-shadow: 3px 3px 0 0 rgb(var(--shadow) / var(--shadow-alpha));
+  border-radius: var(--radius-sm);
 }
 .code-block-header {
   @apply flex items-center justify-between px-3.5 py-2;
-  background-color: rgb(255 255 255 / 0.04);
-  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  background-color: rgb(0 41 222 / 0.16);
+  border-bottom: 1px solid rgb(255 255 255 / 0.1);
 }
-
-/* Diff rows inside a code-patch block (green add / red remove, dark canvas). */
 .diff-add {
-  background-color: rgb(34 197 94 / 0.14);
-  box-shadow: inset 3px 0 0 0 rgb(34 197 94 / 0.7);
+  background-color: rgb(61 220 132 / 0.14);
+  box-shadow: inset 3px 0 0 0 rgb(61 220 132 / 0.7);
 }
 .diff-remove {
-  background-color: rgb(239 68 68 / 0.14);
-  box-shadow: inset 3px 0 0 0 rgb(239 68 68 / 0.7);
+  background-color: rgb(255 107 107 / 0.14);
+  box-shadow: inset 3px 0 0 0 rgb(255 107 107 / 0.7);
 }
 
 /* ---------------------------------------------------------------------------
-   TABLES — same brutalist frame language as code blocks (thick outer border +
-   hard offset shadow), but a soft hairline grid inside instead of a thick
-   border on every cell — a strong 1–2px line around each cell reads busy at
-   table sizes. Header keeps a stronger underline so it stays the clear anchor.
+   TABLES — same square frame, hairline grid inside.
 --------------------------------------------------------------------------- */
 .prose-chat .table-wrap {
-  @apply my-4 w-full overflow-x-auto rounded-xl;
+  @apply my-4 w-full overflow-x-auto;
   border: 2px solid rgb(var(--border) / var(--border-strong));
-  box-shadow: 3px 3px 0 0 rgb(var(--shadow) / var(--shadow-alpha));
+  border-radius: var(--radius-sm);
 }
 .prose-chat table {
   @apply w-full border-collapse text-sm;
@@ -456,57 +578,61 @@ h4 {
   border-right: 1px solid rgb(var(--border) / var(--border-alpha));
 }
 .prose-chat th:last-child,
-.prose-chat td:last-child {
-  border-right: 0;
-}
-.prose-chat tbody tr:last-child td {
-  border-bottom: 0;
-}
+.prose-chat td:last-child { border-right: 0; }
+.prose-chat tbody tr:last-child td { border-bottom: 0; }
 .prose-chat th {
-  @apply text-xs font-bold uppercase tracking-wide;
-  background-color: rgb(var(--border) / 0.06);
+  font-family: var(--font-mono);
+  @apply text-xs uppercase;
+  letter-spacing: 0.1em;
+  background-color: rgb(var(--border) / 0.07);
   border-bottom: 2px solid rgb(var(--border) / var(--border-strong));
   color: rgb(var(--content-muted));
 }
-.prose-chat tbody tr:nth-child(even) {
-  background-color: rgb(var(--border) / 0.025);
-}
-.prose-chat tbody tr:hover {
-  background-color: rgb(var(--accent) / 0.06);
-}
+.prose-chat tbody tr:nth-child(even) { background-color: rgb(var(--border) / 0.03); }
+.prose-chat tbody tr:hover { background-color: rgb(var(--accent) / 0.07); }
 .prose-chat img {
   @apply my-3 max-w-full;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-sm);
   border: 2px solid rgb(var(--border) / var(--border-strong));
 }
-.prose-chat .katex-display {
-  @apply my-4 overflow-x-auto overflow-y-hidden py-1;
-}
+.prose-chat .katex-display { @apply my-4 overflow-x-auto overflow-y-hidden py-1; }
 
-/* Streaming caret — opacity blink only. */
 .streaming-caret::after {
   content: '▍';
   @apply ml-0.5 inline-block animate-caret-blink text-accent;
 }
 
 /* ---------------------------------------------------------------------------
-   MAX-EFFORT REASONING — the "ultracode" treatment. When a turn runs at max
-   thinking effort, the panel label gets a gradient shimmer sweeping across it
-   and the panel itself carries a soft, slowly breathing accent glow. Purely
-   decorative and live-only (the component removes these classes once the
-   answer starts), so it never touches settled history.
+   PROMPT SUGGESTION CARDS (empty state). Four flat blocks in the Hermes
+   palette rather than four tints of one colour.
 --------------------------------------------------------------------------- */
+@layer components {
+  /* One uniform surface for all four. Four different tints read as four
+     unrelated blocks on a near-black canvas; the acid numeral is the only
+     accent each card needs, and the reference's own option cards are uniform
+     for the same reason. Kept as separate class names so the component's
+     tone-cycling logic keeps working. */
+  .prompt-card-paper,
+  .prompt-card-coral,
+  .prompt-card-sun,
+  .prompt-card-sky {
+    background-color: rgb(var(--surface-raised));
+  }
+}
 
-/* Gradient sweep across the label text. A wide accent→soft→accent gradient is
-   clipped to the glyphs and its background-position animated left→right. */
+/* ---------------------------------------------------------------------------
+   MAX-EFFORT REASONING — the "ultracode" treatment, kept from the previous
+   system but re-tinted. Live-only and decorative; removed once the answer
+   starts, so it never touches settled history.
+--------------------------------------------------------------------------- */
 .reasoning-shimmer {
   background-image: linear-gradient(
     100deg,
-    rgb(var(--accent) / 0.65) 0%,
+    rgb(var(--accent) / 0.6) 0%,
     rgb(var(--accent)) 30%,
-    rgb(var(--accent-soft)) 50%,
+    rgb(var(--acid)) 50%,
     rgb(var(--accent)) 70%,
-    rgb(var(--accent) / 0.65) 100%
+    rgb(var(--accent) / 0.6) 100%
   );
   background-size: 220% 100%;
   -webkit-background-clip: text;
@@ -514,18 +640,14 @@ h4 {
   color: transparent;
   animation: reasoning-shimmer 2.2s linear infinite;
 }
-
 @keyframes reasoning-shimmer {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
 }
-
-/* Slowly breathing accent ring around the whole panel. */
 .reasoning-panel-max {
   border-color: rgb(var(--accent) / 0.55);
   animation: reasoning-glow 2.6s ease-in-out infinite;
 }
-
 @keyframes reasoning-glow {
   0%, 100% {
     box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
@@ -536,18 +658,12 @@ h4 {
     border-color: rgb(var(--accent) / 0.7);
   }
 }
-
-/* The brain icon pulses in scale + opacity rather than the plain fade. */
-.reasoning-brain-max {
-  animation: reasoning-brain 1.6s ease-in-out infinite;
-}
-
+.reasoning-brain-max { animation: reasoning-brain 1.6s ease-in-out infinite; }
 @keyframes reasoning-brain {
   0%, 100% { opacity: 0.7; transform: scale(1); }
   50% { opacity: 1; transform: scale(1.12); }
 }
 
-/* Respect reduced-motion: keep the accent colour cues, drop the animation. */
 @media (prefers-reduced-motion: reduce) {
   .reasoning-shimmer {
     animation: none;
@@ -557,90 +673,5 @@ h4 {
     color: rgb(var(--accent));
   }
   .reasoning-panel-max,
-  .reasoning-brain-max {
-    animation: none;
-  }
-}
-
-/* Bright paper neo-brutalism override. Kept here so existing component logic
-   can retain shared semantic classes while the visual system changes wholly. */
-:root,
-.light {
-  --surface: 255 249 232;
-  --surface-raised: 255 255 255;
-  --surface-overlay: 255 240 194;
-  --surface-mid: 255 229 120;
-  --border: 27 26 22;
-  --border-alpha: 0.18;
-  --border-strong: 0.95;
-  --content: 27 26 22;
-  --content-muted: 73 68 57;
-  --content-subtle: 114 104 88;
-  --shadow: 27 26 22;
-  --shadow-alpha: 1;
-  --success: 22 130 74;
-  --warning: 180 95 0;
-  --error: 199 42 47;
-}
-
-.dark {
-  --surface: 31 29 27;
-  --surface-raised: 49 45 41;
-  --surface-overlay: 64 57 47;
-  --surface-mid: 88 70 31;
-  --border: 255 249 232;
-  --border-alpha: 0.15;
-  --border-strong: 0.92;
-  --content: 255 249 232;
-  --content-muted: 218 204 177;
-  --content-subtle: 169 153 128;
-  --shadow: 0 0 0;
-  --shadow-alpha: 1;
-}
-
-@layer components {
-  .glass,
-  .popover,
-  .card {
-    border-width: 3px;
-  }
-
-  .popover,
-  .card {
-    box-shadow: 6px 6px 0 rgb(var(--shadow) / var(--shadow-alpha));
-  }
-
-  .btn {
-    border-radius: 0.25rem;
-    font-weight: 700;
-  }
-
-  .btn-surface,
-  .btn-primary,
-  .input {
-    border-width: 3px;
-  }
-
-  .btn-surface,
-  .btn-primary {
-    box-shadow: 4px 4px 0 rgb(var(--shadow) / var(--shadow-alpha));
-  }
-
-  .btn-surface:hover,
-  .btn-primary:hover {
-    transform: translate(-2px, -2px);
-  }
-
-  .btn-surface:active,
-  .btn-primary:active {
-    transform: translate(4px, 4px);
-    box-shadow: none;
-  }
-
-  .prompt-card-paper { background-color: rgb(var(--surface-raised)); }
-  .prompt-card-coral { background-color: rgb(var(--accent) / 0.36); }
-  .prompt-card-sun { background-color: rgb(var(--surface-overlay)); }
-  .prompt-card-sky { background-color: rgb(173 198 255); }
-
-  .dark .prompt-card-sky { background-color: rgb(53 92 174); }
+  .reasoning-brain-max { animation: none; }
 }

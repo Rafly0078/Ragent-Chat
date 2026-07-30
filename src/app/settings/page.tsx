@@ -121,7 +121,7 @@ export default function SettingsPage() {
       <AmbientBackground />
       <div className="mx-auto min-h-[100dvh] w-full max-w-5xl px-4 py-6 sm:py-10">
         <div className="mb-8 flex items-center gap-3">
-          <Link href="/" className="btn-ghost h-10 w-10 rounded-xl" aria-label="Back to chat">
+          <Link href="/chat" className="btn-ghost h-10 w-10 rounded-xl" aria-label="Back to chat">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div>
@@ -411,7 +411,7 @@ export default function SettingsPage() {
 
         <div className="flex items-center justify-center gap-2 py-8 text-xs text-content-subtle">
           <Sparkles className="h-3.5 w-3.5 text-accent" />
-          Ollama Chat — private, local-first AI
+          Ragent — private, local-first AI
         </div>
       </div>
     </>
@@ -559,7 +559,7 @@ function InstallAppSection() {
         <div>
           <p className="text-sm font-medium text-content">App is installed</p>
           <p className="text-xs text-content-muted">
-            You&apos;re running Ollama Chat as an installed app. Launch it from your home screen.
+            You&apos;re running Ragent as an installed app. Launch it from your home screen.
           </p>
         </div>
       </div>
@@ -604,7 +604,7 @@ function InstallAppSection() {
           <p className="mb-1 font-medium text-content-muted">Manual install:</p>
           <ul className="list-inside list-disc space-y-0.5">
             <li><b>Chrome/Edge (Android):</b> Menu (⋮) → Install app</li>
-            <li><b>Chrome/Edge (Desktop):</b> Menu (⋮) → Install {`\u201C`}Ollama Chat{`\u201D`}</li>
+            <li><b>Chrome/Edge (Desktop):</b> Menu (⋮) → Install {`\u201C`}Ragent{`\u201D`}</li>
             <li><b>Safari (iOS):</b> Share → Add to Home Screen</li>
           </ul>
         </div>
@@ -621,7 +621,7 @@ function InstallAppSection() {
       <div className="flex items-center gap-3 rounded-xl border border-accent/30 bg-accent/5 p-4">
         <Smartphone className="h-5 w-5 text-accent" />
         <div className="flex-1">
-          <p className="text-sm font-medium text-content">Install Ollama Chat</p>
+          <p className="text-sm font-medium text-content">Install Ragent</p>
           <p className="text-xs text-content-muted">
             Install this app on your device for quick access — it opens in its own window and feels
             like a native app. It still needs a connection to reach your models.

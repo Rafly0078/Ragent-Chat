@@ -52,7 +52,9 @@ export interface SettingsState {
 }
 
 const initial = {
-  theme: 'light' as ThemeMode,
+  // Dark is the default canvas for the chat surface in the Hermes system;
+  // the landing page is always the blue field regardless of this setting.
+  theme: 'dark' as ThemeMode,
   accent: ACCENT_PRESETS[0]!.value,
   apiUrlOverride: '',
   connectionMode: 'direct' as ConnectionMode,
@@ -157,7 +159,23 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
+      /**
+       * v1 -> v2: the design system was rebased on the Hermes palette, where the
+       * signature accent is electric blue. Anyone still on the *old default*
+       * ('coral') is moved to the new default so the redesign actually lands;
+       * a deliberately-picked accent is left alone. Same for the old light
+       * default, since the chat canvas is now designed dark-first.
+       */
+      migrate: (persisted: unknown, version: number) => {
+        if (!persisted || typeof persisted !== 'object') return persisted;
+        const state = persisted as { accent?: string; theme?: string };
+        if (version < 2) {
+          if (state.accent === 'coral' || state.accent === 'blue') state.accent = 'electric';
+          if (state.theme === 'light') state.theme = 'dark';
+        }
+        return state;
+      },
       // Persist data only. Without this, anything that ever landed on the store
       // (including a clobbered action from a bad import) was written to disk and
       // restored on the next load.

@@ -74,7 +74,7 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
       <ModelSelector value={conversation.model} onChange={(m) => setModel(conversation.id, m)} />
 
       <div className="ml-1 hidden min-w-0 flex-1 sm:block">
-        <p className="truncate text-sm font-bold uppercase tracking-[0.08em] text-content">{conversation.title}</p>
+        <p className="type-display truncate text-base text-content">{conversation.title}</p>
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-1 sm:flex-none">

@@ -6,14 +6,15 @@ import type { MetadataRoute } from 'next';
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Ollama Chat — AI WebUI',
-    short_name: 'AI Chat',
+    name: 'Ragent — private, local-first AI',
+    short_name: 'Ragent',
     description:
       'A fast, beautiful ChatGPT-style interface for your local Ollama models. Streaming, Markdown, LaTeX, code, and more.',
-    start_url: '/',
+    // The installed app opens straight into chat; `/` is the marketing page.
+    start_url: '/chat',
     display: 'standalone',
-    background_color: '#111111',
-    theme_color: '#7C3AED',
+    background_color: '#0a0a0c',
+    theme_color: '#0000f2',
     orientation: 'any',
     categories: ['productivity', 'utilities', 'ai'],
     icons: [

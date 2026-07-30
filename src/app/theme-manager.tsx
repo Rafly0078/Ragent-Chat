@@ -58,6 +58,10 @@ export function ThemeManager({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     root.style.setProperty('--accent', preset.rgb);
     root.style.setProperty('--accent-soft', preset.soft);
+    // Fills read the saturated value; text/icons read `--accent`. Keeping them
+    // separate is what lets #0000f2 be the signature colour without failing
+    // contrast as text on the dark canvas.
+    root.style.setProperty('--accent-solid', preset.solid);
   }, [accent]);
 
   return <>{children}</>;

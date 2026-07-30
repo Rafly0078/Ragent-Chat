@@ -97,7 +97,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/noun-atom-8300355 (1).png" alt="" width={24} height={24} className="h-6 w-6" />
         </div>
-        <span className="flex-1 text-lg font-bold uppercase tracking-[-0.06em] text-content">AI Chat</span>
+        <span className="type-display flex-1 text-lg text-content">Ragent</span>
         {isMobile && (
           <button onClick={onClose} className="btn-ghost h-10 w-10 rounded-lg" aria-label="Close sidebar">
             <X className="h-5 w-5" />
