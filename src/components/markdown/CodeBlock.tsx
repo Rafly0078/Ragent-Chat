@@ -9,12 +9,14 @@ import { cn } from '@/lib/utils/cn';
  * Code block wrapper with a language badge and copy button. The inner <code>
  * is already highlighted by rehype-highlight; this adds the chrome.
  *
- * The canvas is a fixed dark colour (not theme-driven) because the
- * highlight.js "github-dark" token palette is only legible on a dark
- * background — letting it inherit the light/paper theme's surface color
- * used to wash the syntax colours out. Only the outer frame (border +
- * shadow) follows the app theme, so the block still reads as one of the
- * app's brutalist cards in both light and dark mode.
+ * The canvas is a fixed dark colour rather than the field, and it is the one
+ * deliberate dark inset in the product: the highlight.js "github-dark" token
+ * palette needs a dark ground, and syntax colour is the entire point of a code
+ * block. The frame is a 2px off-white rule (see `.code-block`), because the
+ * inset itself measures only 2.2:1 against #0000f2 and cannot delineate itself.
+ *
+ * Foreground alphas are tuned to the inset, not to the field: the label was
+ * white at 45% (4.0:1 on #06060d, under AA at 11px) and the copy control at 55%.
  */
 export function CodeBlock({
   language,
@@ -56,21 +58,21 @@ export function CodeBlock({
   return (
     <div className={cn('code-block group/code', className)}>
       <div className="code-block-header">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-white/45">
-            {language || 'text'}
-          </span>
-        </div>
+        {/* The dot that used to sit here was `bg-accent` and never changed, so it
+            read as a status light that reported nothing. A code block has no run
+            state; the language is the only fact the header has to carry. */}
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.1em] text-white/60">
+          {language || 'text'}
+        </span>
         <button
           onClick={() => void copy()}
           className={cn(
-            'focus-ring flex items-center gap-1.5 rounded-md border border-transparent px-2 py-1 text-xs transition-colors',
+            'focus-ring flex items-center gap-1.5 rounded border border-transparent px-2 py-1 font-mono text-[0.7rem] uppercase tracking-[0.1em] transition-colors duration-fast',
             copied
               ? 'text-success'
               : failed
                 ? 'text-error'
-                : 'text-white/55 hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-white/90'
+                : 'text-white/70 hover:border-white/20 hover:bg-white/[0.09] hover:text-white',
           )}
           aria-label="Copy code"
         >

@@ -64,31 +64,38 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
   };
 
   return (
-    <header className="glass sticky top-0 z-30 flex items-center gap-2 border-0 px-2 py-2 sm:px-3">
+    <header className="glass sticky top-0 z-30 flex items-center gap-1.5 border-0 px-2 py-2.5 sm:gap-2 sm:px-4">
       <Tooltip label="Toggle sidebar" side="bottom">
-        <button onClick={onToggleSidebar} className="btn-ghost h-9 w-9 rounded-xl" aria-label="Toggle sidebar">
-          <PanelLeft className="h-5 w-5" />
+        <button onClick={onToggleSidebar} className="btn-ghost btn-md btn-icon" aria-label="Toggle sidebar">
+          <PanelLeft className="h-[1.15rem] w-[1.15rem]" />
         </button>
       </Tooltip>
 
+      {/* Divider, not padding — the reference separates chrome with rules. */}
+      <span className="mx-0.5 hidden h-5 w-px bg-border/25 sm:block" aria-hidden />
+
       <ModelSelector value={conversation.model} onChange={(m) => setModel(conversation.id, m)} />
 
-      <div className="ml-1 hidden min-w-0 flex-1 sm:block">
-        <p className="type-display truncate text-base text-content">{conversation.title}</p>
+      {/* The session title is the navbar's one piece of content, so it gets the
+          display face and nothing competes with it at this size. */}
+      <div className="ml-1.5 hidden min-w-0 flex-1 sm:block">
+        <p className="type-display truncate text-[1.0625rem] text-content">{conversation.title}</p>
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-1 sm:flex-none">
         <ContextMeter conversation={conversation} />
         <ConnectionStatus />
 
+        <span className="mx-0.5 hidden h-5 w-px bg-border/25 sm:block" aria-hidden />
+
         <Tooltip label="System prompt" side="bottom" className="hidden sm:inline-flex">
-          <button onClick={onOpenSystem} className="btn-ghost h-9 w-9 rounded-xl" aria-label="Edit system prompt">
+          <button onClick={onOpenSystem} className="btn-ghost btn-md btn-icon" aria-label="Edit system prompt">
             <Terminal className="h-[1.15rem] w-[1.15rem]" />
           </button>
         </Tooltip>
 
         <Tooltip label="Parameters" side="bottom" className="hidden sm:inline-flex">
-          <button onClick={onOpenParams} className="btn-ghost h-9 w-9 rounded-xl" aria-label="Generation parameters">
+          <button onClick={onOpenParams} className="btn-ghost btn-md btn-icon" aria-label="Generation parameters">
             <Sliders className="h-[1.15rem] w-[1.15rem]" />
           </button>
         </Tooltip>
@@ -96,7 +103,7 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
         <div ref={menuRef} className="relative">
           <button
             onClick={() => setMenuOpen((o) => !o)}
-            className="btn-ghost h-9 w-9 rounded-xl"
+            className="btn-ghost btn-md btn-icon"
             aria-label="More options"
             aria-haspopup="menu"
           >
@@ -155,7 +162,7 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
         </div>
 
         <Tooltip label="Settings" side="bottom">
-          <Link href="/settings" className="btn-ghost flex h-9 w-9 items-center justify-center rounded-xl" aria-label="Settings">
+          <Link href="/settings" className="btn-ghost btn-md btn-icon" aria-label="Settings">
             <Settings2 className="h-[1.15rem] w-[1.15rem]" />
           </Link>
         </Tooltip>
@@ -179,8 +186,10 @@ function MenuItem({
     <button
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-border/5 ${
-        danger ? 'text-error hover:bg-error/10' : 'text-content'
+      className={`type-label flex w-full items-center gap-2.5 rounded px-3 py-2.5 text-left transition-colors ${
+        danger
+          ? 'text-error hover:bg-error/15'
+          : 'text-content-muted hover:bg-accent/12 hover:text-content'
       }`}
     >
       <Icon className="h-4 w-4 shrink-0" />

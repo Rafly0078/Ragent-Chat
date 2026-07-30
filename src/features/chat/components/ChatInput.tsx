@@ -227,9 +227,13 @@ export function ChatInput({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          'relative rounded-3xl border border-border bg-surface-raised p-2 shadow-subtle transition-all',
-          'focus-within:border-accent/50 focus-within:shadow-card',
-          dragging && 'border-accent ring-2 ring-accent/40',
+          /* A ruled dock, not a pill. Everything else in the product turns on a
+             4px radius and a 2px full-opacity rule; a 16px-radius 1px-bordered
+             capsule was the one shape that did not belong. The rule is also what
+             separates the dock from the thread — a fill cannot, at 1.04:1. */
+          'relative rounded border-2 border-border bg-surface-raised p-2 transition-colors duration-fast',
+          'focus-within:border-accent',
+          dragging && 'border-accent',
         )}
       >
         {/* Drag overlay */}
@@ -239,9 +243,9 @@ export function ChatInput({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-accent/15"
+              className="absolute inset-0 z-10 flex items-center justify-center rounded bg-accent/15"
             >
-              <p className="text-sm font-medium text-accent">Drop files to attach</p>
+              <p className="type-label text-accent">Drop files to attach</p>
             </m.div>
           )}
         </AnimatePresence>
@@ -484,7 +488,7 @@ export function ChatInput({
             <Tooltip label="Stop generating (Esc)">
               <button
                 onClick={onStop}
-                className="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-border bg-surface-raised text-content shadow-subtle transition-colors hover:bg-surface-overlay"
+                className="btn-surface h-11 w-11 shrink-0 p-0"
                 aria-label="Stop generating"
               >
                 <Square className="h-4 w-4 fill-current" />
@@ -494,7 +498,11 @@ export function ChatInput({
             <button
               onClick={submit}
               disabled={disabled || (!value.trim() && attachments.length === 0)}
-              className="btn-primary h-11 w-11 shrink-0 rounded-2xl p-0 transition-transform enabled:hover:scale-105 enabled:active:scale-95"
+              /* No bespoke scale on hover. `.btn-primary` already defines one
+                 hover and one press for every button in the product, and a
+                 send key that grew while its neighbours did not was exactly
+                 the per-page effect the system exists to prevent. */
+              className="btn-primary h-11 w-11 shrink-0 p-0"
               aria-label="Send message"
             >
               <ArrowUp className="h-5 w-5" />
@@ -503,21 +511,29 @@ export function ChatInput({
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between px-2 text-[0.7rem] text-content-subtle">
-        <span className="flex items-center gap-1.5">
+      {/* Composer metadata. Mono caps, because this is chrome reporting state —
+          as a sentence in body type, "Text model" read as a stray caption. */}
+      <div className="mt-2 flex items-center justify-between gap-3 px-1">
+        <span className="flex min-w-0 items-center gap-2">
           {webSearch && (
-            <span className="inline-flex items-center gap-1 font-medium text-accent">
+            <span className="type-label inline-flex items-center gap-1.5 text-accent">
               <Globe className="h-3 w-3" /> Web search
             </span>
           )}
           {thinking.enabled && (
-            <span className="inline-flex items-center gap-1 font-medium text-accent">
+            <span className="type-label inline-flex items-center gap-1.5 text-accent">
               <Brain className="h-3 w-3" /> Thinking · {thinking.effort}
             </span>
           )}
-          <span>{visionCapable ? 'Vision model — images supported' : 'Text model'}</span>
+          <span className="type-label truncate text-content-subtle">
+            {visionCapable ? 'Vision · images supported' : 'Text only'}
+          </span>
         </span>
-        {showTokenCounter && value.trim() && <span className="tabular-nums">~{tokenCount} tokens</span>}
+        {showTokenCounter && value.trim() && (
+          <span className="type-label shrink-0 tabular-nums text-content-subtle">
+            ~{tokenCount} tokens
+          </span>
+        )}
       </div>
 
       <DocumentEditDialog

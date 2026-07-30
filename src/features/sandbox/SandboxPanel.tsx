@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
-  Loader2,
   Play,
   RotateCcw,
   Square,
@@ -159,7 +158,7 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
                   />
                 )}
                 {state.report.blank && (!errorIssues || errorIssues.length === 0) && (
-                  <p className="flex items-center gap-1.5 text-amber-500">
+                  <p className="flex items-center gap-1.5 text-warning">
                     <AlertTriangle className="h-3.5 w-3.5" /> Halaman render kosong.
                   </p>
                 )}
@@ -199,46 +198,51 @@ function StatusBadge({
   streaming?: boolean;
 }) {
   if (streaming) return null;
-  const base =
-    'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.68rem] font-medium';
+  /* One shape for every run state: the shared `.badge badge-outline` chrome plus
+     `.status-dot`, whose colour comes from `--tone`. The washes these used to
+     carry (`bg-accent/15`, `bg-amber-500/15`) measure ~1.1:1 against the field,
+     so the fill was doing nothing and the amber pair was off-system besides.
+     Every state still pairs its colour with an icon or a dot, so none of them
+     depends on colour alone. */
+  const base = 'badge badge-outline';
 
   if (state.phase === 'running') {
     return (
-      <span className={cn(base, 'bg-accent/15 text-accent')}>
-        <Loader2 className="h-3 w-3 animate-spin" /> Menjalankan… {state.iteration}/
+      <span className={cn(base, 'text-accent')}>
+        <span className="status-dot status-running" aria-hidden /> Menjalankan… {state.iteration}/
         {state.maxIterations}
       </span>
     );
   }
   if (state.phase === 'healing') {
     return (
-      <span className={cn(base, 'bg-accent/15 text-accent')}>
-        <Loader2 className="h-3 w-3 animate-spin" /> Memperbaiki… {state.iteration}/
+      <span className={cn(base, 'text-accent')}>
+        <span className="status-dot status-running" aria-hidden /> Memperbaiki… {state.iteration}/
         {state.maxIterations}
       </span>
     );
   }
   if (state.phase === 'done') {
     return state.clean ? (
-      <span className={cn(base, 'bg-success/15 text-success')}>
+      <span className={cn(base, 'text-success')}>
         <CheckCircle2 className="h-3 w-3" /> Bersih
       </span>
     ) : (
-      <span className={cn(base, 'bg-amber-500/15 text-amber-600')}>
+      <span className={cn(base, 'text-warning')}>
         <AlertTriangle className="h-3 w-3" /> Masih ada masalah
       </span>
     );
   }
   if (state.phase === 'stopped') {
     return (
-      <span className={cn(base, 'bg-border/20 text-content-muted')}>
+      <span className={cn(base, 'text-content-muted')}>
         <Square className="h-3 w-3" /> Dihentikan
       </span>
     );
   }
   if (state.phase === 'error') {
     return (
-      <span className={cn(base, 'bg-error/15 text-error')}>
+      <span className={cn(base, 'text-error')}>
         <XCircle className="h-3 w-3" /> Gagal
       </span>
     );
@@ -265,7 +269,7 @@ function IssueGroup({
         onClick={() => setExpanded((v) => !v)}
         className={cn(
           'flex items-center gap-1.5 font-medium',
-          tone === 'error' ? 'text-error' : 'text-amber-500',
+          tone === 'error' ? 'text-error' : 'text-warning',
         )}
       >
         {icon} {title}

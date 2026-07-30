@@ -134,23 +134,38 @@ export const MessageBubble = memo(function MessageBubble({
         !message.streaming && 'cv-auto',
       )}
     >
-      {/* Avatar */}
+      {/* Avatar. The assistant carries the accent fill, the user an outline —
+          the cheapest way to make the two roles readable at a glance while
+          scanning a long thread. */}
       <div
         className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-[3px] border-border',
-          isUser ? 'bg-surface-overlay text-content shadow-subtle' : 'accent-gradient text-accent-fg shadow-subtle',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded',
+          isUser
+            ? 'border-2 border-border/35 bg-surface-raised text-content-muted'
+            : 'accent-gradient text-accent-fg',
         )}
         aria-hidden
       >
-        {isUser ? <User className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+        {isUser ? <User className="h-[0.9rem] w-[0.9rem]" /> : <Sparkles className="h-[0.9rem] w-[0.9rem]" />}
       </div>
 
-      {/* Body */}
-      <div className={cn('min-w-0 flex-1', isUser && 'border-[3px] border-border bg-surface-raised px-4 py-3 shadow-card')}>
-        <div className="mb-1 flex items-center gap-2 text-xs">
-          <span className="type-label text-content">{isUser ? 'You' : 'Ollama'}</span>
+      {/* Body. The user turn is a contained block; the assistant turn runs full
+          width with an accent rail, so answers read like a document and prompts
+          read like an aside. */}
+      <div
+        className={cn(
+          'min-w-0 flex-1',
+          isUser
+            ? 'rounded border-2 border-border/25 bg-surface-raised px-4 py-3'
+            : 'border-l-2 border-accent/35 pl-4',
+        )}
+      >
+        <div className="mb-1.5 flex items-center gap-2">
+          <span className={cn('type-label', isUser ? 'text-content-muted' : 'text-accent')}>
+            {isUser ? 'You' : 'Ragent'}
+          </span>
           {message.model && !isUser && (
-            <span className="rounded-md bg-border/5 px-1.5 py-0.5 font-mono text-[0.68rem] text-content-subtle">
+            <span className="rounded bg-border/8 px-1.5 py-0.5 font-mono text-[0.66rem] tracking-wide text-content-subtle">
               {message.model.replace(/:latest$/, '')}
             </span>
           )}

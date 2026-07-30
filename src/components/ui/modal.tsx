@@ -102,7 +102,7 @@ export function Modal({
       {open && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center p-0 sm:items-center sm:p-4">
           <m.div
-            className="absolute inset-0 bg-[rgb(0_0_58_/_0.88)]"
+            className="absolute inset-0 bg-[rgb(4_4_10_/_0.82)]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
