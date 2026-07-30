@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { m } from 'framer-motion';
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast';
@@ -9,18 +8,20 @@ import { useAuth } from './AuthProvider';
 import { AuthDialog } from './AuthDialog';
 import { userLabel } from '@/lib/services/profile.service';
 
-/** Account panel for the settings page. Sign-in state, provider, sign-out. */
+/**
+ * Account panel for the settings page. Sign-in state, provider, sign-out.
+ *
+ * The entrance is a CSS animation for the same reason as the other settings
+ * panels: as a framer-motion mount tween starting at `opacity: 0`, whether the
+ * user could read their own account details depended on JS having hydrated.
+ */
 export function AccountSection() {
   const auth = useAuth();
   const { toast } = useToast();
   const [dialog, setDialog] = useState(false);
 
   return (
-    <m.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass mb-6 p-5 sm:p-6"
-    >
+    <section className="glass animate-fade-in mb-6 p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-2">
         <UserIcon className="h-5 w-5 text-accent" />
         <h2 className="type-display text-xl text-content">Account</h2>
@@ -75,6 +76,6 @@ export function AccountSection() {
       )}
 
       <AuthDialog open={dialog} onClose={() => setDialog(false)} />
-    </m.section>
+    </section>
   );
 }

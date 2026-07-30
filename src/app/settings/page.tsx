@@ -2,7 +2,6 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
-import { m } from 'framer-motion';
 import {
   ArrowLeft,
   Download,
@@ -32,6 +31,7 @@ import { downloadText } from '@/lib/utils/export';
 import { uid } from '@/lib/utils/id';
 import { usePWAInstall } from '@/lib/hooks/use-pwa-install';
 import { cn } from '@/lib/utils/cn';
+import { APP_NAME, APP_VERSION } from '@/lib/app-meta';
 import { AccountSection } from '@/features/auth/AccountSection';
 import type { PromptPreset } from '@/types';
 
@@ -119,21 +119,31 @@ export default function SettingsPage() {
   return (
     <>
       <AmbientBackground />
-      <div className="mx-auto min-h-[100dvh] w-full max-w-5xl px-4 py-6 sm:py-10">
-        <div className="mb-8 flex items-center gap-3">
-          <Link href="/chat" className="btn-ghost h-10 w-10 rounded-xl" aria-label="Back to chat">
-            <ArrowLeft className="h-5 w-5" />
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col px-4 py-6 sm:py-10">
+        {/* The back link is an eyebrow above the title rather than an icon beside
+            it. As a bare arrow it read as a stray glyph next to a 40px display
+            word; as a labelled link it says where it goes. */}
+        <header className="mb-10">
+          <Link
+            href="/chat"
+            className="type-label focus-ring group mb-6 inline-flex items-center gap-2 text-content-muted transition-colors duration-fast hover:text-content"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform duration-fast group-hover:-translate-x-0.5" />
+            Back to chat
           </Link>
-          <div>
-            <h1 className="type-display text-[clamp(1.75rem,4vw,2.5rem)] text-content">Settings</h1>
-            <p className="mt-2 text-sm text-content-muted">Synced to your account when signed in; local otherwise.</p>
-          </div>
-        </div>
+          <h1 className="type-display text-[clamp(1.75rem,4vw,2.5rem)] text-content">Settings</h1>
+          <p className="mt-3 max-w-md text-sm leading-6 text-content-muted">
+            Synced to your account when signed in; local otherwise.
+          </p>
+        </header>
 
-        <div className="flex flex-col gap-6 md:flex-row md:items-start md:gap-8">
-          {/* Section nav: sticky sidebar on desktop, horizontal scroller on mobile */}
+        <div className="flex flex-col gap-6 pb-14 md:flex-row md:items-start md:gap-10">
+          {/* Section nav: sticky rail on desktop, horizontal scroller on mobile.
+              The active item takes a 2px acid rail, not a fill — a fill of any
+              colour measures ~1.1:1 against this field, and the rail is the same
+              idiom the chat sidebar uses for the same reason. */}
           <nav className="md:sticky md:top-10 md:w-52 md:shrink-0">
-            <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:flex-col md:overflow-visible md:pb-0">
+            <ul className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 md:mx-0 md:flex-col md:gap-0 md:overflow-visible md:px-0 md:pb-0">
               {NAV.map((item) => {
                 const Icon = item.icon;
                 const isActive = active === item.id;
@@ -143,12 +153,19 @@ export default function SettingsPage() {
                       onClick={() => setActive(item.id)}
                       aria-current={isActive ? 'page' : undefined}
                       className={cn(
-                        'flex w-full items-center gap-2.5 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition-colors',
+                        'type-label focus-ring relative flex w-full items-center gap-2.5 whitespace-nowrap py-2.5 pl-4 pr-3 transition-colors duration-fast',
                         isActive
-                          ? 'bg-accent/10 text-content'
-                          : 'text-content-muted hover:bg-border/5 hover:text-content',
+                          ? 'bg-border/10 text-content'
+                          : 'text-content-muted hover:bg-border/[0.06] hover:text-content',
                       )}
                     >
+                      <span
+                        aria-hidden
+                        className={cn(
+                          'absolute inset-y-0 left-0 w-[2px] transition-colors duration-fast',
+                          isActive ? 'bg-accent' : 'bg-transparent',
+                        )}
+                      />
                       <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-accent')} />
                       {item.label}
                     </button>
@@ -400,15 +417,40 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 py-8 text-xs text-content-subtle">
-          <Sparkles className="h-3.5 w-3.5 text-accent" />
-          Ragent — private, local-first AI
+        {/* Pushed to the bottom of the viewport. Short panels (Account is three
+            lines) used to leave the colophon stranded mid-field with hundreds of
+            pixels of nothing under it.
+
+            The ghosted wordmark is the reference's own page-closing device, and
+            it earns its place here: it turns the void a two-line panel leaves
+            behind into the composed bottom of the page instead of a gap. */}
+        <div className="mt-auto">
+          <div className="pointer-events-none w-full select-none" aria-hidden>
+            <span className="hw-ghost block w-full text-center text-[13vw]">{APP_NAME}</span>
+          </div>
+          <div className="hw-rule flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pt-6">
+            <span className="type-label inline-flex items-center gap-2 text-content-muted">
+              <Sparkles className="h-3.5 w-3.5 text-accent" />
+              {APP_NAME} — private, local-first AI
+            </span>
+            <span className="type-label text-content-subtle">{APP_VERSION}</span>
+          </div>
         </div>
       </div>
     </>
   );
 }
 
+/**
+ * Panel shell.
+ *
+ * The entrance is a CSS animation, not a framer-motion mount tween. As
+ * `initial={{ opacity: 0 }}` it meant the panel's content was invisible until JS
+ * hydrated and the tween ran — a settings page whose text depends on a
+ * decorative animation having completed. `animate-fade-in` uses `both` fill, so
+ * it paints with the stylesheet and the reduced-motion rule in globals.css
+ * collapses it to its end state.
+ */
 function Section({
   icon: Icon,
   title,
@@ -419,17 +461,13 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <m.section
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="glass mb-6 p-5 sm:p-6"
-    >
+    <section className="glass animate-fade-in mb-6 p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-2">
         <Icon className="h-5 w-5 text-accent" />
         <h2 className="type-display text-xl text-content">{title}</h2>
       </div>
       <div className="space-y-5">{children}</div>
-    </m.section>
+    </section>
   );
 }
 
