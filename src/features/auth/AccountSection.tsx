@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { m } from 'framer-motion';
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
 import { useAuth } from './AuthProvider';
 import { AuthDialog } from './AuthDialog';
 import { userLabel } from '@/lib/services/profile.service';
@@ -11,6 +12,7 @@ import { userLabel } from '@/lib/services/profile.service';
 /** Account panel for the settings page. Sign-in state, provider, sign-out. */
 export function AccountSection() {
   const auth = useAuth();
+  const { toast } = useToast();
   const [dialog, setDialog] = useState(false);
 
   return (
@@ -46,7 +48,17 @@ export function AccountSection() {
                 <LogIn className="h-4 w-4" /> <span className="ml-1.5">Sign in</span>
               </Button>
             )}
-            <Button variant="surface" onClick={() => void auth.signOut()}>
+            <Button
+              variant="surface"
+              onClick={() => {
+                // A failed sign-out used to be invisible: no auth event fires, the
+                // session stays valid, and the user believes they've signed out —
+                // on a shared machine that matters.
+                void auth.signOut().then(({ error }) => {
+                  if (error) toast(`Could not sign out: ${error}`, 'error');
+                });
+              }}
+            >
               <LogOut className="h-4 w-4" /> <span className="ml-1.5">Sign out</span>
             </Button>
           </div>

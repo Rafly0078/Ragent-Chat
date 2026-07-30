@@ -8,13 +8,41 @@ import { DEFAULT_PARAMS, DEFAULT_THINKING } from '@/lib/store/defaults';
 import type { ArtifactKind, Artifact } from '@/lib/tools/types';
 import type { ArtifactRow, ConversationRow, MessageRow } from '@/lib/supabase/types';
 
-const isoToMs = (iso: string): number => new Date(iso).getTime();
-const msToIso = (ms: number): string => new Date(ms).toISOString();
+/**
+ * `new Date(NaN).toISOString()` throws RangeError, which escaped through
+ * saveConversation into the sync layer's empty catch — that conversation then
+ * failed on every flush, forever, with no message anywhere. Reachable via an
+ * imported chat file missing `createdAt`.
+ */
+const isoToMs = (iso: string): number => {
+  const ms = new Date(iso).getTime();
+  return Number.isFinite(ms) ? ms : Date.now();
+};
+const msToIso = (ms: number): string =>
+  new Date(Number.isFinite(ms) ? ms : Date.now()).toISOString();
+
+/** Keep only finite numbers — `metrics` is unchecked jsonb from the DB. */
+function safeMetrics(raw: unknown): Message['metrics'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const src = raw as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const out = {
+    responseTimeMs: num(src.responseTimeMs),
+    completionTokens: num(src.completionTokens),
+    promptTokens: num(src.promptTokens),
+    tokensPerSecond: num(src.tokensPerSecond),
+  };
+  return Object.values(out).some((v) => v !== undefined) ? out : undefined;
+}
 
 export function rowToConversation(row: ConversationRow, messages: Message[]): Conversation {
-  const params = { ...DEFAULT_PARAMS, ...(row.params as Partial<GenerationParams>) };
-  // DB rows don't have a thinking column yet — default to disabled so
-  // cloud-loaded conversations behave the same as fresh local ones.
+  const rawParams = row.params && typeof row.params === 'object' ? row.params : {};
+  const params = { ...DEFAULT_PARAMS, ...(rawParams as Partial<GenerationParams>) };
+  // NOTE: `thinking` and `summary` have no columns yet, so both are lost on every
+  // cloud round-trip (extended thinking silently reverts to off, and the
+  // compaction summary is rebuilt from scratch). See
+  // supabase/migrations/0005_sync_fidelity.sql — it is written but NOT applied,
+  // because pushing it touches the live database.
   const thinking: ThinkingConfig = { ...DEFAULT_THINKING };
   return {
     id: row.id,
@@ -37,7 +65,11 @@ export function rowToMessage(row: MessageRow): Message {
     content: row.content,
     createdAt: isoToMs(row.created_at),
     model: row.model ?? undefined,
-    metrics: row.metrics ?? undefined,
+    // Validated rather than trusted: `metrics` is a jsonb column the row owner
+    // can write anything into, and MessageBubble calls
+    // `metrics.tokensPerSecond.toFixed(1)` — a string there took down the
+    // message list.
+    metrics: safeMetrics(row.metrics),
     error: row.error ?? undefined,
   };
 }

@@ -18,6 +18,7 @@ import {
 import type { Session, User } from '@supabase/supabase-js';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 import { supabaseConfigured } from '@/lib/supabase/env';
+import { useChatStore } from '@/lib/store/chat-store';
 import { ensureProfile } from '@/lib/services/profile.service';
 
 export type OAuthProvider = 'google' | 'github';
@@ -37,7 +38,8 @@ interface AuthContextValue {
   signInWithOtp: (email: string) => Promise<{ error: string | null }>;
   signInWithOAuth: (provider: OAuthProvider) => Promise<{ error: string | null }>;
   continueAsGuest: () => Promise<{ error: string | null }>;
-  signOut: () => Promise<void>;
+  /** Signs out and clears the locally cached chats. */
+  signOut: () => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -150,8 +152,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const supabase = supabaseRef.current;
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    if (!supabase) return { error: 'Auth is not configured.' };
+    const { error } = await supabase.auth.signOut();
+    // Clear the local chat cache on the way out. Sign-out used to leave the
+    // previous user's conversations in localStorage under
+    // `ollama-webui:chats`; the next person to sign in on the same browser had
+    // them merged into — and uploaded to — THEIR account. Cross-account
+    // disclosure plus permanent contamination. Runs even if signOut errored,
+    // since the intent to leave is explicit.
+    try {
+      useChatStore.persist.clearStorage();
+    } catch {
+      /* storage unavailable — the state reset below still applies */
+    }
+    useChatStore.setState({ conversations: [], activeId: null, generatingId: null });
+    return { error: error?.message ?? null };
   }, []);
 
   const value = useMemo<AuthContextValue>(() => {

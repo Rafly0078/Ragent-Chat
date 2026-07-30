@@ -141,12 +141,18 @@ export async function POST(request: Request): Promise<Response> {
           };
         }
 
-        // Persist artifact metadata to database
-        const { error: artifactInsertErr } = await supabase.from('artifacts').insert({
+        // Persist artifact metadata to database.
+        //
+        // `conversation_id` / `message_id` are FKs, but those rows are written by
+        // the client's debounced sync — for an artifact generated on the very
+        // first turn neither exists yet, so the insert failed with 23503 and the
+        // file was stranded in Storage with no row to find it by. Retry without
+        // the parent links: `loadConversations` already recovers artifacts that
+        // have a conversation but no message, and a row with neither is still
+        // better than none.
+        const artifactRow = {
           id: artifactId,
           user_id: userId,
-          conversation_id: body.conversationId ?? null,
-          message_id: body.messageId ?? null,
           kind: result.kind,
           name: filename,
           mime_type: result.mime,
@@ -155,25 +161,42 @@ export async function POST(request: Request): Promise<Response> {
           storage_path: storagePath,
           version: 1,
           metadata: {},
+        };
+        let artifactSaved = true;
+        const { error: artifactInsertErr } = await supabase.from('artifacts').insert({
+          ...artifactRow,
+          conversation_id: body.conversationId ?? null,
+          message_id: body.messageId ?? null,
         });
         if (artifactInsertErr) {
-          console.error('[tools/execute] Failed to insert artifacts row:', artifactInsertErr.message);
+          const retry = await supabase
+            .from('artifacts')
+            .insert({ ...artifactRow, conversation_id: null, message_id: null });
+          artifactSaved = !retry.error;
+          console.error(
+            '[tools/execute] artifacts insert failed:',
+            artifactInsertErr.message,
+            artifactSaved ? '— retried without parent links' : `— retry also failed: ${retry.error?.message}`,
+          );
         }
 
-        // Create download record
-        const { error: downloadInsertErr } = await supabase.from('downloads').insert({
-          id: uid(),
-          user_id: userId,
-          artifact_id: artifactId,
-          name: filename,
-          status: 'ready',
-          progress: 100,
-          size_bytes: result.buffer.length,
-          bucket,
-          storage_path: storagePath,
-        });
-        if (downloadInsertErr) {
-          console.error('[tools/execute] Failed to insert downloads row:', downloadInsertErr.message);
+        // Create download record. Skipped when the artifact row is missing —
+        // `downloads.artifact_id` references it, so the insert could only fail.
+        if (artifactSaved) {
+          const { error: downloadInsertErr } = await supabase.from('downloads').insert({
+            id: uid(),
+            user_id: userId,
+            artifact_id: artifactId,
+            name: filename,
+            status: 'ready',
+            progress: 100,
+            size_bytes: result.buffer.length,
+            bucket,
+            storage_path: storagePath,
+          });
+          if (downloadInsertErr) {
+            console.error('[tools/execute] downloads insert failed:', downloadInsertErr.message);
+          }
         }
       }
     } else if (supabase && userId === 'guest') {

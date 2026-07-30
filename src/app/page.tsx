@@ -16,14 +16,10 @@ import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
 import { apiConfigured } from '@/lib/api/config';
 import { MessageSkeleton } from '@/components/ui/skeleton';
-import { useChatSync } from '@/features/auth/use-chat-sync';
 
 export default function HomePage() {
   const hydrated = useHydrated();
   const isMobile = useIsMobile();
-
-  // Persist to Supabase when signed in; no-op for guests.
-  useChatSync();
 
   const conversations = useChatStore((s) => s.conversations);
   const activeId = useChatStore((s) => s.activeId);
