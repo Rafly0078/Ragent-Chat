@@ -13,9 +13,43 @@ import { useCallback, useEffect, useState } from 'react';
  *  - `promptInstall()`: triggers the native install dialog
  *  - `platform`: quick check for iOS (which doesn't support beforeinstallprompt)
  */
+
+/**
+ * Module-scope capture. Chrome fires `beforeinstallprompt` once, shortly after
+ * load — long before the user opens Settings → Install app, which is the only
+ * place `usePWAInstall` is mounted. Listening from inside the hook therefore
+ * meant the event was always missed and the install button never appeared.
+ * `installListener()` is called from a component that mounts at app start.
+ */
+let stashed: BeforeInstallPromptEvent | null = null;
+let appInstalled = false;
+const subscribers = new Set<() => void>();
+let wired = false;
+
+function emit(): void {
+  subscribers.forEach((fn) => fn());
+}
+
+/** Start listening for install events. Idempotent; safe to call repeatedly. */
+export function installListener(): void {
+  if (wired || typeof window === 'undefined') return;
+  wired = true;
+  window.addEventListener('beforeinstallprompt', (e: Event) => {
+    // Prevent the default browser prompt — we show our own button.
+    e.preventDefault();
+    stashed = e as BeforeInstallPromptEvent;
+    emit();
+  });
+  window.addEventListener('appinstalled', () => {
+    appInstalled = true;
+    stashed = null;
+    emit();
+  });
+}
+
 export function usePWAInstall() {
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState(false);
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(stashed);
+  const [installed, setInstalled] = useState(appInstalled);
 
   // Detect if already running as an installed PWA (standalone display mode).
   const isStandalone =
@@ -36,35 +70,31 @@ export function usePWAInstall() {
       setInstalled(true);
       return;
     }
-
-    const handler = (e: Event) => {
-      // Prevent the default browser prompt — we'll show our own button.
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
+    // Late mount: pick up whatever the module-scope listener already captured,
+    // then follow further changes.
+    installListener();
+    const sync = () => {
+      setDeferred(stashed);
+      setInstalled(appInstalled);
     };
-
-    const installedHandler = () => {
-      setInstalled(true);
-      setDeferred(null);
-    };
-
-    window.addEventListener('beforeinstallprompt', handler);
-    window.addEventListener('appinstalled', installedHandler);
-
+    sync();
+    subscribers.add(sync);
     return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-      window.removeEventListener('appinstalled', installedHandler);
+      subscribers.delete(sync);
     };
   }, [isStandalone]);
 
   const promptInstall = useCallback(async () => {
-    if (!deferred) return;
-    deferred.prompt();
-    const { outcome } = await deferred.userChoice;
+    const prompt = deferred ?? stashed;
+    if (!prompt) return;
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
     if (outcome === 'accepted') {
+      appInstalled = true;
       setInstalled(true);
     }
     // The prompt can only be used once; clear it either way.
+    stashed = null;
     setDeferred(null);
   }, [deferred]);
 

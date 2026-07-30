@@ -7,27 +7,47 @@ import { AlertTriangle } from 'lucide-react';
  * Renders a Mermaid diagram from source. Mermaid is loaded lazily (dynamic
  * import) so it never touches the initial bundle — it only downloads when a
  * diagram actually appears in a message.
+ *
+ * While the message is still streaming, rendering is deferred entirely. A
+ * partially-streamed diagram is syntactically incomplete, so a full
+ * parse + layout + sanitize ran (and threw) on *every token*; worse, mermaid's
+ * failure path skips its own temp-node cleanup, leaving an orphaned <div> with a
+ * full error SVG attached to document.body for every failed attempt.
  */
-export function Mermaid({ code }: { code: string }) {
+export function Mermaid({ code, streaming = false }: { code: string; streaming?: boolean }) {
   const id = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+  /** Off-DOM container handed to mermaid so it never appends to document.body. */
+  const scratchRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (streaming) return;
     let cancelled = false;
     (async () => {
       try {
         const mermaid = (await import('mermaid')).default;
+        if (cancelled) return;
         mermaid.initialize({
           startOnLoad: false,
           theme: 'dark',
           securityLevel: 'strict',
           fontFamily: 'var(--font-sans)',
         });
-        const { svg } = await mermaid.render(`mermaid-${id}`, code.trim());
+        if (!scratchRef.current) {
+          const el = document.createElement('div');
+          el.style.cssText = 'position:absolute;left:-99999px;top:0;';
+          document.body.appendChild(el);
+          scratchRef.current = el;
+        }
+        const { svg: rendered } = await mermaid.render(
+          `mermaid-${id}`,
+          code.trim(),
+          scratchRef.current,
+        );
         if (!cancelled) {
-          setSvg(svg);
+          setSvg(rendered);
           setError(null);
         }
       } catch (e) {
@@ -37,7 +57,20 @@ export function Mermaid({ code }: { code: string }) {
     return () => {
       cancelled = true;
     };
-  }, [code, id]);
+  }, [code, id, streaming]);
+
+  // Remove the scratch container (and anything mermaid left inside it) on unmount.
+  useEffect(
+    () => () => {
+      scratchRef.current?.remove();
+      scratchRef.current = null;
+    },
+    [],
+  );
+
+  if (streaming) {
+    return <div className="my-4 h-32 animate-pulse rounded-xl border border-border bg-border/5" />;
+  }
 
   if (error) {
     return (
@@ -57,7 +90,7 @@ export function Mermaid({ code }: { code: string }) {
 
   return (
     <div
-      ref={ref}
+      ref={hostRef}
       className="my-4 flex justify-center overflow-x-auto rounded-xl border border-border bg-border/[0.02] p-4"
       // Mermaid output is sanitized (securityLevel: 'strict').
       dangerouslySetInnerHTML={{ __html: svg }}

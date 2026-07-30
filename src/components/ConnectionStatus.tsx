@@ -18,8 +18,23 @@ export function ConnectionStatus() {
   const online = useOnlineStatus();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attempts = useRef(0);
+  /**
+   * Generation counter. `check()` reschedules itself, so every extra entry point
+   * (mount, an `online` transition, the retry button) used to start a *second*
+   * self-perpetuating chain whose handle immediately overwrote `timer.current` —
+   * making the previous chain unreachable and therefore un-cancellable. It kept
+   * pinging every 20s forever, even after this component unmounted. Only the
+   * newest generation is allowed to continue.
+   */
+  const generation = useRef(0);
 
   const check = useCallback(async () => {
+    const gen = ++generation.current;
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+
     if (!apiConfigured()) {
       setStatus('unconfigured');
       return;
@@ -30,23 +45,36 @@ export function ConnectionStatus() {
     }
     setStatus((s) => (s === 'online' ? s : 'checking'));
     const ok = await ping();
+    // Superseded or unmounted while the ping was in flight.
+    if (gen !== generation.current) return;
     setStatus(ok ? 'online' : 'offline');
     attempts.current = ok ? 0 : attempts.current + 1;
 
-    // Backoff: 5s when healthy, growing to 30s max while retrying.
+    // Backoff: 20s when healthy, growing to 30s max while retrying.
     const delay = ok ? 20_000 : Math.min(5_000 * 2 ** (attempts.current - 1), 30_000);
     timer.current = setTimeout(check, delay);
   }, []);
 
   useEffect(() => {
+    const gen = generation;
+    const pending = timer;
     void check();
     return () => {
-      if (timer.current) clearTimeout(timer.current);
+      // Bumping the generation stops any in-flight continuation from
+      // rescheduling after unmount.
+      gen.current++;
+      if (pending.current) clearTimeout(pending.current);
     };
   }, [check]);
 
-  // Re-check immediately when the browser comes back online.
+  // Re-check immediately when the browser comes back online. `useOnlineStatus`
+  // starts at `true`, so skip the first run — the mount effect already checked.
+  const firstOnlineRun = useRef(true);
   useEffect(() => {
+    if (firstOnlineRun.current) {
+      firstOnlineRun.current = false;
+      return;
+    }
     if (online) {
       attempts.current = 0;
       void check();

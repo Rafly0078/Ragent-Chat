@@ -28,9 +28,98 @@
  */
 
 import type { GenerateRequest, SheetSpec, SlideSpec, FileSpec } from './types';
-import { isToolName } from './registry';
+import { getTool, isToolName } from './registry';
 
-const FENCE = /```artifact\s*\n([\s\S]*?)```/g;
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+function isSheetSpecArray(v: unknown): v is SheetSpec[] {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every((s) => isRecord(s) && Array.isArray(s.rows) && s.rows.every(Array.isArray))
+  );
+}
+
+function isSlideSpecArray(v: unknown): v is SlideSpec[] {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every(
+      (s) =>
+        isRecord(s) &&
+        (s.title === undefined || typeof s.title === 'string') &&
+        (s.body === undefined || typeof s.body === 'string') &&
+        (s.bullets === undefined ||
+          (Array.isArray(s.bullets) && s.bullets.every((b) => typeof b === 'string'))),
+    )
+  );
+}
+
+function isFileSpecArray(v: unknown): v is FileSpec[] {
+  return (
+    Array.isArray(v) &&
+    v.length > 0 &&
+    v.every((f) => isRecord(f) && typeof f.path === 'string' && f.path.trim() !== '')
+  );
+}
+
+/**
+ * Locate complete ```artifact blocks.
+ *
+ * Not a single regex, because the interesting case is a document that itself
+ * contains code fences. CommonMark says a bare ``` closes an outer 3-backtick
+ * block, so `/```artifact\s*\n([\s\S]*?)```/` stopped at the first nested
+ * closing fence and silently truncated the file (asking for a Markdown or PDF
+ * doc that documents code is routine). The prompt now tells the model to use a
+ * longer outer fence, and this scanner additionally tracks nested fences so the
+ * common 3-backtick mistake still parses correctly.
+ */
+interface FenceMatch {
+  body: string;
+  /** Line index of the opening fence. */
+  from: number;
+  /** Line index of the closing fence. */
+  to: number;
+}
+
+const OPEN_RE = /^[ \t]*(`{3,})artifact[ \t]*$/;
+const FENCE_LINE_RE = /^[ \t]*(`{3,})[ \t]*(\S.*)?$/;
+
+function findArtifactFences(text: string): { lines: string[]; matches: FenceMatch[] } {
+  const lines = text.split('\n');
+  const matches: FenceMatch[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const open = OPEN_RE.exec(lines[i]!);
+    if (!open) continue;
+    const openTicks = open[1]!.length;
+
+    // Walk forward. A fence line WITH an info string opens a nested block; a
+    // bare fence line closes the innermost open block, or — at depth 0 and long
+    // enough — the artifact block itself.
+    let depth = 0;
+    let close = -1;
+    for (let j = i + 1; j < lines.length; j++) {
+      const f = FENCE_LINE_RE.exec(lines[j]!);
+      if (!f) continue;
+      if (f[2]) {
+        depth++;
+      } else if (depth > 0) {
+        depth--;
+      } else if (f[1]!.length >= openTicks) {
+        close = j;
+        break;
+      }
+    }
+    if (close === -1) continue; // unterminated — not a complete directive yet
+
+    matches.push({ body: lines.slice(i + 1, close).join('\n'), from: i, to: close });
+    i = close;
+  }
+
+  return { lines, matches };
+}
 
 export interface DetectResult {
   /** Valid generation requests found in the text. */
@@ -92,7 +181,12 @@ function parseDirective(rawBody: string): GenerateRequest | null {
   if (body.startsWith('{')) {
     try {
       const parsed = JSON.parse(body) as GenerateRequest;
-      if (parsed && typeof parsed.tool === 'string' && isToolName(parsed.tool)) {
+      if (
+        parsed &&
+        typeof parsed.tool === 'string' &&
+        isToolName(parsed.tool) &&
+        !getTool(parsed.tool)?.future
+      ) {
         return parsed;
       }
     } catch {
@@ -101,20 +195,33 @@ function parseDirective(rawBody: string): GenerateRequest | null {
   }
 
   // Preferred shape: header lines, a line with only "---", then raw body.
-  const sep = body.match(/\n[ \t]*---[ \t]*\n/);
-  if (!sep || sep.index === undefined) return null;
-
-  const header = body.slice(0, sep.index);
-  const content = body.slice(sep.index + sep[0].length).trim();
-
+  // Header lines are consumed from the top and the separator must be the first
+  // line that isn't `key: value` (or blank). Taking the *first* "---" anywhere in
+  // the body meant a document with a horizontal rule and a forgotten separator
+  // had its real opening content silently parsed as headers and discarded.
+  const lines = body.split('\n');
   const fields: Record<string, string> = {};
-  for (const line of header.split('\n')) {
+  let sepAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim() === '') continue;
+    if (/^[ \t]*---[ \t]*$/.test(line)) {
+      sepAt = i;
+      break;
+    }
     const m = line.match(/^\s*([a-zA-Z_]+)\s*:\s*(.*)$/);
-    if (m) fields[m[1]!.toLowerCase()] = m[2]!.trim();
+    if (!m) break; // real content before any separator — malformed directive
+    fields[m[1]!.toLowerCase()] = m[2]!.trim();
   }
+  if (sepAt === -1) return null;
+
+  const content = lines.slice(sepAt + 1).join('\n').trim();
 
   const tool = fields.tool;
   if (!tool || !isToolName(tool)) return null;
+  // Tools flagged `future` have no executor; accepting one strips the block from
+  // the message and then 400s, so the user loses the content and gets an error.
+  if (getTool(tool)?.future) return null;
 
   const req: GenerateRequest = { tool };
   if (fields.name) req.name = fields.name;
@@ -124,14 +231,15 @@ function parseDirective(rawBody: string): GenerateRequest | null {
     req.rows = parseCsvBody(content);
   } else if (tool === 'create_xlsx' || tool === 'create_pptx' || tool === 'zip_project') {
     // These *can* take structured JSON (sheets/slides/files) in the body.
-    // If it's not JSON, fall back to plain content — create_pptx derives
-    // slides from Markdown headings/bullets, create_xlsx/zip_project fall
-    // back to a single sheet / README respectively.
+    // If it's not JSON — or the shape is wrong — fall back to plain content.
+    // Casting unvalidated JSON straight through meant a malformed array
+    // (`rows` as an object, a file entry with no `path`) reached the executor
+    // and surfaced as a 500 with a message like "rows.map is not a function".
     try {
       const parsedBody = JSON.parse(content) as unknown;
-      if (tool === 'create_xlsx' && Array.isArray(parsedBody)) req.sheets = parsedBody as SheetSpec[];
-      else if (tool === 'create_pptx' && Array.isArray(parsedBody)) req.slides = parsedBody as SlideSpec[];
-      else if (tool === 'zip_project' && Array.isArray(parsedBody)) req.files = parsedBody as FileSpec[];
+      if (tool === 'create_xlsx' && isSheetSpecArray(parsedBody)) req.sheets = parsedBody;
+      else if (tool === 'create_pptx' && isSlideSpecArray(parsedBody)) req.slides = parsedBody;
+      else if (tool === 'zip_project' && isFileSpecArray(parsedBody)) req.files = parsedBody;
       else req.content = content;
     } catch {
       req.content = content;
@@ -149,23 +257,29 @@ export function detectArtifacts(text: string): DetectResult {
   }
 
   const requests: GenerateRequest[] = [];
-  let found = false;
+  const { lines, matches } = findArtifactFences(text);
+  if (matches.length === 0) {
+    return { requests: [], cleaned: text, found: false };
+  }
 
-  const cleaned = text.replace(FENCE, (whole, rawBody: string) => {
-    found = true;
-    const parsed = parseDirective(rawBody);
-    if (parsed) {
-      requests.push(parsed);
-      return ''; // strip recognized directive from display
-    }
-    return whole; // malformed — keep visible so nothing is silently lost
-  });
+  // Rebuild the message, dropping the blocks we recognized and keeping the ones
+  // we couldn't parse visible so nothing is silently lost.
+  const out: string[] = [];
+  let cursor = 0;
+  for (const match of matches) {
+    out.push(...lines.slice(cursor, match.from));
+    const parsed = parseDirective(match.body);
+    if (parsed) requests.push(parsed);
+    else out.push(...lines.slice(match.from, match.to + 1));
+    cursor = match.to + 1;
+  }
+  out.push(...lines.slice(cursor));
 
-  return { requests, cleaned: cleaned.trim(), found };
+  return { requests, cleaned: out.join('\n').trim(), found: true };
 }
 
 /** True when a (possibly still-streaming) text contains a complete directive. */
 export function hasCompleteDirective(text: string): boolean {
-  FENCE.lastIndex = 0;
-  return FENCE.test(text);
+  if (!text.includes('```artifact')) return false;
+  return findArtifactFences(text).matches.length > 0;
 }

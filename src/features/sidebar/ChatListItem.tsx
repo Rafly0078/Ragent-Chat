@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   Check,
@@ -14,19 +14,31 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import type { Conversation } from '@/types';
 import { useChatStore } from '@/lib/store/chat-store';
 import { conversationToMarkdown, downloadText, slugify } from '@/lib/utils/export';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils/cn';
 
 interface Props {
-  conversation: Conversation;
+  /**
+   * Only the fields the row displays. The full conversation (with every message)
+   * is read from the store on demand — passing it as a prop meant a new object
+   * identity on every streamed token, re-rendering the whole list.
+   */
+  id: string;
+  title: string;
+  pinned: boolean;
   active: boolean;
   onSelect: () => void;
 }
 
-export function ChatListItem({ conversation, active, onSelect }: Props) {
+export const ChatListItem = memo(function ChatListItem({
+  id,
+  title,
+  pinned,
+  active,
+  onSelect,
+}: Props) {
   const renameConversation = useChatStore((s) => s.renameConversation);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const togglePin = useChatStore((s) => s.togglePin);
@@ -34,7 +46,7 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
   const { toast } = useToast();
 
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(conversation.title);
+  const [draft, setDraft] = useState(title);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -61,16 +73,22 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
 
   const commit = () => {
     setEditing(false);
-    if (draft.trim()) renameConversation(conversation.id, draft);
-    else setDraft(conversation.title);
+    if (draft.trim()) renameConversation(id, draft);
+    else setDraft(title);
+  };
+
+  const exportMarkdown = () => {
+    const convo = useChatStore.getState().conversations.find((c) => c.id === id);
+    if (!convo) return;
+    downloadText(`${slugify(convo.title)}.md`, conversationToMarkdown(convo), 'text/markdown');
+    toast('Exported as Markdown', 'success');
+    setMenuOpen(false);
   };
 
   return (
     <m.div
-      layout
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, height: 0, marginTop: 0, marginBottom: 0 }}
       transition={{ duration: 0.18 }}
       className={cn(
         'group/item relative flex items-center gap-1 rounded-md border-2 border-transparent py-1 pl-2.5 pr-1 text-sm transition-colors',
@@ -82,7 +100,7 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
         className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
         aria-current={active}
       >
-        {conversation.pinned ? (
+        {pinned ? (
           <Pin className="h-3.5 w-3.5 shrink-0 text-accent" />
         ) : (
           <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
@@ -97,7 +115,7 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
             onKeyDown={(e) => {
               if (e.key === 'Enter') commit();
               if (e.key === 'Escape') {
-                setDraft(conversation.title);
+                setDraft(title);
                 setEditing(false);
               }
             }}
@@ -111,7 +129,7 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
               setEditing(true);
             }}
           >
-            {conversation.title}
+            {title}
           </span>
         )}
       </button>
@@ -154,37 +172,25 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
                       icon={Pencil}
                       label="Rename"
                       onClick={() => {
-                        setDraft(conversation.title);
+                        setDraft(title);
                         setEditing(true);
                         setMenuOpen(false);
                       }}
                     />
                     <MenuRow
-                      icon={conversation.pinned ? PinOff : Pin}
-                      label={conversation.pinned ? 'Unpin' : 'Pin'}
+                      icon={pinned ? PinOff : Pin}
+                      label={pinned ? 'Unpin' : 'Pin'}
                       onClick={() => {
-                        togglePin(conversation.id);
+                        togglePin(id);
                         setMenuOpen(false);
                       }}
                     />
-                    <MenuRow
-                      icon={Download}
-                      label="Export Markdown"
-                      onClick={() => {
-                        downloadText(
-                          `${slugify(conversation.title)}.md`,
-                          conversationToMarkdown(conversation),
-                          'text/markdown',
-                        );
-                        toast('Exported as Markdown', 'success');
-                        setMenuOpen(false);
-                      }}
-                    />
+                    <MenuRow icon={Download} label="Export Markdown" onClick={exportMarkdown} />
                     <MenuRow
                       icon={Copy}
                       label="Duplicate"
                       onClick={() => {
-                        duplicate(conversation.id);
+                        duplicate(id);
                         setMenuOpen(false);
                       }}
                     />
@@ -202,7 +208,7 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => {
-                          deleteConversation(conversation.id);
+                          deleteConversation(id);
                           setMenuOpen(false);
                         }}
                         className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-error/15 text-xs font-medium text-error hover:bg-error/25"
@@ -225,7 +231,7 @@ export function ChatListItem({ conversation, active, onSelect }: Props) {
       )}
     </m.div>
   );
-}
+});
 
 function MenuRow({
   icon: Icon,

@@ -90,7 +90,7 @@ function makeComponents(streaming: boolean): Components {
 
       const lang = match?.[1];
       if (lang === 'mermaid') {
-        return <Mermaid code={raw} />;
+        return <Mermaid code={raw} streaming={streaming} />;
       }
       if (lang === 'artifact') {
         return <ArtifactDirectiveNotice raw={raw} streaming={streaming} />;

@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
+import { useShallow } from 'zustand/react/shallow';
 import Link from 'next/link';
 import { Plus, Search, Settings2, X } from 'lucide-react';
 import { useChatStore } from '@/lib/store/chat-store';
 import { useSettings } from '@/lib/store/settings-store';
 import { ChatListItem } from './ChatListItem';
 import { dateBucket } from '@/lib/utils/format';
-import type { Conversation } from '@/types';
+import { useHydrated } from '@/lib/hooks/use-hydrated';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 
 interface Props {
@@ -19,17 +20,42 @@ interface Props {
 
 const SIDEBAR_WIDTH = 288;
 
+/** The only fields the sidebar list needs. */
+interface Row {
+  id: string;
+  title: string;
+  pinned: boolean;
+  updatedAt: number;
+}
+
 export function Sidebar({ open, onClose, onNewChat }: Props) {
-  const conversations = useChatStore((s) => s.conversations);
+  /**
+   * A shallow-compared projection instead of the whole `conversations` array.
+   * `appendToMessage` returns a new array per streamed token, so subscribing to
+   * the array identity re-rendered the entire sidebar — and re-ran the full
+   * filter + sort + bucket rebuild — on every token. The projected fields don't
+   * change while tokens stream, so this render is skipped entirely.
+   */
+  const rows = useChatStore(
+    useShallow((s) =>
+      s.conversations.map<Row>((c) => ({
+        id: c.id,
+        title: typeof c.title === 'string' ? c.title : 'Untitled',
+        pinned: c.pinned === true,
+        updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : 0,
+      })),
+    ),
+  );
   const activeId = useChatStore((s) => s.activeId);
   const setActive = useChatStore((s) => s.setActive);
   const query = useChatStore((s) => s.searchQuery);
   const setQuery = useChatStore((s) => s.setSearchQuery);
   const defaultModel = useSettings((s) => s.defaultModel);
   const isMobile = useIsMobile();
+  const hydrated = useHydrated();
 
-  // Debounce the raw query so the expensive filterAndGroup (which scans every
-  // message body across all conversations) doesn't run on every keystroke.
+  // Debounce the raw query so the expensive message-body scan doesn't run on
+  // every keystroke.
   const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQuery(query), 150);
@@ -37,8 +63,8 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
   }, [query]);
 
   const { pinned, groups } = useMemo(
-    () => filterAndGroup(conversations, debouncedQuery),
-    [conversations, debouncedQuery],
+    () => filterAndGroup(rows, debouncedQuery),
+    [rows, debouncedQuery],
   );
 
   const select = (id: string) => {
@@ -95,43 +121,48 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 
       {/* List */}
       <nav className="scrollbar-thin flex-1 overflow-y-auto px-3 pb-3" aria-label="Conversations">
-        {conversations.length === 0 && (
+        {/* Gated on hydration: the store rehydrates from localStorage before the
+            first client render, so rendering this straight from persisted state
+            produced a server/client mismatch in guest-only deployments. */}
+        {hydrated && rows.length === 0 && (
           <p className="px-3 py-8 text-center text-sm text-content-subtle">
             No conversations yet. Start a new chat to begin.
           </p>
         )}
-        {conversations.length > 0 && pinned.length === 0 && groups.length === 0 && (
+        {hydrated && rows.length > 0 && pinned.length === 0 && groups.length === 0 && (
           <p className="px-3 py-8 text-center text-sm text-content-subtle">
             No chats match “{query}”.
           </p>
         )}
 
-        <AnimatePresence initial={false}>
-          {pinned.length > 0 && (
-            <Section key="pinned" title="Pinned">
-              {pinned.map((c) => (
-                <ChatListItem
-                  key={c.id}
-                  conversation={c}
-                  active={c.id === activeId}
-                  onSelect={() => select(c.id)}
-                />
-              ))}
-            </Section>
-          )}
-          {groups.map(([bucket, items]) => (
-            <Section key={bucket} title={bucket}>
-              {items.map((c) => (
-                <ChatListItem
-                  key={c.id}
-                  conversation={c}
-                  active={c.id === activeId}
-                  onSelect={() => select(c.id)}
-                />
-              ))}
-            </Section>
-          ))}
-        </AnimatePresence>
+        {pinned.length > 0 && (
+          <Section title="Pinned">
+            {pinned.map((c) => (
+              <ChatListItem
+                key={c.id}
+                id={c.id}
+                title={c.title}
+                pinned={c.pinned}
+                active={c.id === activeId}
+                onSelect={() => select(c.id)}
+              />
+            ))}
+          </Section>
+        )}
+        {groups.map(([bucket, items]) => (
+          <Section key={bucket} title={bucket}>
+            {items.map((c) => (
+              <ChatListItem
+                key={c.id}
+                id={c.id}
+                title={c.title}
+                pinned={c.pinned}
+                active={c.id === activeId}
+                onSelect={() => select(c.id)}
+              />
+            ))}
+          </Section>
+        ))}
       </nav>
 
       {/* Footer */}
@@ -199,12 +230,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function filterAndGroup(conversations: Conversation[], query: string) {
+function filterAndGroup(rows: Row[], query: string) {
   const q = query.trim().toLowerCase();
-  const matches = conversations.filter((c) => {
+  // Message bodies are read non-reactively: subscribing to them would undo the
+  // whole point of the projection above. The memo re-runs whenever a title/pin/
+  // updatedAt changes, and `updateMessage` bumps `updatedAt`, so results stay
+  // current — only the tokens of a still-streaming reply aren't searchable yet.
+  const bodies = q
+    ? new Map(
+        useChatStore
+          .getState()
+          .conversations.map((c) => [
+            c.id,
+            (c.messages ?? []).map((m) => m.content ?? '').join('\n').toLowerCase(),
+          ]),
+      )
+    : null;
+
+  const matches = rows.filter((c) => {
     if (!q) return true;
     if (c.title.toLowerCase().includes(q)) return true;
-    return c.messages.some((m) => m.content.toLowerCase().includes(q));
+    return bodies?.get(c.id)?.includes(q) ?? false;
   });
 
   const pinned = matches
@@ -215,7 +261,7 @@ function filterAndGroup(conversations: Conversation[], query: string) {
     .filter((c) => !c.pinned)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 
-  const bucketMap = new Map<string, Conversation[]>();
+  const bucketMap = new Map<string, Row[]>();
   for (const c of unpinned) {
     const bucket = dateBucket(c.updatedAt);
     const arr = bucketMap.get(bucket) ?? [];

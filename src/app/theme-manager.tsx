@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ACCENT_PRESETS } from '@/lib/store/defaults';
 import { useSettings } from '@/lib/store/settings-store';
-import { useMediaQuery } from '@/lib/hooks/use-media-query';
 import { setApiOverride, setConnectionMode } from '@/lib/api/config';
+
+const DARK_QUERY = '(prefers-color-scheme: dark)';
 
 /**
  * Applies theme (dark/light/system) and accent color to the document root by
@@ -16,7 +17,26 @@ export function ThemeManager({ children }: { children: React.ReactNode }) {
   const accent = useSettings((s) => s.accent);
   const apiUrlOverride = useSettings((s) => s.apiUrlOverride);
   const connectionMode = useSettings((s) => s.connectionMode);
-  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
+  /**
+   * Read straight from `matchMedia` in a lazy initializer rather than through
+   * `useMediaQuery`, which is SSR-safe-false by design. With `false` on the
+   * first client render, a `system` theme on a dark device got toggled to
+   * `light` and then back to `dark` — re-introducing the exact flash the
+   * NO_FLASH_THEME script in layout.tsx exists to prevent. Nothing renders
+   * differently from this value (it only drives a classList toggle in an
+   * effect), so there is no hydration mismatch.
+   */
+  const [prefersDark, setPrefersDark] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(DARK_QUERY).matches,
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia(DARK_QUERY);
+    const update = () => setPrefersDark(mql.matches);
+    update();
+    mql.addEventListener('change', update);
+    return () => mql.removeEventListener('change', update);
+  }, []);
 
   useEffect(() => {
     setApiOverride(apiUrlOverride);

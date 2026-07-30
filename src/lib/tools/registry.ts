@@ -19,7 +19,10 @@ export const TOOLS: ToolMeta[] = [
   { name: 'create_xml',  label: 'XML',        description: 'Generate an XML file.',                       category: 'document', produces: 'xml',  server: true },
   { name: 'create_txt',  label: 'Text',       description: 'Generate a plain-text file.',                 category: 'document', produces: 'txt',  server: true },
   { name: 'zip_project', label: 'Project ZIP', description: 'Bundle multiple files into a ZIP archive.',  category: 'export',   produces: 'zip',  server: true },
-  { name: 'export_chat', label: 'Export chat', description: 'Export the conversation as a document.',     category: 'export',   produces: 'md',   server: true },
+  // No executor yet (see executors/index.ts). Marked `future` so the directive
+  // parser rejects it instead of stripping the block and then 400ing — which
+  // lost the message content and showed "Unknown tool: export_chat".
+  { name: 'export_chat', label: 'Export chat', description: 'Export the conversation as a document.',     category: 'export',   produces: 'md',   server: true, future: true },
 ];
 
 const BY_NAME = new Map<ToolName, ToolMeta>(TOOLS.map((t) => [t.name, t]));

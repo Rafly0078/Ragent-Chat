@@ -41,13 +41,21 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  /** Element to restore focus to when the palette closes. */
+  const restoreFocus = useRef<Element | null>(null);
 
   useEffect(() => {
     if (open) {
+      restoreFocus.current = document.activeElement;
       setQuery('');
       setCursor(0);
       requestAnimationFrame(() => inputRef.current?.focus());
+      return;
     }
+    // Focus was left on <body> after closing, so keyboard users lost their place.
+    const previous = restoreFocus.current;
+    if (previous instanceof HTMLElement) previous.focus();
+    restoreFocus.current = null;
   }, [open]);
 
   const items = useMemo<Item[]>(() => {
@@ -80,17 +88,36 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
   }, [conversations, query, theme, onClose, onNewChat, router, setActive, setTheme]);
 
   useEffect(() => {
-    setCursor((c) => Math.min(c, Math.max(0, items.length - 1)));
+    // NaN-safe: `Math.min(NaN, n)` is NaN, so once the cursor went bad it could
+    // never recover (see the arrow-key guards below).
+    setCursor((c) => (Number.isFinite(c) ? Math.min(c, Math.max(0, items.length - 1)) : 0));
   }, [items.length]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      // The palette advertises ESC but had no handler, and the global shortcut
+      // ignores keys pressed inside a field — so focus being in this input made
+      // Escape a no-op and Ctrl/Cmd+K the only way out.
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setCursor((c) => (c + 1) % items.length);
+      // `1 % 0` is NaN. With no results, one arrow press permanently broke
+      // selection: no row highlighted and Enter did nothing for the rest of the
+      // session.
+      if (items.length === 0) return;
+      setCursor((c) => ((Number.isFinite(c) ? c : -1) + 1) % items.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setCursor((c) => (c - 1 + items.length) % items.length);
+      if (items.length === 0) return;
+      setCursor((c) => ((Number.isFinite(c) ? c : 0) - 1 + items.length) % items.length);
     } else if (e.key === 'Enter') {
+      // Only from the search field — a focused list button already runs its own
+      // onClick, and handling both would fire the command twice.
+      if (e.target !== inputRef.current) return;
       e.preventDefault();
       items[cursor]?.run();
     }
@@ -99,7 +126,11 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[95] flex items-start justify-center p-4 pt-[12vh]">
+        <div
+          className="fixed inset-0 z-[95] flex items-start justify-center p-4 pt-[12vh]"
+          // Keep Escape working even if focus wandered out of the input.
+          onKeyDown={onKeyDown}
+        >
           <m.div
             className="absolute inset-0 bg-black/70"
             initial={{ opacity: 0 }}
@@ -123,7 +154,6 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={onKeyDown}
                 placeholder="Search chats or run a command…"
                 className="h-12 flex-1 bg-transparent text-sm text-content outline-none placeholder:text-content-subtle"
                 aria-label="Command palette search"

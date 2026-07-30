@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useId, useRef } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils/cn';
+
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export function Modal({
   open,
@@ -25,6 +28,11 @@ export function Modal({
   /** Set false for a mandatory dialog: no X button, no Escape, no backdrop click. */
   dismissible?: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const restoreFocus = useRef<Element | null>(null);
+  const headingId = useId();
+  const descriptionId = useId();
+
   // Close on Escape and lock body scroll while open.
   useEffect(() => {
     if (!open) return;
@@ -43,6 +51,52 @@ export function Modal({
     };
   }, [open, onClose, dismissible]);
 
+  /**
+   * Focus management. The panel declared `aria-modal="true"` but never moved
+   * focus into itself, never trapped Tab, and never restored focus on close — so
+   * keyboard and screen-reader users kept traversing the page *behind* the
+   * backdrop, and after closing, focus sat on <body>. Six dialogs share this
+   * component, including the mandatory sign-in wall.
+   */
+  useEffect(() => {
+    if (!open) return;
+    restoreFocus.current = document.activeElement;
+    const panel = panelRef.current;
+    // Prefer the first natural control (e.g. a text input); fall back to the
+    // panel itself, which carries tabIndex={-1}.
+    const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
+    (first ?? panel)?.focus();
+
+    return () => {
+      const previous = restoreFocus.current;
+      restoreFocus.current = null;
+      if (previous instanceof HTMLElement) previous.focus();
+    };
+  }, [open]);
+
+  const onPanelKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'Tab') return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+      (el) => el.offsetParent !== null,
+    );
+    if (focusable.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === panel)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, []);
+
   return (
     <AnimatePresence>
       {open && (
@@ -55,24 +109,34 @@ export function Modal({
             onClick={dismissible ? onClose : undefined}
           />
           <m.div
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
-            aria-label={title}
+            tabIndex={-1}
+            {...(title ? { 'aria-labelledby': headingId } : { 'aria-label': 'Dialog' })}
+            {...(description ? { 'aria-describedby': descriptionId } : {})}
+            onKeyDown={onPanelKeyDown}
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             className={cn(
-              'popover relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl pb-[env(safe-area-inset-bottom)] shadow-card sm:max-w-lg sm:rounded-3xl sm:pb-0',
+              'popover relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl pb-[env(safe-area-inset-bottom)] shadow-card outline-none sm:max-w-lg sm:rounded-3xl sm:pb-0',
               className,
             )}
           >
             {(title || description) && (
               <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
                 <div>
-                  {title && <h2 className="text-lg font-semibold text-content">{title}</h2>}
+                  {title && (
+                    <h2 id={headingId} className="text-lg font-semibold text-content">
+                      {title}
+                    </h2>
+                  )}
                   {description && (
-                    <p className="mt-0.5 text-sm text-content-muted">{description}</p>
+                    <p id={descriptionId} className="mt-0.5 text-sm text-content-muted">
+                      {description}
+                    </p>
                   )}
                 </div>
                 {dismissible && (

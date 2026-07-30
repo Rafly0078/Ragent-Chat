@@ -33,7 +33,7 @@ import { uid } from '@/lib/utils/id';
 import { usePWAInstall } from '@/lib/hooks/use-pwa-install';
 import { cn } from '@/lib/utils/cn';
 import { AccountSection } from '@/features/auth/AccountSection';
-import type { Conversation, PromptPreset } from '@/types';
+import type { PromptPreset } from '@/types';
 
 type SectionId = 'account' | 'appearance' | 'connection' | 'prompt' | 'params' | 'app' | 'data';
 
@@ -81,7 +81,7 @@ export default function SettingsPage() {
 
   const importSettings = async (file: File) => {
     try {
-      const data = JSON.parse(await file.text());
+      const data: unknown = JSON.parse(await file.text());
       s.importSettings(data);
       toast('Settings imported', 'success');
     } catch {
@@ -95,14 +95,23 @@ export default function SettingsPage() {
   };
 
   const importChats = async (file: File) => {
+    let data: unknown;
     try {
-      const data = JSON.parse(await file.text()) as Conversation[];
-      if (!Array.isArray(data)) throw new Error();
-      importConversations(data, false);
-      toast(`Imported ${data.length} conversations`, 'success');
+      data = JSON.parse(await file.text());
     } catch {
       toast('Invalid conversations file', 'error');
+      return;
     }
+    // The store validates and coerces, and reports how many survived. A file
+    // that parses as JSON but holds nothing usable used to be written straight
+    // into the store — and localStorage — where it crashed the sidebar on every
+    // render, including after a reload.
+    const imported = importConversations(data, false);
+    if (imported === 0) {
+      toast('No valid conversations found in that file', 'error');
+      return;
+    }
+    toast(`Imported ${imported} conversation${imported === 1 ? '' : 's'}`, 'success');
   };
 
   if (!hydrated) return <div className="min-h-[100dvh]" />;
@@ -614,8 +623,8 @@ function InstallAppSection() {
         <div className="flex-1">
           <p className="text-sm font-medium text-content">Install Ollama Chat</p>
           <p className="text-xs text-content-muted">
-            Install this app on your device for quick access. It works offline, opens in its own
-            window, and feels like a native app.
+            Install this app on your device for quick access — it opens in its own window and feels
+            like a native app. It still needs a connection to reach your models.
           </p>
         </div>
       </div>

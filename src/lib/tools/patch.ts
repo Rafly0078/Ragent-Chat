@@ -25,7 +25,13 @@
  * This module is pure and browser-safe — no server-only imports.
  */
 
-const FENCE = /```codepatch\s*\n([\s\S]*?)```/g;
+const FENCE = /(`{3,})codepatch[ \t]*\n([\s\S]*?)\1/g;
+
+/** Fence long enough to hold `body` — a patched file containing ``` used to close it early. */
+function fenceFor(body: string): string {
+  const longest = [...body.matchAll(/`+/g)].reduce((max, m) => Math.max(max, m[0].length), 2);
+  return '`'.repeat(longest + 1);
+}
 
 /** A single search→replace hunk. */
 export interface PatchHunk {
@@ -82,7 +88,7 @@ export function detectPatches(text: string): DetectPatchResult {
   const patches: PatchDirective[] = [];
   let found = false;
 
-  const cleaned = text.replace(FENCE, (whole, rawBody: string) => {
+  const cleaned = text.replace(FENCE, (whole, _fence: string, rawBody: string) => {
     found = true;
     const parsed = parseDirective(rawBody);
     if (parsed) {
@@ -153,20 +159,35 @@ export interface CodeBlock {
   code: string;
 }
 
-// Fenced code blocks, excluding our own special fences (artifact/codepatch) so
-// we never treat a directive as a source file to patch.
-const CODE_FENCE = /```([a-zA-Z0-9+#._-]*)\s*\n([\s\S]*?)```/g;
+// Fenced code blocks. Longer opening fences are matched with a backreference so a
+// block containing ``` inside it round-trips.
+const CODE_FENCE = /(`{3,})([a-zA-Z0-9+#._-]*)[ \t]*\n([\s\S]*?)\1/g;
 
-/** Extract ordinary fenced code blocks from a markdown message. */
+/**
+ * Extract fenced code blocks from a markdown message.
+ *
+ * `artifact` fences are always skipped (a directive is not a source file). A
+ * `codepatch` fence contributes its *patched result* when it has one: after
+ * `enrichPatches` runs, the corrected code exists only inside that fence, so
+ * skipping it entirely meant a follow-up patch anchored on code that no longer
+ * existed (every subsequent patch reported "couldn't auto-apply") and the
+ * sandbox preview kept rendering the pre-patch version.
+ */
 export function extractCodeBlocks(text: string): CodeBlock[] {
   if (!text) return [];
   const blocks: CodeBlock[] = [];
   CODE_FENCE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = CODE_FENCE.exec(text)) !== null) {
-    const lang = (m[1] ?? '').toLowerCase();
-    if (lang === 'artifact' || lang === 'codepatch') continue;
-    blocks.push({ lang: lang || undefined, code: (m[2] ?? '').replace(/\n$/, '') });
+    const lang = (m[2] ?? '').toLowerCase();
+    const body = (m[3] ?? '').replace(/\n$/, '');
+    if (lang === 'artifact') continue;
+    if (lang === 'codepatch') {
+      const parsed = parsePatchBlock(m[3] ?? '');
+      if (parsed?.result) blocks.push({ lang: parsed.lang, code: parsed.result });
+      continue;
+    }
+    blocks.push({ lang: lang || undefined, code: body });
   }
   return blocks;
 }
@@ -209,7 +230,7 @@ export function enrichPatches(content: string, priorCode: string[]): EnrichResul
   let found = false;
   let applied = false;
 
-  const next = content.replace(FENCE, (whole, rawBody: string) => {
+  const next = content.replace(FENCE, (whole, _fence: string, rawBody: string) => {
     const directive = parseDirective(rawBody);
     if (!directive) return whole; // malformed — leave as-is
     found = true;
@@ -221,7 +242,9 @@ export function enrichPatches(content: string, priorCode: string[]): EnrichResul
     const located = locateAndApply(priorCode, directive.hunks);
     if (!located) return whole; // couldn't find source; keep bare hunks
     applied = true;
-    return '```codepatch\n' + buildEnrichedBody(directive, located.result) + '\n```';
+    const body = buildEnrichedBody(directive, located.result);
+    const fence = fenceFor(body);
+    return `${fence}codepatch\n${body}\n${fence}`;
   });
 
   return { content: next, found, applied };
@@ -262,9 +285,18 @@ export function applyPatch(source: string, hunks: PatchHunk[]): ApplyResult {
       continue;
     }
 
-    // 1. Exact substring match.
+    // 1. Exact substring match — but only when it is UNIQUE. A non-unique SEARCH
+    //    ("}", "</div>", a repeated useState line) silently rewrote the first
+    //    occurrence even when the model meant a later one, and the rendered diff
+    //    is derived from the hunk rather than the source, so it looked correct
+    //    while the emitted code was wrong. Ambiguity is a failure: the UI then
+    //    tells the user to apply it manually.
     const exactIdx = result.indexOf(hunk.search);
     if (exactIdx !== -1) {
+      if (result.indexOf(hunk.search, exactIdx + 1) !== -1) {
+        failed.push(hunk);
+        continue;
+      }
       result = result.slice(0, exactIdx) + hunk.replace + result.slice(exactIdx + hunk.search.length);
       applied.push(hunk);
       continue;
@@ -272,18 +304,21 @@ export function applyPatch(source: string, hunks: PatchHunk[]): ApplyResult {
 
     // 2. Whitespace-tolerant match over consecutive lines. Slide a window the
     //    size of the SEARCH block across the source and compare normalized.
+    //    Same uniqueness rule applies.
     const srcLines = result.split('\n');
     const searchLines = hunk.search.split('\n');
     const wantNorm = normalize(hunk.search);
     let matchedAt = -1;
+    let matchCount = 0;
     for (let i = 0; i + searchLines.length <= srcLines.length; i++) {
       const window = srcLines.slice(i, i + searchLines.length).join('\n');
       if (normalize(window) === wantNorm) {
+        matchCount++;
+        if (matchCount > 1) break;
         matchedAt = i;
-        break;
       }
     }
-    if (matchedAt !== -1) {
+    if (matchedAt !== -1 && matchCount === 1) {
       const before = srcLines.slice(0, matchedAt).join('\n');
       const after = srcLines.slice(matchedAt + searchLines.length).join('\n');
       const joinBefore = before ? before + '\n' : '';

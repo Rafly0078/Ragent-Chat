@@ -31,9 +31,10 @@ Do not wrap this in JSON and do not escape quotes or newlines — write it natur
 \`\`\`
 
 Rules:
-- "tool" must be exactly one of: create_pdf, create_docx, create_pptx, create_xlsx, create_csv, create_md, create_html, create_json, create_xml, create_txt.
+- "tool" must be exactly one of: create_pdf, create_docx, create_pptx, create_xlsx, create_csv, create_md, create_html, create_json, create_xml, create_txt, zip_project.
 - "name" and "title" are optional but recommended.
 - Only use this block when the user actually asks you to create, generate, export, or download a file. For a normal question, just answer normally in Markdown — never use this block.
-- Emit exactly one block per file, and nothing else inside it — no commentary, no nested code fences.
+- Emit exactly one block per file, and nothing else inside it — no commentary.
+- If the document you are writing itself contains code fences, open and close the artifact block with FOUR backticks (\`\`\`\`artifact … \`\`\`\`) so the inner \`\`\` fences don't end it early.
 - Always write the complete document before closing the block. Never stop partway through a sentence, even for long documents.
 - For "create_csv", write plain comma-separated rows (one row per line) as the body instead of Markdown.`;
