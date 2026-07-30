@@ -33,10 +33,15 @@ export interface Span {
   href?: string;
 }
 
-/** Strip common inline Markdown so plain renderers show clean text. */
+/**
+ * Strip common inline Markdown so plain renderers show clean text.
+ * Link destinations are appended in parentheses — dropping `href` meant the TXT
+ * export lost every hyperlink target, since it uses this for paragraphs, list
+ * items, quotes, headings and table cells alike.
+ */
 export function stripInline(s: string): string {
   return parseInline(s)
-    .map((sp) => sp.text)
+    .map((sp) => (sp.href && sp.href !== sp.text ? `${sp.text} (${sp.href})` : sp.text))
     .join('')
     .trim();
 }
@@ -46,7 +51,7 @@ type Style = Omit<Span, 'text'>;
 interface Token {
   index: number;
   length: number;
-  kind: 'code' | 'link' | 'bold' | 'italic' | 'strike';
+  kind: 'code' | 'link' | 'image' | 'bold' | 'italic' | 'strike';
   inner: string;
   href?: string;
 }
@@ -56,6 +61,9 @@ interface Token {
 // `**x**` isn't mis-read as italic `*` + `*x*`.
 const INLINE_PATTERNS: Array<{ kind: Token['kind']; re: RegExp; underscore?: boolean }> = [
   { kind: 'code', re: /`([^`]+)`/ },
+  // Images before links: the link pattern matches `![alt](url)` from index 1, so
+  // without this the `!` was emitted as stray text and the image vanished.
+  { kind: 'image', re: /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/ },
   { kind: 'link', re: /\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/ },
   { kind: 'bold', re: /\*\*(\S(?:.*?\S)?)\*\*/ },
   { kind: 'bold', re: /__(\S(?:.*?\S)?)__/, underscore: true },
@@ -85,8 +93,10 @@ function nextToken(s: string): Token | null {
         index: m.index,
         length: m[0].length,
         kind,
-        inner: kind === 'link' ? (m[1] ?? '') : (m[1] ?? ''),
-        href: kind === 'link' ? m[2] : undefined,
+        // For a link/image with empty text, fall back to the destination —
+        // `[](url)` used to emit nothing at all, losing both label and URL.
+        inner: kind === 'link' || kind === 'image' ? (m[1] || m[2] || '') : (m[1] ?? ''),
+        href: kind === 'link' || kind === 'image' ? m[2] : undefined,
       };
       if (m.index === 0) break; // can't beat index 0
     }
@@ -128,6 +138,11 @@ function walk(input: string, style: Style, out: Span[]): void {
         break;
       case 'link':
         walk(tok.inner, { ...style, href: tok.href }, out);
+        break;
+      case 'image':
+        // The generators have no image support, so render the alt text as a link
+        // to the source rather than dropping the whole construct.
+        emit(out, tok.inner, { ...style, href: tok.href });
         break;
       case 'bold':
         walk(tok.inner, { ...style, bold: true }, out);

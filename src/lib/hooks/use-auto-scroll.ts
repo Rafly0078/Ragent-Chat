@@ -1,6 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+
+/** `useLayoutEffect` warns during SSR; fall back to `useEffect` on the server. */
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 /**
  * Auto-scroll behaviour for chat: sticks to the bottom while the user is near
@@ -32,13 +35,31 @@ export function useAutoScroll<T extends HTMLElement>(dep: unknown) {
   }, []);
 
   // Follow new content only when the user is already pinned to the bottom.
-  useEffect(() => {
+  // Layout effect, not a passive one: the scroll write has to land in the same
+  // frame as the paint, or every streamed token paints once at the stale offset
+  // and then snaps down — visible jitter at the bottom of a streaming message.
+  useIsomorphicLayoutEffect(() => {
     if (stick.current) {
       const el = ref.current;
       if (el) el.scrollTop = el.scrollHeight;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dep]);
+
+  // Content that grows without changing `dep` — an image finishing load, the
+  // lazy markdown chunk swapping in, a Mermaid SVG replacing its placeholder —
+  // used to silently detach the view from the bottom.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (stick.current) el.scrollTop = el.scrollHeight;
+    });
+    // Observe the content wrapper: the scroll container itself doesn't change
+    // size as messages are added, only its child does.
+    for (const child of Array.from(el.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, []);
 
   return { ref, atBottom, scrollToBottom, handleScroll };
 }

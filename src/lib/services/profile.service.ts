@@ -50,13 +50,30 @@ export async function ensureProfile(user: User): Promise<void> {
     { onConflict: 'id', ignoreDuplicates: true },
   );
   if (error) throw new Error(error.message);
+
+  // `ignoreDuplicates` makes the upsert a no-op once the row exists, which froze
+  // identity-owned fields forever: after an email change at the provider, the
+  // profile kept the old address indefinitely — and that column is what any
+  // admin/support query reads. Refresh just those, leaving display_name alone.
+  const { error: refreshErr } = await supabase
+    .from('profiles')
+    .update({
+      email: user.email ?? null,
+      ...(meta?.avatar_url || meta?.picture
+        ? { avatar_url: meta.avatar_url || meta.picture }
+        : {}),
+    })
+    .eq('id', user.id);
+  if (refreshErr) throw new Error(refreshErr.message);
 }
 
 export async function updateProfile(patch: Partial<Pick<ProfileRow, 'display_name' | 'avatar_url'>>): Promise<void> {
   const supabase = getSupabaseBrowser();
-  if (!supabase) return;
+  if (!supabase) throw new Error('Auth is not configured.');
   const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return;
+  // Used to resolve normally with no session, so the settings UI reported a
+  // saved profile that was never written.
+  if (!auth.user) throw new Error('Not signed in.');
   const { error } = await supabase.from('profiles').update(patch).eq('id', auth.user.id);
   if (error) throw new Error(error.message);
 }

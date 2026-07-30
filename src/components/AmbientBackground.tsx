@@ -1,6 +1,7 @@
 'use client';
 
 import { useSettings } from '@/lib/store/settings-store';
+import { useHydrated } from '@/lib/hooks/use-hydrated';
 
 /**
  * Ambient background per the design brief: subtle radial gradients, a soft noise
@@ -12,6 +13,10 @@ import { useSettings } from '@/lib/store/settings-store';
  */
 export function AmbientBackground() {
   const glow = useSettings((s) => s.animatedBackground);
+  // The settings store rehydrates from localStorage before the first client
+  // render, so reading a persisted flag during render produced a server/client
+  // mismatch when the user had turned the glow off. Gate it on hydration.
+  const hydrated = useHydrated();
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-surface">
@@ -24,7 +29,7 @@ export function AmbientBackground() {
             'radial-gradient(60% 50% at 100% 0%, rgb(var(--accent-soft) / 0.06), transparent 55%)',
         }}
       />
-      {glow && (
+      {hydrated && glow && (
         <div
           className="absolute left-1/2 top-[-20%] h-[42vh] w-[42vh] -translate-x-1/2 rounded-full opacity-[0.14]"
           style={{

@@ -43,6 +43,18 @@ export async function guard(
   request: Request,
   options: GuardOptions,
 ): Promise<GuardOk | GuardFail> {
+  // Flood guard FIRST, keyed on IP, before the session lookup. `getUser()` is a
+  // network round trip to Supabase, so checking auth first would let an
+  // unauthenticated flood amplify into one upstream request per hit. The ceiling
+  // is deliberately looser than the per-user limit so several people behind one
+  // NAT aren't punished for each other.
+  const flood = hit(
+    `${options.bucket}:flood:${clientKey(request)}`,
+    options.limit * 4,
+    options.windowMs,
+  );
+  if (!flood.ok) return { ok: false, response: tooManyRequests(flood) };
+
   let userId: string | null = null;
 
   if (supabaseConfigured()) {

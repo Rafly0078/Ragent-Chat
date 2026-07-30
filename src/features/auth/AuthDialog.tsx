@@ -38,6 +38,34 @@ export function AuthDialog({
     setNotice(null);
   };
 
+  /**
+   * Map a provider error to user-facing copy.
+   *
+   * Supabase's raw messages were rendered verbatim, which turned the dialog into
+   * an account-existence oracle for any email address ("User already
+   * registered") and leaked rate-limit timings. Network/config problems still
+   * pass through, since those are actionable.
+   */
+  const friendlyError = (raw: string): string => {
+    const m = raw.toLowerCase();
+    if (m.includes('already registered') || m.includes('already exists')) {
+      // Deliberately identical to the success path's copy — see submit().
+      return '';
+    }
+    if (m.includes('invalid login') || m.includes('invalid credentials')) {
+      return 'Invalid email or password.';
+    }
+    if (m.includes('email not confirmed')) {
+      return 'Confirm your email address first — check your inbox for the link.';
+    }
+    if (m.includes('rate limit') || m.includes('after') || m.includes('too many')) {
+      return 'Too many attempts. Please wait a minute and try again.';
+    }
+    if (m.includes('password')) return 'That password does not meet the requirements.';
+    if (m.includes('fetch') || m.includes('network')) return raw;
+    return 'Something went wrong. Please try again.';
+  };
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     reset();
@@ -45,15 +73,22 @@ export function AuthDialog({
     try {
       if (mode === 'magic') {
         const { error } = await auth.signInWithOtp(email);
-        if (error) setError(error);
-        else setNotice('Check your email for a sign-in link.');
+        // Always the same response, whether or not the address has an account.
+        if (error) {
+          const friendly = friendlyError(error);
+          if (friendly) setError(friendly);
+          else setNotice('Check your email for a sign-in link.');
+        } else setNotice('Check your email for a sign-in link.');
       } else if (mode === 'signup') {
         const { error } = await auth.signUpWithPassword(email, password);
-        if (error) setError(error);
-        else setNotice('Account created. Check your email to confirm, then sign in.');
+        if (error) {
+          const friendly = friendlyError(error);
+          if (friendly) setError(friendly);
+          else setNotice('Check your email to confirm your account, then sign in.');
+        } else setNotice('Account created. Check your email to confirm, then sign in.');
       } else {
         const { error } = await auth.signInWithPassword(email, password);
-        if (error) setError(error);
+        if (error) setError(friendlyError(error) || 'Invalid email or password.');
         else onClose();
       }
     } finally {
@@ -66,7 +101,7 @@ export function AuthDialog({
     setBusy(provider);
     const { error } = await auth.signInWithOAuth(provider);
     if (error) {
-      setError(error);
+      setError(friendlyError(error) || 'Sign-in failed. Please try again.');
       setBusy(null);
     }
     // On success the browser redirects; no need to clear busy.
@@ -76,7 +111,7 @@ export function AuthDialog({
     reset();
     setBusy('guest');
     const { error } = await auth.continueAsGuest();
-    if (error) setError(error);
+    if (error) setError(friendlyError(error) || 'Could not start a guest session.');
     else onClose();
     setBusy(null);
   }
@@ -129,16 +164,24 @@ export function AuthDialog({
               className="input"
               type="password"
               required
-              placeholder="Password"
+              placeholder={mode === 'signup' ? 'Password (at least 8 characters)' : 'Password'}
               value={password}
               autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              minLength={6}
+              minLength={mode === 'signup' ? 8 : 6}
               onChange={(e) => setPassword(e.target.value)}
             />
           )}
 
-          {error && <p className="text-sm text-error">{error}</p>}
-          {notice && <p className="text-sm text-content/70">{notice}</p>}
+          {error && (
+            <p className="text-sm text-error" role="alert">
+              {error}
+            </p>
+          )}
+          {notice && (
+            <p className="text-sm text-content/70" role="status">
+              {notice}
+            </p>
+          )}
 
           <Button type="submit" variant="primary" disabled={Boolean(busy)}>
             {busy === 'email' ? (
