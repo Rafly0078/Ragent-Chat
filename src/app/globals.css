@@ -2,50 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===========================================================================
-   HERMES-DERIVED DESIGN SYSTEM
-
-   Every value in the TOKENS block below is transcribed from the stylesheet of
-   hermes-agent.nousresearch.com (Nous Research), not invented:
-
-     --color-hermes         #0000f2   the ELECTRIC BLUE — a full canvas there,
-                                      not an accent on dark
-     --color-hermes-fg      #f5f5f5   off-white foreground
-     --color-hermes-accent  #edff45   acid yellow — the real accent
-     --color-hermes-paper   #ffffff   paper for cards and buttons
-     --hermes-grey-100      #eceaf5
-     #0029de + alpha                  deeper blue for translucent fills
-     radius                 0 | 4px | 1rem   (the only three it uses)
-     tracking               .03em display · .1em/.14em/.18em mono
-     leading                .8 | .88 | 1 | 1.4 | 1.5
-     --u                    max(100cqw / 2360, .58px)  fluid unit; all spacing
-                                      and type is calc(N * var(--u))
-     noise                  feTurbulence baseFrequency .72, 4 octaves, saturate 0
-
-   ONE canvas: #0000f2 everywhere — landing, chat, settings, panels. There is no
-   light/dark pair because the reference has none.
-
-   Contrast note: #0000f2 has relative luminance .064, so it can only ever be a
-   GROUND, never a foreground on itself. Accent text is therefore acid
-   (#edff45, 8.32:1) and accent fills are paper (#ffffff) with blue ink on top
-   (9.20:1). Floating surfaces invert wholesale to paper — see `.popover`.
-=========================================================================== */
-
-/* ---------------------------------------------------------------------------
-   TOKENS — shared across every theme
---------------------------------------------------------------------------- */
 :root {
   --font-display: 'Bodoni Moda', 'Times New Roman', serif;
   --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Courier Prime', ui-monospace, 'SFMono-Regular', monospace;
 
   /* Raw palette, verbatim from the reference. */
-  --hermes-blue: 0 0 242;
+  --hermes-blue: 157 102 56;
   --hermes-fg: 245 245 245;
-  --hermes-acid: 237 255 69;
+  --hermes-acid: 176 186 153;
   --hermes-paper: 255 255 255;
   --hermes-grey: 236 234 245;
-  --hermes-deep: 0 41 222;
+  --hermes-deep: 157 145 56;
 
   /* Fluid unit system, verbatim. `--u` needs a container-query context; the
      fallback anchor keeps it sane before containment resolves. */
