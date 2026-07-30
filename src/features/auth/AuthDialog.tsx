@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Github, Loader2, Mail } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
@@ -218,6 +219,15 @@ export function AuthDialog({
             <button type="button" className="underline" onClick={guest} disabled={Boolean(busy)}>
               {busy === 'guest' ? 'Starting…' : 'Continue as guest'}
             </button>
+          )}
+          {/* Always leave a way out of the mandatory wall. It has no X, no
+              Escape and no backdrop click by design, which was fine when there
+              was nowhere else to be — but `/` is a public page now, so without
+              this the wall traps you on /chat with no route back. */}
+          {mandatory && (
+            <Link href="/" className="focus-ring underline">
+              Back to home
+            </Link>
           )}
         </div>
       </div>
