@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
-import { useShallow } from 'zustand/react/shallow';
 import Link from 'next/link';
 import { Plus, Search, Settings2, X } from 'lucide-react';
 import { useChatStore } from '@/lib/store/chat-store';
@@ -30,22 +29,40 @@ interface Row {
 
 export function Sidebar({ open, onClose, onNewChat }: Props) {
   /**
-   * A shallow-compared projection instead of the whole `conversations` array.
-   * `appendToMessage` returns a new array per streamed token, so subscribing to
-   * the array identity re-rendered the entire sidebar — and re-ran the full
-   * filter + sort + bucket rebuild — on every token. The projected fields don't
-   * change while tokens stream, so this render is skipped entirely.
+   * Subscribe to a primitive SIGNATURE of the list, not a projected array.
+   *
+   * `useShallow` compares array *elements* with `Object.is`, and `.map()` mints
+   * fresh objects on every call — so a projected `{id, title, …}[]` was never
+   * equal to the previous snapshot. `useSyncExternalStore` then saw the snapshot
+   * change on every render and looped: React error #185, "Maximum update depth
+   * exceeded", crashing the whole page on load. Strings compare by value, so a
+   * joined signature settles.
+   *
+   * It still skips the streaming re-render, which was the point: `appendToMessage`
+   * doesn't touch `updatedAt`/`title`/`pinned`, so the signature is unchanged for
+   * every token.
    */
-  const rows = useChatStore(
-    useShallow((s) =>
-      s.conversations.map<Row>((c) => ({
+  const signature = useChatStore((s) =>
+    s.conversations
+      .map((c) => `${c.id}${c.updatedAt}${c.pinned ? 1 : 0}${c.title}`)
+      .join(''),
+  );
+
+  // Derived non-reactively — `signature` above is what triggers recomputation.
+  const rows = useMemo<Row[]>(
+    () =>
+      useChatStore.getState().conversations.map((c) => ({
         id: c.id,
         title: typeof c.title === 'string' ? c.title : 'Untitled',
         pinned: c.pinned === true,
         updatedAt: typeof c.updatedAt === 'number' ? c.updatedAt : 0,
       })),
-    ),
+    // `signature` is intentionally the only dep: it's the reactive trigger, and
+    // the store read inside is deliberately untracked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [signature],
   );
+
   const activeId = useChatStore((s) => s.activeId);
   const setActive = useChatStore((s) => s.setActive);
   const query = useChatStore((s) => s.searchQuery);
