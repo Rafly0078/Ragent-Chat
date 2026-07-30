@@ -39,17 +39,11 @@ export function Hero() {
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link
-              href="/chat"
-              className="focus-ring group inline-flex items-center gap-2.5 bg-white px-6 py-3.5 font-mono text-[0.8rem] uppercase tracking-[0.1em] text-[#0000f2] transition-transform active:translate-y-px"
-            >
+            <Link href="/chat" className="btn-primary btn-xl group">
               Open chat
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+              <ArrowRight className="h-4 w-4 transition-transform duration-fast group-hover:translate-x-1" />
             </Link>
-            <a
-              href="#capabilities"
-              className="focus-ring inline-flex items-center gap-2 border-2 border-content/60 px-6 py-3.5 font-mono text-[0.8rem] uppercase tracking-[0.1em] text-content transition-colors hover:border-content"
-            >
+            <a href="#capabilities" className="btn-surface btn-xl">
               What it does
             </a>
           </div>

@@ -19,11 +19,17 @@ export const metadata: Metadata = {
  * ground. See globals.css.
  *
  * A server component: nothing here needs client state except the copy button in
- * the install block, which is a client island of its own.
+ * the install block and the nav's stuck-state observer, which are client islands
+ * of their own.
+ *
+ * `overflow-x-clip` rather than `overflow-x-hidden`: `hidden` on one axis forces
+ * the other axis to `auto`, which turns this element into a scroll container —
+ * and a `position: sticky` nav inside a scroll container that never scrolls is a
+ * nav that never sticks. `clip` contains the same overflow without any of that.
  */
 export default function LandingPage() {
   return (
-    <main className="hermes-grain hermes-canvas relative min-h-[100dvh] w-full max-w-full overflow-x-hidden">
+    <main className="hermes-grain hermes-canvas relative min-h-[100dvh] w-full max-w-full overflow-x-clip">
       <div className="relative z-10 mx-auto w-full max-w-[1600px]">
         <LandingNav />
         <Hero />

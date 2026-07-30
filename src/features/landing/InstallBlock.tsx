@@ -38,9 +38,14 @@ export function InstallBlock() {
   return (
     <div className="w-full max-w-xl">
       <p className="type-eyebrow mb-2 text-content-muted">Connect your models</p>
-      <div className="overflow-hidden rounded-[4px] bg-white text-[#0000f2]">
+      {/* `.paper` flips the whole token set to blue-ink-on-white for this
+          subtree, so the card is written in `text-content` / `bg-accent` like
+          everything else instead of in #0000f2 literals. It also fixed a real
+          miss: the inactive tab was #0000f2 at 60% alpha, which measures 4.34:1
+          on white. `--content-subtle` on paper is 5.43:1. */}
+      <div className="paper overflow-hidden rounded-[4px]">
         <div
-          className="flex items-center gap-1 border-b border-[#0000f2]/15 px-2 py-1.5"
+          className="flex items-center gap-1 border-b-2 border-border/20 px-2 py-1.5"
           role="tablist"
           aria-label="Connection mode"
         >
@@ -50,10 +55,10 @@ export function InstallBlock() {
               role="tab"
               aria-selected={active === t.id}
               onClick={() => setActive(t.id)}
-              className={`focus-ring px-2.5 py-1 font-mono text-[0.7rem] uppercase tracking-[0.1em] transition-colors ${
+              className={`focus-ring px-2.5 py-1 font-mono text-[0.7rem] uppercase tracking-[0.1em] transition-colors duration-fast ${
                 active === t.id
-                  ? 'bg-[#0000f2] text-white'
-                  : 'text-[#0000f2]/60 hover:text-[#0000f2]'
+                  ? 'bg-accent text-accent-fg'
+                  : 'text-content-subtle hover:text-content'
               }`}
             >
               {t.label}
@@ -61,13 +66,13 @@ export function InstallBlock() {
           ))}
         </div>
         <div className="flex items-start gap-3 px-3 py-3">
-          <code className="min-w-0 flex-1 break-all font-mono text-[0.78rem] leading-6">
+          <code className="min-w-0 flex-1 break-all font-mono text-[0.78rem] leading-6 text-content">
             {tab.cmd}
           </code>
           <button
             onClick={() => void copy()}
             aria-label={copied ? 'Copied' : 'Copy command'}
-            className="focus-ring shrink-0 p-1 text-[#0000f2]/60 transition-colors hover:text-[#0000f2]"
+            className="focus-ring shrink-0 p-1 text-content-subtle transition-colors duration-fast hover:text-content"
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </button>
