@@ -114,7 +114,10 @@ export function useChat(conversationId: string | null) {
           .filter((r): r is PromiseFulfilledResult<Artifact> => r.status === 'fulfilled')
           .map((r) => r.value);
         if (artifacts.length > 0) {
-          const msg = store.getState().conversations.find((c) => c.id === convoId)?.messages.find((m) => m.id === messageId);
+          const msg = store
+            .getState()
+            .conversations.find((c) => c.id === convoId)
+            ?.messages.find((m) => m.id === messageId);
           if (msg) {
             const existing = (msg.metadata?.artifacts as Artifact[]) ?? [];
             store.getState().updateMessage(convoId, messageId, {
@@ -223,7 +226,12 @@ export function useChat(conversationId: string | null) {
       // Failures here are non-fatal: we just send the full history as before.
       let summary = convo.summary;
       try {
-        const plan = planCompaction(history, convo.systemPrompt, convo.params.contextLength, summary);
+        const plan = planCompaction(
+          history,
+          convo.systemPrompt,
+          convo.params.contextLength,
+          summary,
+        );
         if (plan) {
           const text = await chat(
             {
@@ -341,7 +349,10 @@ export function useChat(conversationId: string | null) {
               // First answer token ends the agentic-search phase display.
               if (firstToken) {
                 firstToken = false;
-                const m = store.getState().conversations.find((c) => c.id === convoId)?.messages.find((mm) => mm.id === assistantId);
+                const m = store
+                  .getState()
+                  .conversations.find((c) => c.id === convoId)
+                  ?.messages.find((mm) => mm.id === assistantId);
                 if (m?.metadata?.searchPhase) {
                   store.getState().updateMessage(convoId, assistantId, {
                     metadata: { ...m.metadata, searchPhase: undefined, searching: false },
@@ -357,7 +368,11 @@ export function useChat(conversationId: string | null) {
             },
             onDone: (final) => {
               flushNow();
-              const finalContent = store.getState().conversations.find((c) => c.id === convoId)?.messages.find((m) => m.id === assistantId)?.content ?? '';
+              const finalContent =
+                store
+                  .getState()
+                  .conversations.find((c) => c.id === convoId)
+                  ?.messages.find((m) => m.id === assistantId)?.content ?? '';
               store.getState().updateMessage(convoId, assistantId, {
                 streaming: false,
                 metrics: metricsFromChunk(final, startedAt),
@@ -439,8 +454,13 @@ export function useChat(conversationId: string | null) {
       thinkingEnabled: boolean,
     ): Promise<string | undefined> => {
       const setMeta = (patch: Record<string, unknown>) => {
-        const msg = store.getState().conversations.find((c) => c.id === convoId)?.messages.find((m) => m.id === messageId);
-        store.getState().updateMessage(convoId, messageId, { metadata: { ...msg?.metadata, ...patch } });
+        const msg = store
+          .getState()
+          .conversations.find((c) => c.id === convoId)
+          ?.messages.find((m) => m.id === messageId);
+        store
+          .getState()
+          .updateMessage(convoId, messageId, { metadata: { ...msg?.metadata, ...patch } });
       };
 
       // Phase 1 — plan the search. Only when thinking is on; otherwise fall back
@@ -472,10 +492,18 @@ export function useChat(conversationId: string | null) {
       }
 
       // Phase 2 — run the planned queries and merge results.
-      setMeta({ searching: true, searchPhase: 'searching', plannedQueries: plan.queries, searchGoal: plan.goal });
+      setMeta({
+        searching: true,
+        searchPhase: 'searching',
+        plannedQueries: plan.queries,
+        searchGoal: plan.goal,
+      });
       const settled = await Promise.allSettled(plan.queries.map((q) => searchWeb(q)));
       const responses = settled
-        .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof searchWeb>>> => r.status === 'fulfilled')
+        .filter(
+          (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof searchWeb>>> =>
+            r.status === 'fulfilled',
+        )
         .map((r) => r.value);
 
       if (responses.length === 0) {

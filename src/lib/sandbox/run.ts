@@ -80,8 +80,7 @@ export function runSandbox(
       // its origin is the literal string "null".)
       if (ev.source !== iframe.contentWindow) return;
       const data = ev.data as
-        | { __ch?: string; runId?: string; type?: string; payload?: unknown }
-        | undefined;
+        { __ch?: string; runId?: string; type?: string; payload?: unknown } | undefined;
       if (!data || data.__ch !== SANDBOX_CHANNEL || data.runId !== runId) return;
       if (data.type === 'issue') {
         if (issues.length < MAX_ISSUES) issues.push(data.payload as SandboxIssue);

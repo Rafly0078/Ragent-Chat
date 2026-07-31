@@ -1,4 +1,10 @@
-import type { GenerationParams, PromptPreset, SlashCommand, ThinkingConfig, ThinkingEffort } from '@/types';
+import type {
+  GenerationParams,
+  PromptPreset,
+  SlashCommand,
+  ThinkingConfig,
+  ThinkingEffort,
+} from '@/types';
 import { uid } from '@/lib/utils/id';
 
 export const DEFAULT_PARAMS: GenerationParams = {
@@ -18,8 +24,7 @@ export const DEFAULT_THINKING: ThinkingConfig = {
 /** Ordered thinking effort levels — used to render the selector. */
 export const THINKING_EFFORTS: ThinkingEffort[] = ['low', 'medium', 'high', 'max'];
 
-export const DEFAULT_SYSTEM_PROMPT =
-  `You are a helpful, knowledgeable AI assistant. Your goal is to give accurate, well-structured answers that directly solve the user's problem.
+export const DEFAULT_SYSTEM_PROMPT = `You are a helpful, knowledgeable AI assistant. Your goal is to give accurate, well-structured answers that directly solve the user's problem.
 
 Approach:
 - Answer the actual question first, then add supporting detail. Lead with the conclusion, not the buildup.
@@ -35,15 +40,18 @@ Formatting:
 - Reply in the same language the user writes in.`;
 
 /**
- * Runtime-themeable accents, all measured against the #0000f2 field.
+ * Runtime-themeable accents — the bulb in the lamp. All measured against the
+ * #0B1020 field.
  *
- *   rgb   accent TEXT and icons. Must clear 4.5:1 on the field, which rules out
- *         every mid-tone — Coral measured 3.01:1 and Violet 2.33:1, so they are
- *         gone rather than shipped failing.
- *   soft  hover/secondary tint.
- *   solid accent FILLS, which carry blue ink on top, so they must be near-paper.
+ *   rgb    accent TEXT, icons, rails, carets. Must clear 4.5:1 on the field.
+ *   soft   hover / secondary tint, one step brighter.
+ *   solid  accent FILLS, which carry night ink on top. Because every value here
+ *          already clears 4.5:1 on the field, the same colour serves both — the
+ *          old palette needed a separate near-white fill and this one does not.
+ *   ember  the hot second stop, for the two gradients and the lamp pools.
  *
- * Acid (#edff45, 8.32:1) is the reference's own accent and the default.
+ * Lamp (#FFB65C, 11.1:1) is the default and the one the system is designed
+ * around; the rest are the same construction in another hue.
  */
 export const ACCENT_PRESETS: {
   name: string;
@@ -51,13 +59,56 @@ export const ACCENT_PRESETS: {
   rgb: string;
   soft: string;
   solid: string;
+  ember: string;
 }[] = [
-  { name: 'Acid', value: 'acid', rgb: '237 255 69', soft: '243 255 128', solid: '255 255 255' },
-  { name: 'Paper', value: 'paper', rgb: '245 245 245', soft: '255 255 255', solid: '255 255 255' },
-  { name: 'Mint', value: 'mint', rgb: '125 255 195', soft: '168 255 215', solid: '235 255 246' },
-  { name: 'Sky', value: 'sky', rgb: '165 232 255', soft: '200 242 255', solid: '235 250 255' },
-  { name: 'Peach', value: 'peach', rgb: '255 207 168', soft: '255 226 200', solid: '255 244 235' },
-  { name: 'Lilac', value: 'lilac', rgb: '217 194 255', soft: '232 217 255', solid: '246 240 255' },
+  {
+    name: 'Lamp',
+    value: 'lamp',
+    rgb: '255 182 92',
+    soft: '255 205 138',
+    solid: '255 182 92',
+    ember: '255 122 69',
+  },
+  {
+    name: 'Ember',
+    value: 'ember',
+    rgb: '255 138 91',
+    soft: '255 175 140',
+    solid: '255 138 91',
+    ember: '236 88 84',
+  },
+  {
+    name: 'Mint',
+    value: 'mint',
+    rgb: '94 226 173',
+    soft: '150 240 203',
+    solid: '94 226 173',
+    ember: '64 196 208',
+  },
+  {
+    name: 'Sky',
+    value: 'sky',
+    rgb: '143 211 255',
+    soft: '186 229 255',
+    solid: '143 211 255',
+    ember: '124 160 255',
+  },
+  {
+    name: 'Lilac',
+    value: 'lilac',
+    rgb: '201 180 255',
+    soft: '221 208 255',
+    solid: '201 180 255',
+    ember: '242 160 226',
+  },
+  {
+    name: 'Linen',
+    value: 'linen',
+    rgb: '242 239 232',
+    soft: '255 255 255',
+    solid: '242 239 232',
+    ember: '210 205 194',
+  },
 ];
 
 export const DEFAULT_PRESETS: PromptPreset[] = [
@@ -65,8 +116,7 @@ export const DEFAULT_PRESETS: PromptPreset[] = [
   {
     id: uid(),
     name: 'Senior Engineer',
-    content:
-      `You are a senior staff software engineer doing a careful code review and pairing session. You optimize for correctness, clarity, and long-term maintainability.
+    content: `You are a senior staff software engineer doing a careful code review and pairing session. You optimize for correctness, clarity, and long-term maintainability.
 
 - Write production-quality, idiomatic code for the language and framework in question. Follow the conventions already present in the user's code.
 - Give complete, runnable solutions — no "// TODO" or "rest omitted" placeholders unless the user asks for a sketch.
@@ -79,8 +129,7 @@ export const DEFAULT_PRESETS: PromptPreset[] = [
   {
     id: uid(),
     name: 'Concise',
-    content:
-      `You are a concise expert assistant. Maximize signal, minimize words.
+    content: `You are a concise expert assistant. Maximize signal, minimize words.
 
 - Give the answer immediately. No preamble, no restating the question, no "Sure!" or "Certainly".
 - Use tight bullet points or short sentences. Cut every word that doesn't add information.
@@ -92,8 +141,7 @@ export const DEFAULT_PRESETS: PromptPreset[] = [
   {
     id: uid(),
     name: 'Web Dev',
-    content:
-      `You are an expert full-stack web developer specializing in modern TypeScript, React, and Next.js.
+    content: `You are an expert full-stack web developer specializing in modern TypeScript, React, and Next.js.
 
 - Default to TypeScript with accurate, strict types (no \`any\` unless justified). Use modern React: function components, hooks, and the App Router when Next.js is involved.
 - Write accessible, semantic HTML (proper labels, roles, and keyboard support) and responsive, mobile-first styling. Assume Tailwind CSS unless told otherwise.

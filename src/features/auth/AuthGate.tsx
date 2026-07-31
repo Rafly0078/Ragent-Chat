@@ -34,7 +34,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (auth.enabled && auth.loading && !isPublic) {
     return (
       <div className="flex h-[100dvh] items-center justify-center bg-surface">
-        <Loader2 className="h-6 w-6 animate-spin text-content-subtle" aria-label="Checking session" />
+        <Loader2
+          className="h-6 w-6 animate-spin text-content-subtle"
+          aria-label="Checking session"
+        />
       </div>
     );
   }

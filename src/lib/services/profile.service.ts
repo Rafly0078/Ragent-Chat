@@ -34,8 +34,7 @@ export async function ensureProfile(user: User): Promise<void> {
   if (!supabase || user.is_anonymous) return;
 
   const meta = user.user_metadata as
-    | { full_name?: string; name?: string; avatar_url?: string; picture?: string }
-    | undefined;
+    { full_name?: string; name?: string; avatar_url?: string; picture?: string } | undefined;
 
   const { error } = await supabase.from('profiles').upsert(
     {
@@ -59,15 +58,15 @@ export async function ensureProfile(user: User): Promise<void> {
     .from('profiles')
     .update({
       email: user.email ?? null,
-      ...(meta?.avatar_url || meta?.picture
-        ? { avatar_url: meta.avatar_url || meta.picture }
-        : {}),
+      ...(meta?.avatar_url || meta?.picture ? { avatar_url: meta.avatar_url || meta.picture } : {}),
     })
     .eq('id', user.id);
   if (refreshErr) throw new Error(refreshErr.message);
 }
 
-export async function updateProfile(patch: Partial<Pick<ProfileRow, 'display_name' | 'avatar_url'>>): Promise<void> {
+export async function updateProfile(
+  patch: Partial<Pick<ProfileRow, 'display_name' | 'avatar_url'>>,
+): Promise<void> {
   const supabase = getSupabaseBrowser();
   if (!supabase) throw new Error('Auth is not configured.');
   const { data: auth } = await supabase.auth.getUser();

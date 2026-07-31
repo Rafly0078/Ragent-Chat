@@ -11,6 +11,7 @@ import { dateBucket } from '@/lib/utils/format';
 import { useHydrated } from '@/lib/hooks/use-hydrated';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { Kbd } from '@/components/ui/kbd';
+import { BrandMark } from '@/components/BrandMark';
 
 interface Props {
   open: boolean;
@@ -44,9 +45,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
    * every token.
    */
   const signature = useChatStore((s) =>
-    s.conversations
-      .map((c) => `${c.id}${c.updatedAt}${c.pinned ? 1 : 0}${c.title}`)
-      .join(''),
+    s.conversations.map((c) => `${c.id}${c.updatedAt}${c.pinned ? 1 : 0}${c.title}`).join(''),
   );
 
   // Derived non-reactively — `signature` above is what triggers recomputation.
@@ -94,13 +93,16 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
     <div className="flex h-full flex-col">
       {/* Header — logo, wordmark, and on mobile the close affordance. */}
       <div className="flex items-center gap-2.5 px-4 pb-3.5 pt-4">
-        <div className="accent-gradient flex h-8 w-8 items-center justify-center rounded">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/noun-atom-8300355 (1).png" alt="" width={20} height={20} className="h-5 w-5" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-md border border-accent/25 bg-accent/10 text-accent">
+          <BrandMark className="h-5 w-5" />
         </div>
-        <span className="type-display flex-1 text-lg leading-none text-content">Ragent</span>
+        <span className="type-display flex-1 text-[1.15rem] leading-none text-content">Ragent</span>
         {isMobile && (
-          <button onClick={onClose} className="btn-ghost btn-sm btn-icon" aria-label="Close sidebar">
+          <button
+            onClick={onClose}
+            className="btn-ghost btn-sm btn-icon"
+            aria-label="Close sidebar"
+          >
             <X className="h-4 w-4" />
           </button>
         )}
@@ -190,7 +192,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
       </nav>
 
       {/* Footer */}
-      <div className="border-t-2 border-border px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+      <div className="border-border/12 border-t px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
         <Link href="/settings" className="btn-ghost btn-md w-full justify-start gap-2.5">
           <Settings2 className="h-4 w-4" /> Settings
         </Link>
@@ -203,12 +205,9 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 
   // Mobile: overlay drawer. Desktop: collapsible inline panel.
   //
-  // The drawer takes `.popover`, which means the paper tier: white ground, blue
-  // ink, blue New-chat fill. That is deliberate and it follows the one rule the
-  // system has about grounds — persistent chrome sits on the field, floating
-  // surfaces invert to paper. A drawer over a dimmed page is a floating surface,
-  // and at 88vw over a fully saturated field the inversion is what makes it read
-  // as lifted rather than as the page having changed colour.
+  // The drawer takes `.popover`, the same elevated surface every menu and dialog
+  // uses: overlay fill, functional border, shadow-3. That is what makes it read
+  // as lifted above a dimmed page rather than as the page having slid sideways.
   if (isMobile) {
     return (
       <AnimatePresence>
@@ -267,12 +266,13 @@ function filterAndGroup(rows: Row[], query: string) {
   // current — only the tokens of a still-streaming reply aren't searchable yet.
   const bodies = q
     ? new Map(
-        useChatStore
-          .getState()
-          .conversations.map((c) => [
-            c.id,
-            (c.messages ?? []).map((m) => m.content ?? '').join('\n').toLowerCase(),
-          ]),
+        useChatStore.getState().conversations.map((c) => [
+          c.id,
+          (c.messages ?? [])
+            .map((m) => m.content ?? '')
+            .join('\n')
+            .toLowerCase(),
+        ]),
       )
     : null;
 
@@ -282,13 +282,9 @@ function filterAndGroup(rows: Row[], query: string) {
     return bodies?.get(c.id)?.includes(q) ?? false;
   });
 
-  const pinned = matches
-    .filter((c) => c.pinned)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const pinned = matches.filter((c) => c.pinned).sort((a, b) => b.updatedAt - a.updatedAt);
 
-  const unpinned = matches
-    .filter((c) => !c.pinned)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const unpinned = matches.filter((c) => !c.pinned).sort((a, b) => b.updatedAt - a.updatedAt);
 
   const bucketMap = new Map<string, Row[]>();
   for (const c of unpinned) {

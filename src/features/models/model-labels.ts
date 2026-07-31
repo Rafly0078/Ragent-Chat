@@ -35,7 +35,10 @@ function fromRaw(r: RawLabel): ModelLabel {
 /** Public: fetch all curated labels. Returns [] on any failure (names degrade to raw). */
 export async function fetchModelLabels(signal?: AbortSignal): Promise<ModelLabel[]> {
   try {
-    const res = await fetch('/api/model-labels', { signal, headers: { Accept: 'application/json' } });
+    const res = await fetch('/api/model-labels', {
+      signal,
+      headers: { Accept: 'application/json' },
+    });
     if (!res.ok) return [];
     const data = (await res.json()) as { labels?: RawLabel[] };
     return (data.labels ?? []).map(fromRaw);

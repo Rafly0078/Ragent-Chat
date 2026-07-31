@@ -29,7 +29,7 @@ export type ProfileRow = {
   is_guest: boolean;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type WorkspaceRow = {
   id: string;
@@ -39,7 +39,7 @@ export type WorkspaceRow = {
   is_default: boolean;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type ConversationRow = {
   id: string;
@@ -60,7 +60,7 @@ export type ConversationRow = {
   parent_id: string | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type MessageRow = {
   id: string;
@@ -79,7 +79,7 @@ export type MessageRow = {
   seq: number;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type AttachmentRow = {
   id: string;
@@ -93,7 +93,7 @@ export type AttachmentRow = {
   storage_path: string;
   extracted_text: string | null;
   created_at: Timestamptz;
-}
+};
 
 export type ArtifactRow = {
   id: string;
@@ -110,7 +110,7 @@ export type ArtifactRow = {
   metadata: Json;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type DownloadRow = {
   id: string;
@@ -125,7 +125,7 @@ export type DownloadRow = {
   error: string | null;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type DocumentRow = {
   id: string;
@@ -136,7 +136,7 @@ export type DocumentRow = {
   current_version: number;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type DocumentVersionRow = {
   id: string;
@@ -148,7 +148,7 @@ export type DocumentVersionRow = {
   size_bytes: number;
   note: string | null;
   created_at: Timestamptz;
-}
+};
 
 export type SavedPromptRow = {
   id: string;
@@ -157,7 +157,7 @@ export type SavedPromptRow = {
   content: string;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export type InstalledModelRow = {
   id: string;
@@ -171,20 +171,20 @@ export type InstalledModelRow = {
   supports_vision: boolean;
   raw: Json;
   updated_at: Timestamptz;
-}
+};
 
 export type WorkspaceSettingsRow = {
   workspace_id: string;
   user_id: string;
   settings: Json;
   updated_at: Timestamptz;
-}
+};
 
 export type UserPreferencesRow = {
   user_id: string;
   preferences: Json;
   updated_at: Timestamptz;
-}
+};
 
 export type ActivityLogRow = {
   id: string;
@@ -193,7 +193,7 @@ export type ActivityLogRow = {
   target: string | null;
   metadata: Json;
   created_at: Timestamptz;
-}
+};
 
 /** Owner-curated display names for models. Publicly readable; owner-only writes. */
 export type ModelLabelRow = {
@@ -204,28 +204,46 @@ export type ModelLabelRow = {
   sort_order: number;
   created_at: Timestamptz;
   updated_at: Timestamptz;
-}
+};
 
 export interface Database {
   public: {
     Tables: {
       profiles: Table<
         ProfileRow,
-        WithDefaults<ProfileRow, 'is_guest' | 'created_at' | 'updated_at' | 'email' | 'display_name' | 'avatar_url'>,
+        WithDefaults<
+          ProfileRow,
+          'is_guest' | 'created_at' | 'updated_at' | 'email' | 'display_name' | 'avatar_url'
+        >,
         Partial<ProfileRow>
       >;
       workspaces: Table<
         WorkspaceRow,
-        WithDefaults<WorkspaceRow, 'id' | 'name' | 'icon' | 'is_default' | 'created_at' | 'updated_at'>,
+        WithDefaults<
+          WorkspaceRow,
+          'id' | 'name' | 'icon' | 'is_default' | 'created_at' | 'updated_at'
+        >,
         Partial<WorkspaceRow>
       >;
       conversations: Table<
         ConversationRow,
         WithDefaults<
           ConversationRow,
-          'id' | 'workspace_id' | 'title' | 'model' | 'system_prompt' | 'params' | 'folder'
-          | 'thinking' | 'summary'
-          | 'pinned' | 'favorite' | 'archived' | 'parent_id' | 'created_at' | 'updated_at'
+          | 'id'
+          | 'workspace_id'
+          | 'title'
+          | 'model'
+          | 'system_prompt'
+          | 'params'
+          | 'folder'
+          | 'thinking'
+          | 'summary'
+          | 'pinned'
+          | 'favorite'
+          | 'archived'
+          | 'parent_id'
+          | 'created_at'
+          | 'updated_at'
         >,
         Partial<ConversationRow>
       >;
@@ -233,29 +251,74 @@ export interface Database {
         MessageRow,
         WithDefaults<
           MessageRow,
-          'id' | 'content' | 'model' | 'metrics' | 'error' | 'reasoning' | 'metadata'
-          | 'parent_id' | 'seq' | 'created_at' | 'updated_at'
+          | 'id'
+          | 'content'
+          | 'model'
+          | 'metrics'
+          | 'error'
+          | 'reasoning'
+          | 'metadata'
+          | 'parent_id'
+          | 'seq'
+          | 'created_at'
+          | 'updated_at'
         >,
         Partial<MessageRow>
       >;
       attachments: Table<
         AttachmentRow,
-        WithDefaults<AttachmentRow, 'id' | 'message_id' | 'conversation_id' | 'size_bytes' | 'bucket' | 'extracted_text' | 'created_at'>,
+        WithDefaults<
+          AttachmentRow,
+          | 'id'
+          | 'message_id'
+          | 'conversation_id'
+          | 'size_bytes'
+          | 'bucket'
+          | 'extracted_text'
+          | 'created_at'
+        >,
         Partial<AttachmentRow>
       >;
       artifacts: Table<
         ArtifactRow,
-        WithDefaults<ArtifactRow, 'id' | 'conversation_id' | 'message_id' | 'mime_type' | 'size_bytes' | 'bucket' | 'version' | 'metadata' | 'created_at' | 'updated_at'>,
+        WithDefaults<
+          ArtifactRow,
+          | 'id'
+          | 'conversation_id'
+          | 'message_id'
+          | 'mime_type'
+          | 'size_bytes'
+          | 'bucket'
+          | 'version'
+          | 'metadata'
+          | 'created_at'
+          | 'updated_at'
+        >,
         Partial<ArtifactRow>
       >;
       downloads: Table<
         DownloadRow,
-        WithDefaults<DownloadRow, 'id' | 'artifact_id' | 'status' | 'progress' | 'size_bytes' | 'bucket' | 'storage_path' | 'error' | 'created_at' | 'updated_at'>,
+        WithDefaults<
+          DownloadRow,
+          | 'id'
+          | 'artifact_id'
+          | 'status'
+          | 'progress'
+          | 'size_bytes'
+          | 'bucket'
+          | 'storage_path'
+          | 'error'
+          | 'created_at'
+          | 'updated_at'
+        >,
         Partial<DownloadRow>
       >;
       documents: Table<
         DocumentRow,
-        WithDefaults<DocumentRow, 'id' | 'conversation_id' | 'current_version' | 'created_at' | 'updated_at'>,
+        WithDefaults<
+          DocumentRow,
+          'id' | 'conversation_id' | 'current_version' | 'created_at' | 'updated_at'
+        >,
         Partial<DocumentRow>
       >;
       document_versions: Table<
@@ -270,7 +333,18 @@ export interface Database {
       >;
       installed_models: Table<
         InstalledModelRow,
-        WithDefaults<InstalledModelRow, 'id' | 'family' | 'parameter_size' | 'quantization' | 'size_bytes' | 'context_length' | 'supports_vision' | 'raw' | 'updated_at'>,
+        WithDefaults<
+          InstalledModelRow,
+          | 'id'
+          | 'family'
+          | 'parameter_size'
+          | 'quantization'
+          | 'size_bytes'
+          | 'context_length'
+          | 'supports_vision'
+          | 'raw'
+          | 'updated_at'
+        >,
         Partial<InstalledModelRow>
       >;
       workspace_settings: Table<
@@ -290,7 +364,10 @@ export interface Database {
       >;
       model_labels: Table<
         ModelLabelRow,
-        WithDefaults<ModelLabelRow, 'description' | 'hidden' | 'sort_order' | 'created_at' | 'updated_at'>,
+        WithDefaults<
+          ModelLabelRow,
+          'description' | 'hidden' | 'sort_order' | 'created_at' | 'updated_at'
+        >,
         Partial<ModelLabelRow>
       >;
     };

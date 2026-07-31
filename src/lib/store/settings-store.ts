@@ -1,12 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { GenerationParams, PromptPreset } from '@/types';
-import {
-  ACCENT_PRESETS,
-  DEFAULT_PARAMS,
-  DEFAULT_PRESETS,
-  DEFAULT_SYSTEM_PROMPT,
-} from './defaults';
+import { ACCENT_PRESETS, DEFAULT_PARAMS, DEFAULT_PRESETS, DEFAULT_SYSTEM_PROMPT } from './defaults';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ConnectionMode = 'direct' | 'bridge';
@@ -52,8 +47,8 @@ export interface SettingsState {
 }
 
 const initial = {
-  // Dark is the default canvas for the chat surface in the Hermes system;
-  // the landing page is always the blue field regardless of this setting.
+  // The product has one canvas (the night field), so this no longer drives
+  // anything; it is kept so the export/import format stays stable.
   theme: 'dark' as ThemeMode,
   accent: ACCENT_PRESETS[0]!.value,
   apiUrlOverride: '',
@@ -142,8 +137,7 @@ export const useSettings = create<SettingsState>()(
       setConnectionMode: (connectionMode) => set({ connectionMode }),
       setDefaultModel: (defaultModel) => set({ defaultModel }),
       setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
-      setDefaultParams: (p) =>
-        set((s) => ({ defaultParams: { ...s.defaultParams, ...p } })),
+      setDefaultParams: (p) => set((s) => ({ defaultParams: { ...s.defaultParams, ...p } })),
       addPreset: (p) => set((s) => ({ presets: [...s.presets, p] })),
       updatePreset: (id, patch) =>
         set((s) => ({
@@ -159,18 +153,18 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(() => localStorage),
-      version: 3,
+      version: 4,
       /**
-       * v* -> v3: the product moved to a single #0000f2 canvas, so the old
-       * accents no longer exist (most failed contrast on the field) and the
-       * theme setting no longer drives anything. Any accent that isn't one of
-       * the current presets falls back to the default rather than leaving
-       * `--accent` pointing at a colour that fails AA on blue.
+       * v* -> v4: the product moved from the blue field to the Lamplight system,
+       * which renamed every accent preset (Acid, Paper and Peach no longer
+       * exist). Any accent that isn't one of the current presets falls back to
+       * the default rather than leaving `--accent` pointing at a colour that was
+       * measured against a field this app no longer has.
        */
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as { accent?: string };
-        if (version < 3) {
+        if (version < 4) {
           const known = new Set(ACCENT_PRESETS.map((a) => a.value));
           if (!state.accent || !known.has(state.accent)) state.accent = ACCENT_PRESETS[0]!.value;
         }

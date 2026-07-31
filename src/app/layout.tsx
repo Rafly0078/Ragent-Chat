@@ -1,39 +1,38 @@
 import type { Metadata, Viewport } from 'next';
-import { Archivo, Bodoni_Moda, Courier_Prime } from 'next/font/google';
+import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 
 /**
- * Type system transcribed from hermes-agent.nousresearch.com, with free
- * substitutes for the two faces Nous licenses privately:
+ * Type system for the Lamplight direction.
  *
- *   displayFont "Sigurd Variable"  ->  Bodoni Moda   (high-contrast Didone)
- *   rulesFont   "Rules Variable"   ->  Archivo       (neutral grotesque)
- *   monoFont    "Courier Prime"    ->  Courier Prime (the actual face)
+ *   display  Bricolage Grotesque  variable grotesque with a real width axis
+ *   body     Instrument Sans      slightly narrow, holds up at 15px on a dark ground
+ *   mono     JetBrains Mono       the face a developer tool should already be using
  *
- * The display face only ever appears in caps at .03em tracking, so its
- * lowercase quirks never show; what matters is the stroke contrast, which is
- * what makes the reference's stacked headlines read the way they do.
+ * The `wdth` and `opsz` axes have to be requested explicitly or
+ * `font-variation-settings` in globals.css has nothing to move. The display
+ * voice is set condensed (wdth 78-88), which is what keeps a long headline on
+ * two or three lines instead of six.
  */
-const display = Bodoni_Moda({
+const display = Bricolage_Grotesque({
   subsets: ['latin'],
   variable: '--font-display',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
+  axes: ['opsz', 'wdth'],
 });
 
-const sans = Archivo({
+const sans = Instrument_Sans({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
 });
 
-const mono = Courier_Prime({
+const mono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-mono',
   display: 'swap',
-  weight: ['400', '700'],
 });
 
 export const metadata: Metadata = {
@@ -80,7 +79,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   viewportFit: 'cover',
   // One canvas, so one theme colour: the field itself.
-  themeColor: '#0000f2',
+  themeColor: '#0B1020',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

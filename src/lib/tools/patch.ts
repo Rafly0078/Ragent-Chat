@@ -136,7 +136,10 @@ export function parsePatchBlock(rawBody: string): ParsedPatchBlock | null {
   let head = rawBody;
   if (markerIdx !== -1) {
     head = rawBody.slice(0, markerIdx);
-    result = rawBody.slice(markerIdx + RESULT_MARKER.length).replace(/^\n/, '').replace(/\n$/, '');
+    result = rawBody
+      .slice(markerIdx + RESULT_MARKER.length)
+      .replace(/^\n/, '')
+      .replace(/\n$/, '');
   }
   const directive = parseDirective(head);
   if (!directive) return null;
@@ -198,7 +201,10 @@ export function extractCodeBlocks(text: string): CodeBlock[] {
  * chosen block's code and the apply result, or null if no candidate matches.
  * A candidate qualifies only if at least one hunk's SEARCH text is found in it.
  */
-export function locateAndApply(candidates: string[], hunks: PatchHunk[]): (ApplyResult & { source: string }) | null {
+export function locateAndApply(
+  candidates: string[],
+  hunks: PatchHunk[],
+): (ApplyResult & { source: string }) | null {
   for (const source of candidates) {
     const res = applyPatch(source, hunks);
     if (res.applied.length > 0) return { ...res, source };
@@ -297,7 +303,8 @@ export function applyPatch(source: string, hunks: PatchHunk[]): ApplyResult {
         failed.push(hunk);
         continue;
       }
-      result = result.slice(0, exactIdx) + hunk.replace + result.slice(exactIdx + hunk.search.length);
+      result =
+        result.slice(0, exactIdx) + hunk.replace + result.slice(exactIdx + hunk.search.length);
       applied.push(hunk);
       continue;
     }
@@ -355,7 +362,8 @@ export function lineDiff(before: string, after: string): DiffLine[] {
   const lcs: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(mm + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = mm - 1; j >= 0; j--) {
-      lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+      lcs[i]![j] =
+        a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
     }
   }
 

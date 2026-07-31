@@ -13,8 +13,8 @@ export default function manifest(): MetadataRoute.Manifest {
     // The installed app opens straight into chat; `/` is the marketing page.
     start_url: '/chat',
     display: 'standalone',
-    background_color: '#0a0a0c',
-    theme_color: '#0000f2',
+    background_color: '#0B1020',
+    theme_color: '#0B1020',
     orientation: 'any',
     categories: ['productivity', 'utilities', 'ai'],
     icons: [

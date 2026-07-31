@@ -35,7 +35,10 @@ const PAGE_SIZE = 1000;
  * permanent data loss.
  */
 async function selectAllPages<T>(
-  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  build: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let page = 0; ; page++) {
@@ -187,9 +190,7 @@ export async function saveConversation(convo: Conversation, userId: string): Pro
 
   if (convo.messages.length) {
     const rows = convo.messages.map((m, i) => messageToRow(m, convo.id, userId, i));
-    const { error: upsertErr } = await supabase
-      .from('messages')
-      .upsert(rows, { onConflict: 'id' });
+    const { error: upsertErr } = await supabase.from('messages').upsert(rows, { onConflict: 'id' });
     if (upsertErr) throw new Error(upsertErr.message);
   }
 }

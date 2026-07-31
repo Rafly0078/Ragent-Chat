@@ -79,10 +79,7 @@ export function useChatSync(): void {
     console.warn(`[chat-sync] ${what} failed:`, err);
     if (errorReported.current) return;
     errorReported.current = true;
-    notify(
-      'Could not sync your chats to the cloud. They are still saved on this device.',
-      'error',
-    );
+    notify('Could not sync your chats to the cloud. They are still saved on this device.', 'error');
   };
 
   // Initial hydrate on (re)login.

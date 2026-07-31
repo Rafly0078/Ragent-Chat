@@ -121,15 +121,15 @@ export function Modal({
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 320, damping: 30 }}
             className={cn(
-              'popover relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl pb-[env(safe-area-inset-bottom)] shadow-card outline-none sm:max-w-lg sm:rounded-3xl sm:pb-0',
+              'popover relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl pb-[env(safe-area-inset-bottom)] outline-none sm:max-w-lg sm:rounded-2xl sm:pb-0',
               className,
             )}
           >
             {(title || description) && (
-              <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+              <div className="border-border/12 flex items-start justify-between gap-4 border-b px-5 py-4">
                 <div>
                   {title && (
-                    <h2 id={headingId} className="text-lg font-semibold text-content">
+                    <h2 id={headingId} className="type-display text-[1.2rem] text-content">
                       {title}
                     </h2>
                   )}
@@ -152,7 +152,7 @@ export function Modal({
             )}
             <div className="scrollbar-thin overflow-y-auto px-5 py-4">{children}</div>
             {footer && (
-              <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+              <div className="flex justify-end gap-2 border-t border-border/15 px-5 py-4">
                 {footer}
               </div>
             )}

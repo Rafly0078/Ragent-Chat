@@ -8,17 +8,7 @@
  */
 
 export type ArtifactKind =
-  | 'pdf'
-  | 'docx'
-  | 'pptx'
-  | 'xlsx'
-  | 'csv'
-  | 'txt'
-  | 'md'
-  | 'html'
-  | 'json'
-  | 'xml'
-  | 'zip';
+  'pdf' | 'docx' | 'pptx' | 'xlsx' | 'csv' | 'txt' | 'md' | 'html' | 'json' | 'xml' | 'zip';
 
 export type ToolName =
   | 'create_pdf'

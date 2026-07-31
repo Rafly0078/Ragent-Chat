@@ -70,7 +70,8 @@ function fillSheet(ws: ExcelJS.Worksheet, rows: Cell[][]): void {
     added.eachCell({ includeEmpty: true }, (cell) => {
       cell.border = THIN;
       cell.alignment = { vertical: 'top', wrapText: true };
-      if (typeof cell.value === 'number') cell.alignment = { ...cell.alignment, horizontal: 'right' };
+      if (typeof cell.value === 'number')
+        cell.alignment = { ...cell.alignment, horizontal: 'right' };
     });
   });
 
@@ -115,7 +116,10 @@ const createXlsx: ExecutorFn = async (req) => {
     // so two sheets called "Data" produced a workbook Excel offers to "repair".
     const used = new Set<string>();
     sheets.forEach((spec, i) => {
-      const cleaned = (spec.name || `Sheet ${i + 1}`).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31).trim();
+      const cleaned = (spec.name || `Sheet ${i + 1}`)
+        .replace(/[\\/?*[\]:]/g, ' ')
+        .slice(0, 31)
+        .trim();
       let name = cleaned || `Sheet ${i + 1}`;
       const base = name.slice(0, 27);
       let n = 2;

@@ -1,7 +1,16 @@
 'use client';
 
 import { AnimatePresence, m } from 'framer-motion';
-import { Download, File, FileText, FileSpreadsheet, Presentation, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  Download,
+  File,
+  FileText,
+  FileSpreadsheet,
+  Presentation,
+  Loader2,
+  RefreshCw,
+  Trash2,
+} from 'lucide-react';
 import { formatBytes } from '@/lib/utils/format';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
@@ -26,29 +35,43 @@ interface Props {
 
 function statusColor(status: DownloadItem['status']) {
   switch (status) {
-    case 'ready': return 'text-success';
-    case 'processing': return 'text-warning';
-    case 'pending': return 'text-content-subtle';
-    case 'failed': return 'text-error';
+    case 'ready':
+      return 'text-success';
+    case 'processing':
+      return 'text-warning';
+    case 'pending':
+      return 'text-content-subtle';
+    case 'failed':
+      return 'text-error';
   }
 }
 
 function statusLabel(status: DownloadItem['status']) {
   switch (status) {
-    case 'ready': return 'Ready';
-    case 'processing': return 'Processing';
-    case 'pending': return 'Pending';
-    case 'failed': return 'Failed';
+    case 'ready':
+      return 'Ready';
+    case 'processing':
+      return 'Processing';
+    case 'pending':
+      return 'Pending';
+    case 'failed':
+      return 'Failed';
   }
 }
 
 function kindIcon(name: string) {
   const ext = name.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
-    case 'pdf': case 'docx': return <FileText className="h-4 w-4" />;
-    case 'pptx': return <Presentation className="h-4 w-4" />;
-    case 'xlsx': case 'csv': return <FileSpreadsheet className="h-4 w-4" />;
-    default: return <File className="h-4 w-4" />;
+    case 'pdf':
+    case 'docx':
+      return <FileText className="h-4 w-4" />;
+    case 'pptx':
+      return <Presentation className="h-4 w-4" />;
+    case 'xlsx':
+    case 'csv':
+      return <FileSpreadsheet className="h-4 w-4" />;
+    default:
+      return <File className="h-4 w-4" />;
   }
 }
 
@@ -74,9 +97,14 @@ export function DownloadManager({ downloads, onRetry, onDelete, onDownload }: Pr
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, height: 0 }}
-            className="group/dl flex items-center gap-3 rounded-xl border-2 border-border bg-surface-raised p-3 shadow-subtle transition-colors hover:border-accent/30"
+            className="group/dl flex items-center gap-3 rounded-xl border border-border/15 bg-surface-raised p-3 shadow-subtle transition-colors hover:border-accent/30"
           >
-            <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10', statusColor(item.status))}>
+            <div
+              className={cn(
+                'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10',
+                statusColor(item.status),
+              )}
+            >
               {item.status === 'processing' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -89,8 +117,12 @@ export function DownloadManager({ downloads, onRetry, onDelete, onDownload }: Pr
                   when a download became available or failed — the only cue was a
                   colour change. */}
               <div className="flex items-center gap-2 text-[0.7rem]" aria-live="polite">
-                <span className={cn('font-medium', statusColor(item.status))}>{statusLabel(item.status)}</span>
-                {item.size > 0 && <span className="text-content-subtle">{formatBytes(item.size)}</span>}
+                <span className={cn('font-medium', statusColor(item.status))}>
+                  {statusLabel(item.status)}
+                </span>
+                {item.size > 0 && (
+                  <span className="text-content-subtle">{formatBytes(item.size)}</span>
+                )}
                 {item.error && <span className="text-error">{item.error}</span>}
               </div>
               {item.status === 'processing' && (

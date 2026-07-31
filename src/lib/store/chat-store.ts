@@ -21,7 +21,9 @@ interface ChatState {
   recentModels: string[];
 
   // selectors are derived in components; these are the mutations
-  createConversation: (opts?: Partial<Pick<Conversation, 'model' | 'systemPrompt' | 'params'>>) => string;
+  createConversation: (
+    opts?: Partial<Pick<Conversation, 'model' | 'systemPrompt' | 'params'>>,
+  ) => string;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, title: string) => void;
   togglePin: (id: string) => void;
@@ -275,7 +277,10 @@ export function sanitizeConversations(raw: unknown): Conversation[] {
       model: typeof c.model === 'string' ? c.model : '',
       systemPrompt: typeof c.systemPrompt === 'string' ? c.systemPrompt : base.systemPrompt,
       params: { ...DEFAULT_PARAMS, ...(typeof c.params === 'object' && c.params ? c.params : {}) },
-      thinking: { ...DEFAULT_THINKING, ...(typeof c.thinking === 'object' && c.thinking ? c.thinking : {}) },
+      thinking: {
+        ...DEFAULT_THINKING,
+        ...(typeof c.thinking === 'object' && c.thinking ? c.thinking : {}),
+      },
       summary:
         c.summary && typeof c.summary === 'object' && typeof c.summary.text === 'string'
           ? c.summary
@@ -307,8 +312,7 @@ export const useChatStore = create<ChatState>()(
       deleteConversation: (id) =>
         set((s) => {
           const conversations = s.conversations.filter((c) => c.id !== id);
-          const activeId =
-            s.activeId === id ? (conversations[0]?.id ?? null) : s.activeId;
+          const activeId = s.activeId === id ? (conversations[0]?.id ?? null) : s.activeId;
           return { conversations, activeId };
         }),
 
@@ -356,9 +360,7 @@ export const useChatStore = create<ChatState>()(
 
       setConversationModel: (id, model) =>
         set((s) => ({
-          conversations: s.conversations.map((c) =>
-            c.id === id ? touch({ ...c, model }) : c,
-          ),
+          conversations: s.conversations.map((c) => (c.id === id ? touch({ ...c, model }) : c)),
         })),
 
       setConversationSystemPrompt: (id, systemPrompt) =>

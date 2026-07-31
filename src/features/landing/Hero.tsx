@@ -1,62 +1,111 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { HeroArt } from './HeroArt';
-import { InstallBlock } from './InstallBlock';
+import { HeroCore } from './HeroCore';
 
 /**
- * Hero: eyebrow, stacked display headline, one accent CTA, the terminal block,
- * and the generative mark carrying the right half.
+ * Hero: the thesis on the left, the room with the light in it on the right.
  *
- * The headline is hard-broken into three lines rather than left to wrap. At
- * this size a wrap point that moves with the viewport is the difference between
- * a composed stack and an accident, and the reference sets its own headline the
- * same way.
+ * The headline is hard-broken into two lines rather than left to wrap. Each line
+ * gets its own overflow-hidden mask and rises out of it, which only reads as
+ * deliberate if the break points are fixed — a wrap that moves with the viewport
+ * turns the same animation into a stack of accidents.
+ *
+ * A server component. The entrance is CSS (see `.enter*` in globals.css), so the
+ * only JavaScript this section costs is the canvas mark.
  */
+
+/** Models people actually run locally. Content, not decoration. */
+const RUNS = [
+  'llama3.3',
+  'qwen2.5-coder',
+  'gpt-oss',
+  'deepseek-r1',
+  'mistral-small',
+  'phi4',
+  'gemma3',
+  'codestral',
+  'nomic-embed-text',
+];
+
+const LINES = ['The models that', 'never leave home'];
+
+/** One beat, so the whole hero reads as a single move rather than six. */
+const beat = (ms: number) => ({ animationDelay: `${ms}ms` });
+
 export function Hero() {
   return (
-    <section className="relative px-6 pb-20 pt-16 sm:px-10 sm:pb-28 sm:pt-24">
-      <div className="grid items-center gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] lg:gap-8">
+    <section className="relative">
+      <div className="relative grid items-center gap-12 px-6 pb-16 pt-10 sm:px-10 sm:pb-24 sm:pt-16 lg:grid-cols-[1.04fr_0.96fr] lg:gap-10">
         {/* Left: the thesis. */}
-        <div className="relative z-10 max-w-3xl">
-          <p className="type-eyebrow mb-6 text-content">Open source &middot; MIT License</p>
+        <div className="relative z-10 min-w-0">
+          <p className="type-eyebrow enter" style={beat(80)}>
+            Local models &middot; MIT licensed
+          </p>
 
-          {/* Sized so the longest hard-broken line ("LEAVE HOME") still fits the
-              column at every width — the whole point of the stack is three
-              deliberate lines, and a size that lets them re-wrap turns it into
-              six accidental ones. */}
-          <h1 className="type-display text-content [font-size:clamp(2.25rem,7.2vw,6rem)]">
-            The models
-            <br />
-            that never
-            <br />
-            leave home
+          <h1 className="type-mega mt-7 max-w-[19ch] text-[clamp(2.6rem,8.4vw,6.25rem)] text-content">
+            {LINES.map((line, i) => (
+              <span key={line} className="block overflow-hidden pb-[0.06em]">
+                <span className="enter-line block" style={beat(160 + i * 110)}>
+                  {line}
+                </span>
+              </span>
+            ))}
           </h1>
 
-          <p className="mt-8 max-w-md text-[1.0625rem] leading-relaxed text-content-muted">
+          <p
+            className="enter mt-7 max-w-[46ch] text-[1.05rem] leading-relaxed text-content-muted"
+            style={beat(420)}
+          >
             A chat interface for the models already running on your own hardware. Streaming,
             reasoning, documents, and a sandbox that fixes its own code &mdash; with nothing
             travelling to anyone else&rsquo;s server.
           </p>
 
-          <div className="mt-9 flex flex-wrap items-center gap-3">
+          <div className="enter mt-9 flex flex-wrap items-center gap-3" style={beat(520)}>
             <Link href="/chat" className="btn-primary btn-xl group">
               Open chat
               <ArrowRight className="h-4 w-4 transition-transform duration-fast group-hover:translate-x-1" />
             </Link>
             <a href="#capabilities" className="btn-surface btn-xl">
-              What it does
+              See what it does
             </a>
-          </div>
-
-          <div className="mt-12">
-            <InstallBlock />
           </div>
         </div>
 
-        {/* Right: the mark. Decorative, so it drops out of the a11y tree on the
-            small layout where it sits behind the text. */}
-        <div className="pointer-events-none absolute inset-0 -z-0 flex items-center justify-center opacity-[0.13] lg:relative lg:z-10 lg:opacity-100">
-          <HeroArt className="h-auto w-[130%] max-w-none text-content lg:w-full" />
+        {/* Right: the mark. Decorative, so it drops out of the a11y tree; on the
+            small layout it sits behind the text at low opacity. */}
+        <div
+          className="enter-pop pointer-events-none absolute inset-0 z-0 lg:relative lg:inset-auto lg:z-10"
+          style={beat(120)}
+        >
+          <div className="lamp-pool left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2 animate-breathe" />
+          {/* Not a square: at 1:1 the mark was taller than the column of text
+              beside it, so the row centred and left a dead band under the CTAs. */}
+          <HeroCore className="relative h-full w-full opacity-[0.22] lg:aspect-[7/5] lg:h-auto lg:opacity-100" />
+        </div>
+      </div>
+
+      {/* The ticker. Real model names, so the row carries information — it is the
+          answer to "will it run what I have?", and it pauses on hover so you can
+          actually read it. The track holds the list twice; the animation
+          translates exactly -50%, which puts the seam back at the start. */}
+      <div className="enter-fade relative border-y border-border/10 py-4" style={beat(700)}>
+        <div className="marquee">
+          <div className="marquee-track">
+            {[0, 1].map((pass) => (
+              <ul key={pass} className="flex items-center" aria-hidden={pass === 1}>
+                {RUNS.map((name) => (
+                  <li
+                    key={name}
+                    className="flex items-center gap-6 whitespace-nowrap px-6 font-mono text-[0.78rem] tracking-[0.06em] text-content-muted"
+                  >
+                    {name}
+                    <span className="h-1 w-1 rounded-full bg-accent/60" />
+                  </li>
+                ))}
+              </ul>
+            ))}
+          </div>
         </div>
       </div>
     </section>

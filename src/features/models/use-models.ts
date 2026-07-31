@@ -73,10 +73,7 @@ export function useModels(): ModelsState {
     try {
       // Fetch the raw list and the curated labels in parallel; a labels failure
       // must not block models (the picker just shows raw names).
-      const [list, labels] = await Promise.all([
-        fetchModels(signal),
-        fetchModelLabels(signal),
-      ]);
+      const [list, labels] = await Promise.all([fetchModels(signal), fetchModelLabels(signal)]);
       if (gen !== generation.current) return;
       const merged = applyLabels(list, labels);
       cache = merged;

@@ -41,7 +41,11 @@ export function ModelSelector({ value, onChange }: Props) {
 
   return (
     <div ref={ref} className="relative">
-      <ModelDetailsPanel open={detailsOpen} onClose={() => setDetailsOpen(false)} model={detailsModel} />
+      <ModelDetailsPanel
+        open={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        model={detailsModel}
+      />
       <ModelLabelEditor
         open={Boolean(editModel)}
         model={editModel}
@@ -59,7 +63,9 @@ export function ModelSelector({ value, onChange }: Props) {
           {active ? active.label : loading ? 'Loading…' : value || 'Select model'}
         </span>
         {active?.supportsVision && <Eye className="h-3.5 w-3.5 shrink-0 text-accent-soft" />}
-        <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
+        />
       </button>
 
       <AnimatePresence>
@@ -70,7 +76,7 @@ export function ModelSelector({ value, onChange }: Props) {
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.15 }}
             role="listbox"
-            className="popover scrollbar-thin absolute left-0 top-full z-50 mt-2 max-h-[70vh] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl p-1.5 shadow-card"
+            className="popover scrollbar-thin absolute left-0 top-full z-50 mt-2 max-h-[70vh] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto p-1.5"
           >
             <div className="flex items-center justify-between px-2 py-1.5">
               <span className="text-xs font-medium text-content-muted">
@@ -107,7 +113,8 @@ export function ModelSelector({ value, onChange }: Props) {
 
             {!loading && !error && models.length === 0 && (
               <p className="p-3 text-sm text-content-muted">
-                No models found. Pull one with <code className="text-accent">ollama pull llama3.2</code>.
+                No models found. Pull one with{' '}
+                <code className="text-accent">ollama pull llama3.2</code>.
               </p>
             )}
 
@@ -193,7 +200,10 @@ function ModelRow({
             </span>
           ))}
           <button
-            onClick={(e) => { e.stopPropagation(); onDetails(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDetails();
+            }}
             className="rounded-md p-0.5 text-content-subtle hover:text-accent"
             aria-label="Model details"
           >
@@ -201,7 +211,10 @@ function ModelRow({
           </button>
           {canEdit && (
             <button
-              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
               className="rounded-md p-0.5 text-content-subtle hover:text-accent"
               aria-label="Rename model"
             >

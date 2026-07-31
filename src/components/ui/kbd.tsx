@@ -12,7 +12,15 @@ import { cn } from '@/lib/utils/cn';
  * hydration mismatch on half of all visitors. "Ctrl" is the pre-mount value
  * because it is also the wider string, so the chip does not resize on hydrate.
  */
-export function Kbd({ children, mod, className }: { children?: string; mod?: boolean; className?: string }) {
+export function Kbd({
+  children,
+  mod,
+  className,
+}: {
+  children?: string;
+  mod?: boolean;
+  className?: string;
+}) {
   const [apple, setApple] = useState(false);
 
   useEffect(() => {

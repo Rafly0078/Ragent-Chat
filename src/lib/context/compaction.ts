@@ -109,9 +109,7 @@ export function planCompaction(
 
   // Fold in everything between the summary cutoff and the recent-keep window,
   // never summarizing a message that is still streaming or errored.
-  const span = messages
-    .slice(start, keepFrom)
-    .filter((m) => !m.streaming && !m.error);
+  const span = messages.slice(start, keepFrom).filter((m) => !m.streaming && !m.error);
 
   if (span.length < MIN_MESSAGES_TO_COMPACT) return null;
   return { toSummarize: span, upToMessageId: span[span.length - 1]!.id };
@@ -135,7 +133,7 @@ export function stillOverBudget(
 
 const SUMMARIZER_SYSTEM =
   'You compress chat history into durable memory. Produce a concise, factual summary ' +
-  'that preserves everything needed to continue the conversation: the user\'s goals and ' +
+  "that preserves everything needed to continue the conversation: the user's goals and " +
   'constraints, decisions made, key facts and definitions established, code or file names ' +
   'referenced, and any open questions or next steps. Use tight bullet points. Do not add ' +
   'commentary, greetings, or information that was not in the conversation.';
@@ -146,7 +144,9 @@ function renderTranscript(messages: Message[]): string {
     .map((m) => {
       const who = m.role === 'assistant' ? 'Assistant' : m.role === 'user' ? 'User' : 'System';
       const attach = (m.attachments ?? [])
-        .map((a) => (a.text ? `\n[file ${a.name}]:\n${a.text}` : a.base64 ? `\n[image ${a.name}]` : ''))
+        .map((a) =>
+          a.text ? `\n[file ${a.name}]:\n${a.text}` : a.base64 ? `\n[image ${a.name}]` : '',
+        )
         .join('');
       return `${who}: ${m.content}${attach}`;
     })

@@ -21,7 +21,7 @@ export function AccountSection() {
   const [dialog, setDialog] = useState(false);
 
   return (
-    <section className="glass animate-fade-in mb-6 p-5 sm:p-6">
+    <section className="glass mb-6 animate-fade-in p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-2">
         <UserIcon className="h-5 w-5 text-accent" />
         <h2 className="type-display text-xl text-content">Account</h2>
@@ -40,7 +40,9 @@ export function AccountSection() {
           <div>
             <p className="text-sm font-medium text-content">{userLabel(auth.user)}</p>
             <p className="text-xs text-content-muted">
-              {auth.isGuest ? 'Guest session — conversations sync while signed in.' : auth.user.email}
+              {auth.isGuest
+                ? 'Guest session — conversations sync while signed in.'
+                : auth.user.email}
             </p>
           </div>
           <div className="flex gap-2">

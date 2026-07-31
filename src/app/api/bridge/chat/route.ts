@@ -30,7 +30,9 @@ export async function POST(request: Request): Promise<Response> {
   try {
     body = await readJson<unknown>(request, MAX_BODY_BYTES);
   } catch (err) {
-    return bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    return (
+      bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    );
   }
 
   try {

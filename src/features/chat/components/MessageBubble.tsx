@@ -71,9 +71,12 @@ export const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => () => {
-    if (copyTimer.current) clearTimeout(copyTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+    },
+    [],
+  );
 
   const copy = () => {
     actions.onCopy(message.content);
@@ -88,16 +91,15 @@ export const MessageBubble = memo(function MessageBubble({
   };
 
   const showActions = !message.streaming && !editing;
-  const canContinue = !isUser && isLast && !generating && !message.error && message.content.length > 0;
+  const canContinue =
+    !isUser && isLast && !generating && !message.error && message.content.length > 0;
 
   // Runnable web code (HTML/CSS/JS) in a finished assistant message gets a
   // sandbox with an audit-and-fix loop. Skipped while streaming (the fences may
   // be incomplete) and for user messages.
   const webSource = useMemo(
     () =>
-      !isUser && !message.streaming && !message.error
-        ? extractWebSource(message.content)
-        : null,
+      !isUser && !message.streaming && !message.error ? extractWebSource(message.content) : null,
     [isUser, message.streaming, message.error, message.content],
   );
 
@@ -110,10 +112,7 @@ export const MessageBubble = memo(function MessageBubble({
   // multi-step status indicator so the user sees the model plan, then search,
   // then reason over results instead of one opaque "Searching…".
   const searchPhase = message.metadata?.searchPhase as
-    | 'planning'
-    | 'searching'
-    | 'analyzing'
-    | undefined;
+    'planning' | 'searching' | 'analyzing' | undefined;
   const plannedQueries = (message.metadata?.plannedQueries as string[] | undefined) ?? [];
 
   // Only the newest message plays the entrance animation. Animating every
@@ -138,33 +137,38 @@ export const MessageBubble = memo(function MessageBubble({
         !message.streaming && 'cv-auto',
       )}
     >
-      {/* Avatar. The assistant carries the accent fill, the user an outline —
-          the cheapest way to make the two roles readable at a glance while
-          scanning a long thread. */}
+      {/* Avatar. The assistant carries the lamp fill, the user an outline — the
+          cheapest way to make the two roles readable at a glance while scanning
+          a long thread. */}
       <div
         className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded',
+          'flex h-8 w-8 shrink-0 items-center justify-center rounded-md',
           isUser
-            ? 'border-2 border-border/35 bg-surface-raised text-content-muted'
-            : 'accent-gradient text-accent-fg',
+            ? 'border-border/22 border bg-surface-raised text-content-muted'
+            : 'accent-gradient text-accent-fg shadow-[0_2px_10px_-2px_rgb(var(--lamp)/0.5)]',
         )}
         aria-hidden
       >
-        {isUser ? <User className="h-[0.9rem] w-[0.9rem]" /> : <Sparkles className="h-[0.9rem] w-[0.9rem]" />}
+        {isUser ? (
+          <User className="h-[0.9rem] w-[0.9rem]" />
+        ) : (
+          <Sparkles className="h-[0.9rem] w-[0.9rem]" />
+        )}
       </div>
 
       {/* Body. The user turn is a contained block; the assistant turn runs full
-          width with an accent rail, so answers read like a document and prompts
-          read like an aside.
+          width with a lit rail, so answers read like a document and prompts read
+          like an aside.
 
-          Both edges are stronger than they were: at 25% and 35% over #0000f2
-          they measured ~1.3:1 and could only be found if you knew to look. */}
+          The user block is a card rather than a 2px outline: on the night field a
+          hairline plus the raised fill plus a drop shadow reads as a physical
+          object, where a heavy rule just read as a wireframe. */}
       <div
         className={cn(
           'min-w-0 flex-1',
           isUser
-            ? 'rounded border-2 border-border/45 bg-surface-raised px-4 py-3'
-            : 'border-l-2 border-accent/70 pl-4',
+            ? 'border-border/16 rounded-lg border bg-surface-raised px-4 py-3 shadow-subtle'
+            : 'border-l-2 border-accent/55 pl-4',
         )}
       >
         <div className="mb-1.5 flex items-center gap-2">
@@ -172,7 +176,7 @@ export const MessageBubble = memo(function MessageBubble({
             {isUser ? 'You' : 'Ragent'}
           </span>
           {message.model && !isUser && (
-            <span className="rounded bg-border/8 px-1.5 py-0.5 font-mono text-[0.66rem] tracking-wide text-content-subtle">
+            <span className="bg-border/8 rounded px-1.5 py-0.5 font-mono text-[0.66rem] tracking-wide text-content-subtle">
               {message.model.replace(/:latest$/, '')}
             </span>
           )}
@@ -189,12 +193,12 @@ export const MessageBubble = memo(function MessageBubble({
                   key={a.id}
                   src={preview}
                   alt={a.name}
-                  className="h-24 w-24 rounded-lg border border-border object-cover"
+                  className="h-24 w-24 rounded-lg border border-border/15 object-cover"
                 />
               ) : (
                 <span
                   key={a.id}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-border/5 px-2 py-1 text-xs text-content-muted"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border/15 bg-border/5 px-2 py-1 text-xs text-content-muted"
                 >
                   {a.name}
                 </span>
@@ -206,7 +210,7 @@ export const MessageBubble = memo(function MessageBubble({
         {/* Web-search status: a multi-phase indicator for agentic search
             (plan → search → analyze), shown before the answer streams in. */}
         {!isUser && searching && (
-          <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-md border border-border bg-border/5 px-2.5 py-1.5 text-xs text-content-muted">
+          <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-md border border-border/15 bg-border/5 px-2.5 py-1.5 text-xs text-content-muted">
             <Globe className="h-3.5 w-3.5 shrink-0 animate-pulse text-accent" />
             <span className="min-w-0">
               {searchPhase === 'planning'
@@ -340,7 +344,13 @@ export const MessageBubble = memo(function MessageBubble({
               {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </ActionBtn>
             {isUser && (
-              <ActionBtn label="Edit" onClick={() => { setDraft(message.content); setEditing(true); }}>
+              <ActionBtn
+                label="Edit"
+                onClick={() => {
+                  setDraft(message.content);
+                  setEditing(true);
+                }}
+              >
                 <Pencil className="h-4 w-4" />
               </ActionBtn>
             )}
@@ -370,7 +380,12 @@ export const MessageBubble = memo(function MessageBubble({
  * once the answer begins — matching the "show the thinking, then tuck it away"
  * pattern from other chat UIs. A manual toggle overrides the auto behavior.
  */
-function ReasoningPanel({ reasoning, thinking, hasContent, effort }: {
+function ReasoningPanel({
+  reasoning,
+  thinking,
+  hasContent,
+  effort,
+}: {
   reasoning: string;
   thinking: boolean;
   hasContent: boolean;
@@ -410,7 +425,9 @@ function ReasoningPanel({ reasoning, thinking, hasContent, effort }: {
         <span className={cn('flex-1', maxThinking && 'reasoning-shimmer')}>
           {liveThinking ? (maxThinking ? 'Thinking harder…' : 'Thinking…') : 'Thought process'}
         </span>
-        <ChevronDown className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')} />
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
+        />
       </button>
       <AnimatePresence initial={false}>
         {open && (

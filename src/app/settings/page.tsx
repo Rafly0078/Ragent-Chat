@@ -75,7 +75,11 @@ export default function SettingsPage() {
       sandboxAutoHeal: s.sandboxAutoHeal,
       sandboxMaxIterations: s.sandboxMaxIterations,
     };
-    downloadText('ollama-webui-settings.json', JSON.stringify(payload, null, 2), 'application/json');
+    downloadText(
+      'ollama-webui-settings.json',
+      JSON.stringify(payload, null, 2),
+      'application/json',
+    );
     toast('Settings exported', 'success');
   };
 
@@ -90,7 +94,11 @@ export default function SettingsPage() {
   };
 
   const exportChats = () => {
-    downloadText('ollama-webui-chats.json', JSON.stringify(conversations, null, 2), 'application/json');
+    downloadText(
+      'ollama-webui-chats.json',
+      JSON.stringify(conversations, null, 2),
+      'application/json',
+    );
     toast('Conversations exported', 'success');
   };
 
@@ -177,243 +185,299 @@ export default function SettingsPage() {
 
           {/* Active section */}
           <div className="min-w-0 flex-1">
-        {/* Account */}
-        {active === 'account' && <AccountSection />}
+            {/* Account */}
+            {active === 'account' && <AccountSection />}
 
-        {/* Appearance */}
-        {active === 'appearance' && (
-        <Section icon={Palette} title="Appearance">
-          <Field label="Canvas">
-            <p className="text-sm leading-6 text-content-muted">
-              One canvas, everywhere: the electric-blue field with off-white type. There is no
-              light/dark switch because the design has no light/dark pair &mdash; only the accent
-              below is adjustable.
-            </p>
-          </Field>
+            {/* Appearance */}
+            {active === 'appearance' && (
+              <Section icon={Palette} title="Appearance">
+                <Field label="Canvas">
+                  <p className="text-sm leading-6 text-content-muted">
+                    One canvas, everywhere: the electric-blue field with off-white type. There is no
+                    light/dark switch because the design has no light/dark pair &mdash; only the
+                    accent below is adjustable.
+                  </p>
+                </Field>
 
-          <Field label="Accent color">
-            <div className="flex flex-wrap gap-2">
-              {ACCENT_PRESETS.map((a) => (
-                <button
-                  key={a.value}
-                  onClick={() => s.setAccent(a.value)}
-                  className={cn(
-                    'flex h-9 items-center gap-2 rounded-xl border px-3 text-sm transition-colors',
-                    s.accent === a.value ? 'border-border/30 text-content' : 'border-border text-content-muted',
-                  )}
-                  style={{ boxShadow: s.accent === a.value ? `0 0 0 2px rgb(${a.rgb} / 0.4)` : undefined }}
+                <Field label="Accent color">
+                  <div className="flex flex-wrap gap-2">
+                    {ACCENT_PRESETS.map((a) => (
+                      <button
+                        key={a.value}
+                        onClick={() => s.setAccent(a.value)}
+                        className={cn(
+                          'flex h-9 items-center gap-2 rounded-xl border px-3 text-sm transition-colors',
+                          s.accent === a.value
+                            ? 'border-border/30 text-content'
+                            : 'border-border/15 text-content-muted',
+                        )}
+                        style={{
+                          boxShadow:
+                            s.accent === a.value ? `0 0 0 2px rgb(${a.rgb} / 0.4)` : undefined,
+                        }}
+                      >
+                        <span
+                          className="h-4 w-4 rounded-full"
+                          style={{ background: `rgb(${a.rgb})` }}
+                        />
+                        {a.name}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <ToggleRow
+                  label="Animated background"
+                  description="Ambient gradient blobs. Disable to save battery."
+                  checked={s.animatedBackground}
+                  onChange={() => s.toggle('animatedBackground')}
+                />
+                <ToggleRow
+                  label="Send on Enter"
+                  description="Enter sends, Shift+Enter for newline. Ctrl+Enter always sends."
+                  checked={s.sendOnEnter}
+                  onChange={() => s.toggle('sendOnEnter')}
+                />
+                <ToggleRow
+                  label="Show token counter"
+                  description="Estimate tokens while typing."
+                  checked={s.showTokenCounter}
+                  onChange={() => s.toggle('showTokenCounter')}
+                />
+              </Section>
+            )}
+
+            {/* Connection */}
+            {active === 'connection' && (
+              <Section icon={Server} title="Connection">
+                <Field
+                  label="Connection mode"
+                  hint={
+                    s.connectionMode === 'direct'
+                      ? 'Browser talks straight to Ollama. No duration limit, but the Ollama server needs CORS enabled (OLLAMA_ORIGINS).'
+                      : "Routed through this app's server, which forwards to Ollama. No CORS setup needed, but a single reply is capped by the host's function duration (e.g. ~300s on Vercel Hobby)."
+                  }
                 >
-                  <span className="h-4 w-4 rounded-full" style={{ background: `rgb(${a.rgb})` }} />
-                  {a.name}
-                </button>
-              ))}
-            </div>
-          </Field>
+                  <div className="flex gap-2">
+                    {(
+                      [
+                        { value: 'direct', label: 'Direct' },
+                        { value: 'bridge', label: 'Via server' },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => s.setConnectionMode(opt.value)}
+                        className={cn(
+                          'btn-surface h-9 flex-1',
+                          s.connectionMode === opt.value &&
+                            'border-accent/50 bg-accent/10 text-content',
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
 
-          <ToggleRow
-            label="Animated background"
-            description="Ambient gradient blobs. Disable to save battery."
-            checked={s.animatedBackground}
-            onChange={() => s.toggle('animatedBackground')}
-          />
-          <ToggleRow
-            label="Send on Enter"
-            description="Enter sends, Shift+Enter for newline. Ctrl+Enter always sends."
-            checked={s.sendOnEnter}
-            onChange={() => s.toggle('sendOnEnter')}
-          />
-          <ToggleRow
-            label="Show token counter"
-            description="Estimate tokens while typing."
-            checked={s.showTokenCounter}
-            onChange={() => s.toggle('showTokenCounter')}
-          />
-        </Section>
-        )}
+                {s.connectionMode === 'direct' ? (
+                  <Field
+                    label="API URL"
+                    hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
+                  >
+                    <input
+                      value={s.apiUrlOverride}
+                      onChange={(e) => s.setApiUrlOverride(e.target.value)}
+                      placeholder={API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'}
+                      className="input font-mono text-sm"
+                      spellCheck={false}
+                    />
+                    <p className="mt-1.5 text-xs text-content-subtle">
+                      Active endpoint:{' '}
+                      <code className="text-accent-soft">{API_BASE_URL || '(unset)'}</code> — the
+                      browser connects to this directly, so make sure CORS is enabled on the Ollama
+                      server (<code className="text-accent-soft">OLLAMA_ORIGINS</code>).
+                    </p>
+                  </Field>
+                ) : (
+                  <Field label="Server endpoint">
+                    <p className="text-xs text-content-subtle">
+                      Requests go to <code className="text-accent-soft">/api/bridge/*</code> on this
+                      app&apos;s server, which forwards to the{' '}
+                      <code className="text-accent-soft">OLLAMA_API_URL</code> configured in the
+                      deployment&apos;s environment variables — nothing to set here.
+                    </p>
+                  </Field>
+                )}
 
-        {/* Connection */}
-        {active === 'connection' && (
-        <Section icon={Server} title="Connection">
-          <Field
-            label="Connection mode"
-            hint={
-              s.connectionMode === 'direct'
-                ? 'Browser talks straight to Ollama. No duration limit, but the Ollama server needs CORS enabled (OLLAMA_ORIGINS).'
-                : "Routed through this app's server, which forwards to Ollama. No CORS setup needed, but a single reply is capped by the host's function duration (e.g. ~300s on Vercel Hobby)."
-            }
-          >
-            <div className="flex gap-2">
-              {(
-                [
-                  { value: 'direct', label: 'Direct' },
-                  { value: 'bridge', label: 'Via server' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => s.setConnectionMode(opt.value)}
-                  className={cn(
-                    'btn-surface h-9 flex-1',
-                    s.connectionMode === opt.value && 'border-accent/50 bg-accent/10 text-content',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </Field>
+                <Field label="Default model">
+                  <select
+                    value={s.defaultModel}
+                    onChange={(e) => s.setDefaultModel(e.target.value)}
+                    className="input"
+                  >
+                    <option value="">Auto (first available)</option>
+                    {models.map((m) => (
+                      <option key={m.name} value={m.name}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </Section>
+            )}
 
-          {s.connectionMode === 'direct' ? (
-            <Field
-              label="API URL"
-              hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
-            >
-              <input
-                value={s.apiUrlOverride}
-                onChange={(e) => s.setApiUrlOverride(e.target.value)}
-                placeholder={API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'}
-                className="input font-mono text-sm"
-                spellCheck={false}
-              />
-              <p className="mt-1.5 text-xs text-content-subtle">
-                Active endpoint: <code className="text-accent-soft">{API_BASE_URL || '(unset)'}</code> — the
-                browser connects to this directly, so make sure CORS is enabled on the Ollama server
-                (<code className="text-accent-soft">OLLAMA_ORIGINS</code>).
-              </p>
-            </Field>
-          ) : (
-            <Field label="Server endpoint">
-              <p className="text-xs text-content-subtle">
-                Requests go to <code className="text-accent-soft">/api/bridge/*</code> on this app&apos;s
-                server, which forwards to the <code className="text-accent-soft">OLLAMA_API_URL</code>{' '}
-                configured in the deployment&apos;s environment variables — nothing to set here.
-              </p>
-            </Field>
-          )}
+            {/* System prompt */}
+            {active === 'prompt' && (
+              <Section icon={Terminal} title="Default system prompt">
+                <textarea
+                  value={s.defaultSystemPrompt}
+                  onChange={(e) => s.setDefaultSystemPrompt(e.target.value)}
+                  rows={4}
+                  className="input resize-none font-mono text-[0.85rem] leading-relaxed"
+                />
+                <PresetManager presets={s.presets} />
+              </Section>
+            )}
 
-          <Field label="Default model">
-            <select
-              value={s.defaultModel}
-              onChange={(e) => s.setDefaultModel(e.target.value)}
-              className="input"
-            >
-              <option value="">Auto (first available)</option>
-              {models.map((m) => (
-                <option key={m.name} value={m.name}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </Section>
-        )}
+            {/* Default generation params */}
+            {active === 'params' && (
+              <Section icon={Sliders} title="Default generation parameters">
+                <div className="space-y-6">
+                  <Slider
+                    label="Temperature"
+                    value={s.defaultParams.temperature}
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    onChange={(v) => s.setDefaultParams({ temperature: v })}
+                    format={(v) => v.toFixed(2)}
+                  />
+                  <Slider
+                    label="Top P"
+                    value={s.defaultParams.topP}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    onChange={(v) => s.setDefaultParams({ topP: v })}
+                    format={(v) => v.toFixed(2)}
+                  />
+                  <Slider
+                    label="Top K"
+                    value={s.defaultParams.topK}
+                    min={0}
+                    max={100}
+                    step={1}
+                    onChange={(v) => s.setDefaultParams({ topK: v })}
+                  />
+                  <Slider
+                    label="Repeat penalty"
+                    value={s.defaultParams.repeatPenalty}
+                    min={0.8}
+                    max={2}
+                    step={0.01}
+                    onChange={(v) => s.setDefaultParams({ repeatPenalty: v })}
+                    format={(v) => v.toFixed(2)}
+                  />
+                  <Slider
+                    label="Context length"
+                    value={s.defaultParams.contextLength}
+                    min={512}
+                    max={131072}
+                    step={512}
+                    onChange={(v) => s.setDefaultParams({ contextLength: v })}
+                  />
+                  <Slider
+                    label="Max tokens"
+                    value={s.defaultParams.maxTokens}
+                    min={-1}
+                    max={8192}
+                    step={1}
+                    onChange={(v) => s.setDefaultParams({ maxTokens: v })}
+                  />
+                </div>
 
-        {/* System prompt */}
-        {active === 'prompt' && (
-        <Section icon={Terminal} title="Default system prompt">
-          <textarea
-            value={s.defaultSystemPrompt}
-            onChange={(e) => s.setDefaultSystemPrompt(e.target.value)}
-            rows={4}
-            className="input resize-none font-mono text-[0.85rem] leading-relaxed"
-          />
-          <PresetManager presets={s.presets} />
-        </Section>
-        )}
+                <div className="mt-6 space-y-4 border-t border-border/60 pt-5">
+                  <ToggleRow
+                    label="Auto-audit & perbaiki kode"
+                    description="Setelah kode web (HTML/CSS/JS) selesai dibuat, jalankan di sandbox, deteksi error, lalu minta model memperbaikinya otomatis sampai bersih. Membuat panggilan model tambahan."
+                    checked={s.sandboxAutoHeal}
+                    onChange={() => s.toggle('sandboxAutoHeal')}
+                  />
+                  <Slider
+                    label="Maksimum iterasi perbaikan"
+                    value={s.sandboxMaxIterations}
+                    min={1}
+                    max={8}
+                    step={1}
+                    onChange={(v) => s.setSandboxMaxIterations(v)}
+                  />
+                </div>
+              </Section>
+            )}
 
-        {/* Default generation params */}
-        {active === 'params' && (
-        <Section icon={Sliders} title="Default generation parameters">
-          <div className="space-y-6">
-            <Slider label="Temperature" value={s.defaultParams.temperature} min={0} max={2} step={0.05} onChange={(v) => s.setDefaultParams({ temperature: v })} format={(v) => v.toFixed(2)} />
-            <Slider label="Top P" value={s.defaultParams.topP} min={0} max={1} step={0.01} onChange={(v) => s.setDefaultParams({ topP: v })} format={(v) => v.toFixed(2)} />
-            <Slider label="Top K" value={s.defaultParams.topK} min={0} max={100} step={1} onChange={(v) => s.setDefaultParams({ topK: v })} />
-            <Slider label="Repeat penalty" value={s.defaultParams.repeatPenalty} min={0.8} max={2} step={0.01} onChange={(v) => s.setDefaultParams({ repeatPenalty: v })} format={(v) => v.toFixed(2)} />
-            <Slider label="Context length" value={s.defaultParams.contextLength} min={512} max={131072} step={512} onChange={(v) => s.setDefaultParams({ contextLength: v })} />
-            <Slider label="Max tokens" value={s.defaultParams.maxTokens} min={-1} max={8192} step={1} onChange={(v) => s.setDefaultParams({ maxTokens: v })} />
-          </div>
+            {/* Install app (PWA) */}
+            {active === 'app' && (
+              <Section icon={Smartphone} title="Install app">
+                <InstallAppSection />
+              </Section>
+            )}
 
-          <div className="mt-6 space-y-4 border-t border-border/60 pt-5">
-            <ToggleRow
-              label="Auto-audit & perbaiki kode"
-              description="Setelah kode web (HTML/CSS/JS) selesai dibuat, jalankan di sandbox, deteksi error, lalu minta model memperbaikinya otomatis sampai bersih. Membuat panggilan model tambahan."
-              checked={s.sandboxAutoHeal}
-              onChange={() => s.toggle('sandboxAutoHeal')}
-            />
-            <Slider
-              label="Maksimum iterasi perbaikan"
-              value={s.sandboxMaxIterations}
-              min={1}
-              max={8}
-              step={1}
-              onChange={(v) => s.setSandboxMaxIterations(v)}
-            />
-          </div>
-        </Section>
-        )}
-
-        {/* Install app (PWA) */}
-        {active === 'app' && (
-        <Section icon={Smartphone} title="Install app">
-          <InstallAppSection />
-        </Section>
-        )}
-
-        {/* Data */}
-        {active === 'data' && (
-        <Section icon={Download} title="Data & backup">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button variant="surface" onClick={exportSettings}>
-              <Download className="h-4 w-4" /> Export settings
-            </Button>
-            <Button variant="surface" onClick={() => fileRef.current?.click()}>
-              <Upload className="h-4 w-4" /> Import settings
-            </Button>
-            <Button variant="surface" onClick={exportChats}>
-              <Download className="h-4 w-4" /> Export chats ({conversations.length})
-            </Button>
-            <Button variant="surface" onClick={() => chatFileRef.current?.click()}>
-              <Upload className="h-4 w-4" /> Import chats
-            </Button>
-          </div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.[0]) void importSettings(e.target.files[0]);
-              e.target.value = '';
-            }}
-          />
-          <input
-            ref={chatFileRef}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.[0]) void importChats(e.target.files[0]);
-              e.target.value = '';
-            }}
-          />
-          <div className="mt-4 rounded-xl border border-error/20 bg-error/5 p-4">
-            <p className="text-sm font-medium text-content">Reset settings</p>
-            <p className="mt-0.5 text-xs text-content-muted">
-              Restores default theme, prompts and parameters. Conversations are kept.
-            </p>
-            <Button
-              variant="danger"
-              className="mt-3 h-9"
-              onClick={() => {
-                s.reset();
-                toast('Settings reset to defaults');
-              }}
-            >
-              <Trash2 className="h-4 w-4" /> Reset settings
-            </Button>
-          </div>
-        </Section>
-        )}
+            {/* Data */}
+            {active === 'data' && (
+              <Section icon={Download} title="Data & backup">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button variant="surface" onClick={exportSettings}>
+                    <Download className="h-4 w-4" /> Export settings
+                  </Button>
+                  <Button variant="surface" onClick={() => fileRef.current?.click()}>
+                    <Upload className="h-4 w-4" /> Import settings
+                  </Button>
+                  <Button variant="surface" onClick={exportChats}>
+                    <Download className="h-4 w-4" /> Export chats ({conversations.length})
+                  </Button>
+                  <Button variant="surface" onClick={() => chatFileRef.current?.click()}>
+                    <Upload className="h-4 w-4" /> Import chats
+                  </Button>
+                </div>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) void importSettings(e.target.files[0]);
+                    e.target.value = '';
+                  }}
+                />
+                <input
+                  ref={chatFileRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) void importChats(e.target.files[0]);
+                    e.target.value = '';
+                  }}
+                />
+                <div className="mt-4 rounded-xl border border-error/20 bg-error/5 p-4">
+                  <p className="text-sm font-medium text-content">Reset settings</p>
+                  <p className="mt-0.5 text-xs text-content-muted">
+                    Restores default theme, prompts and parameters. Conversations are kept.
+                  </p>
+                  <Button
+                    variant="danger"
+                    className="mt-3 h-9"
+                    onClick={() => {
+                      s.reset();
+                      toast('Settings reset to defaults');
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" /> Reset settings
+                  </Button>
+                </div>
+              </Section>
+            )}
           </div>
         </div>
 
@@ -461,7 +525,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="glass animate-fade-in mb-6 p-5 sm:p-6">
+    <section className="glass mb-6 animate-fade-in p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-2">
         <Icon className="h-5 w-5 text-accent" />
         <h2 className="type-display text-xl text-content">{title}</h2>
@@ -525,7 +589,7 @@ function PresetManager({ presets }: { presets: PromptPreset[] }) {
         {presets.map((p) => (
           <div
             key={p.id}
-            className="flex flex-col gap-2 rounded-xl border border-border bg-border/[0.02] p-2 sm:flex-row sm:items-start"
+            className="flex flex-col gap-2 rounded-xl border border-border/15 bg-border/[0.02] p-2 sm:flex-row sm:items-start"
           >
             <input
               value={p.name}
@@ -598,19 +662,20 @@ function InstallAppSection() {
   if (isIOS) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-raised p-4">
+        <div className="flex items-center gap-3 rounded-xl border border-border/15 bg-surface-raised p-4">
           <Smartphone className="h-5 w-5 text-accent" />
           <div>
             <p className="text-sm font-medium text-content">Install on iOS</p>
             <p className="text-xs text-content-muted">
-              Tap the Share button in Safari, then &ldquo;Add to Home Screen&rdquo; to install this app.
+              Tap the Share button in Safari, then &ldquo;Add to Home Screen&rdquo; to install this
+              app.
             </p>
           </div>
         </div>
         <p className="text-xs text-content-subtle">
-          iOS doesn&apos;t support the automatic install prompt — you need to add it manually from the
-          Share sheet. Once installed, it works like a native app: full screen, its own icon, and
-          no browser chrome.
+          iOS doesn&apos;t support the automatic install prompt — you need to add it manually from
+          the Share sheet. Once installed, it works like a native app: full screen, its own icon,
+          and no browser chrome.
         </p>
       </div>
     );
@@ -619,7 +684,7 @@ function InstallAppSection() {
   if (!canInstall) {
     return (
       <div className="space-y-3">
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-raised p-4">
+        <div className="flex items-center gap-3 rounded-xl border border-border/15 bg-surface-raised p-4">
           <Smartphone className="h-5 w-5 text-accent" />
           <div>
             <p className="text-sm font-medium text-content">Install as an app</p>
@@ -632,9 +697,15 @@ function InstallAppSection() {
         <div className="rounded-xl border border-border/50 bg-border/5 p-3 text-xs text-content-subtle">
           <p className="mb-1 font-medium text-content-muted">Manual install:</p>
           <ul className="list-inside list-disc space-y-0.5">
-            <li><b>Chrome/Edge (Android):</b> Menu (⋮) → Install app</li>
-            <li><b>Chrome/Edge (Desktop):</b> Menu (⋮) → Install {`\u201C`}Ragent{`\u201D`}</li>
-            <li><b>Safari (iOS):</b> Share → Add to Home Screen</li>
+            <li>
+              <b>Chrome/Edge (Android):</b> Menu (⋮) → Install app
+            </li>
+            <li>
+              <b>Chrome/Edge (Desktop):</b> Menu (⋮) → Install {`\u201C`}Ragent{`\u201D`}
+            </li>
+            <li>
+              <b>Safari (iOS):</b> Share → Add to Home Screen
+            </li>
           </ul>
         </div>
         <p className="text-xs text-content-subtle">

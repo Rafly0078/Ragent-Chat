@@ -102,7 +102,12 @@ export function ConnectionStatus() {
       >
         <span className="relative flex h-2.5 w-2.5">
           {status === 'checking' && (
-            <span className={cn('absolute inline-flex h-full w-full animate-ping rounded-full opacity-60', config.color)} />
+            <span
+              className={cn(
+                'absolute inline-flex h-full w-full animate-ping rounded-full opacity-60',
+                config.color,
+              )}
+            />
           )}
           <span className={cn('relative inline-flex h-2.5 w-2.5 rounded-full', config.color)} />
         </span>

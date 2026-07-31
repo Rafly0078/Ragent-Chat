@@ -33,9 +33,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       const mod = e.metaKey || e.ctrlKey;
       const target = e.target as HTMLElement | null;
       const inField =
-        target?.tagName === 'INPUT' ||
-        target?.tagName === 'TEXTAREA' ||
-        target?.isContentEditable;
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
 
       if (mod && e.key.toLowerCase() === 'k') {
         e.preventDefault();

@@ -61,8 +61,8 @@ function ArtifactDirectiveNotice({ raw, streaming }: { raw: string; streaming: b
       <div>
         <p className="font-medium">Gagal membuat file</p>
         <p className="text-error/80">
-          Respons AI untuk permintaan file ini tidak lengkap atau formatnya tidak valid, jadi filenya
-          tidak jadi dibuat. Coba klik Regenerate, atau minta dokumen yang lebih singkat.
+          Respons AI untuk permintaan file ini tidak lengkap atau formatnya tidak valid, jadi
+          filenya tidak jadi dibuat. Coba klik Regenerate, atau minta dokumen yang lebih singkat.
         </p>
       </div>
     </div>

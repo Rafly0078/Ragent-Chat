@@ -215,7 +215,10 @@ function parseDirective(rawBody: string): GenerateRequest | null {
   }
   if (sepAt === -1) return null;
 
-  const content = lines.slice(sepAt + 1).join('\n').trim();
+  const content = lines
+    .slice(sepAt + 1)
+    .join('\n')
+    .trim();
 
   const tool = fields.tool;
   if (!tool || !isToolName(tool)) return null;

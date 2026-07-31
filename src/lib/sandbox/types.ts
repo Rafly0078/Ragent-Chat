@@ -35,9 +35,7 @@ export interface SandboxReport {
 
 /** Whether a report represents a clean run (no errors, something rendered). */
 export function isClean(report: SandboxReport): boolean {
-  const hasError = report.issues.some(
-    (i) => i.kind === 'error' || i.kind === 'console-error',
-  );
+  const hasError = report.issues.some((i) => i.kind === 'error' || i.kind === 'console-error');
   return !hasError && !report.blank;
 }
 

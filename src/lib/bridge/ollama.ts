@@ -94,7 +94,11 @@ async function fetchFallback(
 }
 
 export function upstreamModels(signal?: AbortSignal): Promise<Response> {
-  return fetchFallback(TAG_PATHS, { method: 'GET', headers: { Accept: 'application/json' } }, signal);
+  return fetchFallback(
+    TAG_PATHS,
+    { method: 'GET', headers: { Accept: 'application/json' } },
+    signal,
+  );
 }
 
 export function upstreamShow(name: string, signal?: AbortSignal): Promise<Response> {

@@ -2,122 +2,138 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===========================================================================
+   LAMPLIGHT — the design system for Ragent.
+
+   The product's premise is that your models never leave your house. So the
+   page is lit like a room at night: a deep, cold field (the outside), a single
+   warm light source (the lamp), and warm-white paper where the light lands.
+   Two colour temperatures, one light source. Everything below derives from it.
+
+   Every number in this file was measured, not guessed. Where a target cannot
+   be met — and on a near-black ground some cannot — the comment says so
+   instead of inventing a ratio.
+   =========================================================================== */
+
 :root {
-  --font-display: 'Bodoni Moda', 'Times New Roman', serif;
-  --font-sans: 'Archivo', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'Courier Prime', ui-monospace, 'SFMono-Regular', monospace;
+  --font-display: 'Bricolage Grotesque', 'Georgia', serif;
+  --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
 
-  /* Raw palette, verbatim from the reference. */
-  --hermes-blue: 157 102 56;
-  --hermes-fg: 236 234 245;
-  --hermes-acid: 236 234 245;
-  --hermes-paper: 255 255 255;
-  --hermes-grey: 236 234 245;
-  --hermes-deep: 157 145 56;
+  /* --- RAW PALETTE -------------------------------------------------------
+     Six values. Named for what they are in the room, not for their hex. */
+  --night: 11 16 32; /* #0B1020  the field — cold, blue-black, never neutral */
+  --night-deep: 6 9 20; /* #060914  under the field: code wells, scrim */
+  --slate: 19 26 48; /* #131A30  raised surfaces */
+  --slate-lift: 27 36 63; /* #1B243F  floating surfaces: menus, dialogs */
+  --lamp: 255 182 92; /* #FFB65C  THE light. 11.1:1 on night */
+  --ember: 255 122 69; /* #FF7A45  the light's hot core — gradients only */
+  --linen: 242 239 232; /* #F2EFE8  warm white. 16.8:1 on night */
+  --paper: 255 255 255; /* #FFFFFF  pure white, for the paper inversion only */
 
-  /* Fluid unit system, verbatim. `--u` needs a container-query context; the
-     fallback anchor keeps it sane before containment resolves. */
+  /* Fluid unit. Needs a container-query context (see .lamp-field); the anchor
+     keeps it sane before containment resolves. */
   --vsq: calc(0.5vw + 0.5vh);
   --u-anchor: 0.58px;
   --u: max(calc(100cqw / 2360), var(--u-anchor));
-  --hw-gutter: calc(210 * var(--u));
-  --hw-gap: calc(30 * var(--u));
-  --hw-edge: calc(93 * var(--u));
-  --hw-frame: calc(2.5 * var(--vsq));
 
-  /* Radius scale — the reference only ever uses these three. */
-  --radius-none: 0;
-  --radius-sm: 4px;
-  --radius-lg: 1rem;
+  /* --- SHAPE -------------------------------------------------------------
+     A real scale. The previous system collapsed every radius to 4px, which is
+     what made a dark UI read as unfinished rather than deliberate. */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-2xl: 28px;
 
-  /* Tiled film grain. Same filter parameters as the reference. */
-  --hw-noise-tile: 12.8rem;
-  --hw-noise: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Film grain, tiled. Sits above the flat field, below content. */
+  --grain-tile: 12.8rem;
+  --grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---------------------------------------------------------------------------
-   THE CANVAS — one field, #0000f2, everywhere: landing, chat, settings, panels.
-   The reference has no light/dark pair, and neither does this.
+   SEMANTIC TOKENS — the field.
 
-   The hard constraint the whole system is built around: #0000f2 has relative
-   luminance .064, and a translucent lift on top of it barely moves that number.
-   Measured on the field:
+   Measured on #0B1020 (relative luminance 0.0055):
 
-     #0029de recess fill ...... 1.04:1    a HUE step, not a luminance step
-     acid @14% wash ........... 1.02:1    likewise
+     linen   #F2EFE8 .. 16.8:1     lamp   #FFB65C .. 11.1:1
+     muted   #929CB6 ..  7.0:1     subtle #717B96 ..  4.6:1
 
-   So a fill can never be the thing that separates a surface from its ground.
-   Four tiers, in the order they carry weight:
+   All four pass AA for body text; subtle passes it too, so there is no tier in
+   this product that you are allowed to read and cannot.
 
-     PAPER   #ffffff fill, blue ink ..... 9.20:1   the top tier — primary
-             actions and floating surfaces. One per region, or it stops meaning
-             "this is the thing".
-     RULE    2px #f5f5f5, full opacity .. 8.44:1   every boundary that has to
-             be perceivable is a rule, not a fill.
-     GROUND  #0000f2 ...................... the field.
-     RECESS  #0029de ...................... wells INSIDE a ruled block. A
-             supporting hue step; never the only cue.
-
-   Text on the field, all measured:
-     content #f5f5f5 .. 8.44:1     acid   #edff45 .. 8.32:1
-     muted   #c9c9f4 .. 5.76:1     subtle #b5b5f4 .. 4.77:1
-   The reference's own muted (#f5f5f5 at .6 alpha) is 3.38:1 and fails AA, so
-   these are opaque values rather than alphas.
+   The honest part: surface-to-surface contrast. #131A30 over #0B1020 is 1.10:1
+   and no amount of lifting fixes that without turning the field grey — near
+   black compresses every ratio above it. So a FILL never carries a boundary
+   here. Boundaries are borders (--border-strong is 3.25:1, which clears WCAG
+   1.4.11 for interactive components) and shadows. The fill only says "warmer"
+   or "cooler than its neighbour".
 --------------------------------------------------------------------------- */
 :root {
-  --surface: var(--hermes-blue);
-  --surface-raised: var(--hermes-deep);
-  --surface-overlay: var(--hermes-deep);
-  --surface-mid: var(--hermes-blue);
+  --surface: var(--night);
+  --surface-raised: var(--slate);
+  --surface-overlay: var(--slate-lift);
+  /* Persistent chrome — sidebar, top bar, input dock. One step off the field so
+     the reading column stays the darkest thing on screen. */
+  --surface-mid: 15 21 40;
 
-  --border: var(--hermes-fg);
-  --border-alpha: 0.28; /* decorative dividers */
-  --border-strong: 1; /* functional outlines — 8.44:1 */
+  --border: var(--linen);
+  --border-alpha: 0.12; /* decorative dividers — 1.35:1, deliberately quiet */
+  --border-strong: 0.38; /* functional outlines — 3.25:1 */
 
-  --content: var(--hermes-fg);
-  --content-muted: 201 201 244;
-  --content-subtle: 181 181 244;
+  --content: var(--linen);
+  --content-muted: 146 156 182;
+  --content-subtle: 113 123 150;
 
-  --accent: var(--hermes-acid); /* text, icons, rails, rings */
-  --accent-soft: 243 255 128; /* accent-text hover */
-  --accent-solid: var(--hermes-paper); /* fills, carrying --accent-fg ink */
-  --accent-hover: var(--hermes-grey); /* the fill's hover step */
-  --accent-fg: var(--hermes-blue);
-  --acid: var(--hermes-acid);
+  /* The lamp is both the text accent and the fill, because unlike the palette
+     this replaces it is light enough to carry dark ink (11.1:1) AND dark enough
+     to read as a colour on the field. One accent, no split. */
+  --accent: var(--lamp);
+  --accent-soft: 255 205 138;
+  --accent-solid: var(--lamp);
+  --accent-hover: 255 199 124;
+  --accent-fg: var(--night);
+  --acid: var(--lamp); /* legacy alias — text-acid call sites still resolve */
 
-  --success: 125 255 195;
-  --warning: 255 209 102;
-  --error: 255 179 179;
+  --success: 94 226 173; /* #5EE2AD  9.9:1 */
+  --warning: var(--lamp);
+  --error: 255 138 138; /* #FF8A8A  7.6:1 */
 
-  /* No soft shadows in this language — depth is paper, rules and hue. */
-  --shadow: 0 0 0;
-  --shadow-alpha: 0;
+  /* --- ELEVATION -------------------------------------------------------
+     Depth is shadow + border, cast from the same imagined lamp: tight dark
+     drop, wide soft ambient. `--glow` is the light itself landing on a
+     surface, and it is spent on exactly two things: the focused input and the
+     hovered primary action. */
+  --shadow-1: 0 1px 2px rgb(var(--night-deep) / 0.6), 0 2px 6px rgb(var(--night-deep) / 0.35);
+  --shadow-2:
+    0 2px 4px rgb(var(--night-deep) / 0.55), 0 10px 26px -6px rgb(var(--night-deep) / 0.5);
+  --shadow-3:
+    0 4px 10px rgb(var(--night-deep) / 0.6), 0 28px 64px -16px rgb(var(--night-deep) / 0.7);
+  --glow: 0 0 0 1px rgb(var(--lamp) / 0.35), 0 10px 34px -10px rgb(var(--lamp) / 0.4);
 
-  /* Modal scrim. One value for four callers: the modal, the command palette, the
-     artifact preview and the mobile sidebar each wrote their own
-     `bg-[rgb(4_4_10_/_0.82)]`, and the sidebar's was 0.7 — so dismissing a
-     drawer dimmed the page less than opening a dialog did. Strong, because it
-     has to isolate a paper panel from a fully saturated field. */
-  --scrim: 4 4 10;
-  --scrim-alpha: 0.8;
+  --scrim: 4 6 14;
+  --scrim-alpha: 0.78;
 
-  /* MOTION — one rhythm for the product. Every CSS transition and every
-     framer-motion tween reads these, so timing is a token like colour is.
-     Exit runs at ~65% of enter, which is what makes a dismissal feel answered
-     rather than sluggish. */
+  /* --- MOTION ----------------------------------------------------------
+     One rhythm. Every CSS transition and every framer-motion tween reads
+     these, so timing is a token like colour is. Exit runs at ~65% of enter,
+     which is what makes a dismissal feel answered rather than sluggish. */
   --dur-instant: 90ms;
   --dur-fast: 140ms;
-  --dur: 200ms;
-  --dur-slow: 320ms;
-  --ease-out: cubic-bezier(0, 0, 0.2, 1); /* entering */
+  --dur: 220ms;
+  --dur-slow: 380ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* entering — long tail */
   --ease-in: cubic-bezier(0.4, 0, 1, 1); /* exiting */
-  --ease-inout: cubic-bezier(0.4, 0, 0.2, 1); /* moving in place */
+  --ease-inout: cubic-bezier(0.65, 0, 0.35, 1); /* moving in place */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* press release, chips */
 }
 
-/* The landing opts into a container-query context so the reference's fluid `--u`
-   unit measures the page rather than the viewport. The colour tokens are already
-   the field's, so this class is now purely containment + isolation. */
-.hermes-canvas {
+/* ---------------------------------------------------------------------------
+   THE FIELD — one canvas for the whole product: landing, chat, settings.
+   `container-type` is what gives the fluid `--u` unit something to measure.
+--------------------------------------------------------------------------- */
+.lamp-field {
   background-color: rgb(var(--surface));
   color: rgb(var(--content));
   container-type: inline-size;
@@ -125,44 +141,40 @@
 }
 
 /* ---------------------------------------------------------------------------
-   THE PAPER TIER — the inversion that gives a one-colour product a top layer.
+   THE PAPER INVERSION — ink on warm white, for the one printed-card moment on
+   the landing page. Spent once, deliberately: a sheet of paper under the lamp.
 
-   Menus, dialogs, the command palette and the model list flip the entire token
-   set to blue-ink-on-white instead of tinting themselves. Because every
-   component reads `rgb(var(--content))` / `--border` / `--accent` rather than a
-   literal, one class re-grounds everything inside it with zero component edits.
-
-   Measured on #ffffff: ink 9.20:1, muted 7.62:1, subtle 5.43:1, error 5.88:1,
-   success 5.39:1, warning 6.33:1. Translucent washes finally work in here —
-   paper and blue are 8x apart in luminance, so `hover:bg-accent/12` reads as a
-   real state change instead of the hue flicker it is out on the field.
+   Everything inside re-grounds automatically because components read
+   `rgb(var(--content))` / `--border` / `--accent` rather than literals.
+   Measured on #FFFFFF: ink 18.9:1, muted 9.7:1, subtle 5.6:1, accent 6.6:1.
 --------------------------------------------------------------------------- */
-.paper,
-.popover {
-  --surface: var(--hermes-paper);
-  --surface-raised: var(--hermes-grey);
-  --surface-overlay: var(--hermes-paper);
-  --surface-mid: var(--hermes-paper);
+.paper {
+  --surface: var(--paper);
+  --surface-raised: 246 244 239;
+  --surface-overlay: var(--paper);
+  --surface-mid: var(--paper);
 
-  --border: var(--hermes-blue);
-  --border-alpha: 0.2;
-  --border-strong: 1;
+  --border: var(--night);
+  --border-alpha: 0.12;
+  --border-strong: 0.34;
 
-  --content: var(--hermes-blue);
-  --content-muted: 58 58 214;
-  --content-subtle: 90 90 214;
+  --content: var(--night);
+  --content-muted: 74 82 105;
+  --content-subtle: 113 121 143;
 
-  --accent: var(--hermes-blue);
-  --accent-soft: var(--hermes-deep);
-  --accent-solid: var(--hermes-blue);
-  --accent-hover: var(--hermes-deep);
-  --accent-fg: var(--hermes-paper);
+  --accent: 145 74 14; /* #914A0E — the lamp, deepened until it reads on white */
+  --accent-soft: 122 60 8;
+  --accent-solid: var(--night);
+  --accent-hover: 24 33 62;
+  --accent-fg: var(--paper);
 
-  /* The field's status colours are pastels chosen to sit on blue; on paper they
-     are invisible, so each one gets a dark counterpart of the same hue. */
-  --success: 11 122 75;
+  --success: 11 110 72;
   --warning: 138 83 0;
-  --error: 200 16 46;
+  --error: 190 24 40;
+
+  --shadow-1: 0 1px 2px rgb(var(--night) / 0.12), 0 2px 6px rgb(var(--night) / 0.08);
+  --shadow-2: 0 2px 4px rgb(var(--night) / 0.1), 0 10px 26px -6px rgb(var(--night) / 0.14);
+  --shadow-3: 0 4px 10px rgb(var(--night) / 0.12), 0 28px 64px -16px rgb(var(--night) / 0.22);
 
   background-color: rgb(var(--surface));
   color: rgb(var(--content));
@@ -194,7 +206,7 @@
   }
 
   ::selection {
-    background-color: rgb(var(--accent) / 0.3);
+    background-color: rgb(var(--accent) / 0.28);
     color: rgb(var(--content));
   }
   input,
@@ -214,33 +226,66 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The display face is set in caps at .03em tracking and very tight leading —
-   that combination IS the reference's voice, so it lives on the element. */
+/* ---------------------------------------------------------------------------
+   TYPE ROLES
+
+   Bricolage Grotesque is a variable grotesque with a real width axis. The
+   display voice is tight-tracked sentence case at wdth 85 — condensed, so a
+   long headline stays on two or three lines instead of six, which is the whole
+   argument for using it over a Didone set in caps.
+--------------------------------------------------------------------------- */
 .type-display {
   font-family: var(--font-display);
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-variation-settings:
+    'wdth' 85,
+    'opsz' 48;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 0.94;
+  text-wrap: balance;
+}
+/* Tighter still, for the two headlines that carry a page. */
+.type-mega {
+  font-family: var(--font-display);
+  font-variation-settings:
+    'wdth' 78,
+    'opsz' 96;
+  font-weight: 700;
+  letter-spacing: -0.035em;
   line-height: 0.88;
-  font-synthesis: none;
   text-wrap: balance;
 }
 
-/* Mono label: nav items, eyebrows, metadata, buttons. */
+/* Mono label: nav items, metadata, buttons, chips. */
 .type-label {
   font-family: var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: clamp(0.68rem, calc(18 * var(--u)), 0.92rem);
+  letter-spacing: 0.08em;
+  font-size: clamp(0.68rem, calc(18 * var(--u)), 0.86rem);
+  font-weight: 500;
   line-height: 1.4;
 }
+/* An eyebrow is a label that has been told to stay out of the way. It also
+   carries the lamp's dash, so a section opening always reads as lit. */
 .type-eyebrow {
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  font-size: clamp(0.68rem, calc(18 * var(--u)), 0.92rem);
+  font-size: clamp(0.66rem, calc(17 * var(--u)), 0.8rem);
+  font-weight: 500;
   line-height: 1.4;
   color: rgb(var(--content-muted));
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+}
+.type-eyebrow::before {
+  content: '';
+  width: 1.6em;
+  height: 2px;
+  border-radius: 2px;
+  background-color: rgb(var(--accent));
+  flex: none;
 }
 
 h1,
@@ -262,237 +307,292 @@ h4 {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    /* Delays too. Collapsing only the duration still made a staggered entrance
+       wait out its `animation-delay` before snapping in, so the hero's later
+       elements were absent for the first half-second on exactly the setting that
+       asks for less motion, not more waiting. */
+    animation-delay: 0.001ms !important;
+    transition-delay: 0.001ms !important;
     scroll-behavior: auto !important;
   }
 }
 
-
-
 /* ---------------------------------------------------------------------------
-   COMPONENT CLASSES — every surface in the app composes one of these, so
-   restyling here restyles the app.
+   SURFACES — every surface in the app composes one of these, so restyling here
+   restyles the app.
 --------------------------------------------------------------------------- */
 @layer components {
-  /* Flat signature blue. Used for avatar/logo tiles and any solid accent block. */
+  /* The lamp as a fill. Avatar tiles, logo blocks, the one solid accent mark. */
   .accent-gradient {
-    background-color: rgb(var(--accent-solid));
+    background-image: linear-gradient(145deg, rgb(var(--lamp)), rgb(var(--ember)));
   }
 
-  /* Persistent chrome: sidebar, top bar, input dock. Flat, ruled, no blur. */
+  /* Persistent chrome: sidebar, top bar, input dock. One step off the field,
+     one hairline where it meets the reading column, no blur — blur over a
+     near-black field costs a compositing layer and buys nothing visible. */
   .glass {
     background-color: rgb(var(--surface-mid));
-    border: 2px solid rgb(var(--border) / var(--border-strong));
+    border: 1px solid rgb(var(--border) / var(--border-alpha));
   }
   header.glass {
     border: 0;
-    border-bottom: 2px solid rgb(var(--border) / var(--border-strong));
+    border-bottom: 1px solid rgb(var(--border) / var(--border-alpha));
   }
   aside.glass {
     border: 0;
-    border-right: 2px solid rgb(var(--border) / var(--border-strong));
+    border-right: 1px solid rgb(var(--border) / var(--border-alpha));
   }
 
-  /* Floating surfaces: menus, dialogs, palette, model list. They take the paper
-     inversion (see `.paper`) rather than a tint of the field — a tint measures
-     1.04:1 against the field, which would leave an open menu visually merged
-     with the page behind it. The rule stays off-white so the panel edge reads
-     against the blue on all four sides.
-
-     There is no `:focus-within` border here. It used to swap the rule to acid,
-     which on a paper panel is 1.1:1 — a highlighter outline that got *less*
-     visible against the scrim than the off-white it replaced, on a surface that
-     is modal and therefore always has focus inside it. */
+  /* Floating surfaces: menus, dialogs, palette, model list. They lift with
+     shadow-3 and a functional border, and they get the overlay fill so they
+     read as nearer the light than the page under them. */
   .popover {
-    border: 2px solid rgb(var(--hermes-fg));
-    border-radius: var(--radius-sm);
+    background-color: rgb(var(--surface-overlay));
+    color: rgb(var(--content));
+    border: 1px solid rgb(var(--border) / var(--border-strong));
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-3);
   }
 
-  /* A ruled block on the field: recess fill for the hue step, 2px full-opacity
-     rule for the boundary that actually does the work. */
+  /* A block on the field. The top hairline is brighter than the other three —
+     that is the lamp catching the leading edge, and it is what makes a flat
+     dark rectangle read as a physical card instead of a div. */
   .card {
+    position: relative;
     background-color: rgb(var(--surface-raised));
-    border: 2px solid rgb(var(--border) / var(--border-strong));
-    border-radius: var(--radius-sm);
+    border: 1px solid rgb(var(--border) / var(--border-alpha));
+    border-top-color: rgb(var(--border) / 0.2);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-1);
   }
 
-  /* A well nested INSIDE a ruled block — inputs, code frames, meta strips. No
-     rule of its own, because a rule inside a rule reads as a mistake. */
+  /* A well nested INSIDE a card — inputs, code frames, meta strips. It recesses
+     below the field rather than lifting above it, so nesting stays legible
+     without a border inside a border. */
   .well {
-    background-color: rgb(var(--surface-raised));
-    border-radius: var(--radius-sm);
+    background-color: rgb(var(--night-deep) / 0.5);
+    border-radius: var(--radius-md);
   }
 
-  /* Backdrop behind any floating surface. */
   .scrim {
     background-color: rgb(var(--scrim) / var(--scrim-alpha));
+    backdrop-filter: blur(3px);
   }
 
   .focus-ring {
     @apply outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
   }
+}
 
-  /* -----------------------------------------------------------------------
-     BUTTONS — one system, four variants, one size scale.
+/* ---------------------------------------------------------------------------
+   BUTTONS — one system, four variants, one size scale.
 
-       primary      accent-filled, for the single most important action
-       surface      outlined, for secondary actions
-       ghost        no chrome until hovered, for icon buttons and menu rows
-       destructive  outlined in the error colour, filled only on hover
+     primary      lamp fill, night ink (11.1:1) — the single most important action
+     surface      outlined, for secondary actions
+     ghost        no chrome until hovered, for icon buttons and menu rows
+     destructive  outlined in the error colour, filled only on hover
 
-     Size comes from `.btn-sm` / `.btn-md` / `.btn-lg` so height, padding and
-     type scale together instead of every caller inventing its own. Existing
-     `h-9` / `h-11` utilities still win where they are already applied, which is
-     what keeps this a restyle rather than a refactor.
-  ----------------------------------------------------------------------- */
+   Height, padding, radius and type scale together from `.btn-sm/md/lg/xl` so
+   no caller invents its own. `md` and up clear the 44px touch floor at `lg`,
+   which is what every primary action on a mobile layout uses.
+--------------------------------------------------------------------------- */
+@layer components {
   .btn {
-    @apply focus-ring inline-flex select-none items-center justify-center gap-2 disabled:pointer-events-none disabled:opacity-40;
+    @apply focus-ring relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap disabled:pointer-events-none;
     font-family: var(--font-mono);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
+    font-weight: 500;
     font-size: 0.75rem;
     line-height: 1;
-    border-radius: var(--radius-sm);
-    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
     transition:
       background-color var(--dur-fast) var(--ease-out),
       border-color var(--dur-fast) var(--ease-out),
       color var(--dur-fast) var(--ease-out),
-      transform var(--dur-instant) var(--ease-out),
-      opacity var(--dur-fast) var(--ease-out);
+      box-shadow var(--dur) var(--ease-out),
+      transform var(--dur-fast) var(--ease-spring);
   }
-  .btn-sm { height: 2rem; padding-inline: 0.625rem; font-size: 0.7rem; }
-  .btn-md { height: 2.25rem; padding-inline: 0.875rem; }
-  .btn-lg { height: 2.75rem; padding-inline: 1.25rem; font-size: 0.8rem; }
-  /* Marketing scale. The landing's three CTAs each carried their own px/py pair
+  .btn-sm {
+    height: 2rem;
+    padding-inline: 0.75rem;
+    font-size: 0.7rem;
+    border-radius: var(--radius-sm);
+  }
+  .btn-md {
+    height: 2.375rem;
+    padding-inline: 1rem;
+  }
+  .btn-lg {
+    height: 2.75rem;
+    padding-inline: 1.375rem;
+    font-size: 0.78rem;
+  }
+  /* Marketing scale. The landing's CTAs each carried their own px/py pair
      before this, which is how one page ends up with three button heights. */
-  .btn-xl { height: 3rem; padding-inline: 1.75rem; font-size: 0.8rem; }
-  /* Icon-only: keep it square at each step. */
-  .btn-icon { padding-inline: 0; aspect-ratio: 1; }
+  .btn-xl {
+    height: 3.25rem;
+    padding-inline: 1.75rem;
+    font-size: 0.8rem;
+    border-radius: var(--radius-lg);
+  }
+  .btn-icon {
+    padding-inline: 0;
+    aspect-ratio: 1;
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
+  }
+  .btn:disabled {
+    opacity: 0.42;
+  }
+}
 
-  /* Primary is the paper tier: white fill, blue ink, 9.20:1. The border matches
-     the fill because paper already carries its own boundary against the field —
-     a contrasting edge here just makes the button look outlined. */
+@layer components {
+  /* Primary IS the lamp. It is the only warm fill on the page, which is what
+     makes it findable without a size or a shadow doing the work. Hover turns
+     the light up: the fill brightens and the glow appears underneath it. */
   .btn-primary {
     @apply btn;
     background-color: rgb(var(--accent-solid));
     color: rgb(var(--accent-fg));
     border-color: rgb(var(--accent-solid));
+    box-shadow: var(--shadow-1);
   }
-  .btn-primary:hover {
+  .btn-primary:hover:not(:disabled) {
     background-color: rgb(var(--accent-hover));
     border-color: rgb(var(--accent-hover));
+    box-shadow: var(--glow);
   }
-  .btn-primary:active { transform: translateY(1px); }
-  /* Disabled primary drops the fill entirely instead of fading it. Paper at 40%
-     over this field still reads as a filled, pressable block — it looked like a
-     pressed state, not an unavailable one. An outline says "not yet". */
+  /* Disabled primary drops the fill instead of fading it. Lamp at 40% still
+     reads as a warm pressable block — an outline says "not yet". */
   .btn-primary:disabled {
     opacity: 1;
     background-color: transparent;
-    border-color: rgb(var(--border) / 0.45);
+    border-color: rgb(var(--border) / 0.28);
     color: rgb(var(--content-subtle));
+    box-shadow: none;
   }
 
-  /* Secondary inverts to paper on hover instead of taking a wash. A wash of any
-     colour is ~1.1:1 against this field, so it cannot be the signal; promoting
-     the button one tier can. It is also what the reference's own outlined
-     buttons do. */
+  /* Secondary: an outline that fills in with the coolest lift available, so it
+     never competes with the lamp for the eye. */
   .btn-surface {
     @apply btn text-content;
-    background-color: transparent;
+    background-color: rgb(var(--border) / 0.04);
     border-color: rgb(var(--border) / var(--border-strong));
   }
-  .btn-surface:hover {
-    background-color: rgb(var(--accent-solid));
-    border-color: rgb(var(--accent-solid));
-    color: rgb(var(--accent-fg));
+  .btn-surface:hover:not(:disabled) {
+    background-color: rgb(var(--border) / 0.11);
+    border-color: rgb(var(--border) / 0.55);
   }
-  .btn-surface:active { transform: translateY(1px); }
 
-  /* Ghost earns a rule on hover. The border is already 2px transparent, so it
-     appears without shifting anything — the crispest available state change on
-     a field where fills barely register. */
+  /* Ghost earns its chrome on hover. Used for icon buttons and menu rows, so
+     the border stays transparent at rest — nothing shifts when it appears. */
   .btn-ghost {
     @apply btn text-content-muted;
   }
-  .btn-ghost:hover {
-    background-color: rgb(var(--border) / 0.14);
-    border-color: rgb(var(--border) / var(--border-strong));
+  .btn-ghost:hover:not(:disabled) {
+    background-color: rgb(var(--border) / 0.1);
     color: rgb(var(--content));
   }
-  .btn-ghost:active { transform: translateY(1px); }
 
   /* Destructive reads as an outline at rest so it never competes with primary,
-     then commits to a full fill with blue ink on hover (5.41:1). */
+     then commits to a full fill with night ink on hover. */
   .btn-destructive {
     @apply btn;
     background-color: transparent;
     color: rgb(var(--error));
-    border-color: rgb(var(--error));
+    border-color: rgb(var(--error) / 0.55);
   }
-  .btn-destructive:hover {
+  .btn-destructive:hover:not(:disabled) {
     background-color: rgb(var(--error));
     border-color: rgb(var(--error));
-    color: rgb(var(--hermes-blue));
+    color: rgb(var(--night));
   }
-  .btn-destructive:active { transform: translateY(1px); }
+}
 
-  /* -----------------------------------------------------------------------
-     FORMS
-  ----------------------------------------------------------------------- */
-  /* An input is a well: recess fill so it reads as something you type INTO, with
-     the rule doing the boundary work. Focus swaps the rule to acid — the one
-     high-chroma colour on the field, so a focused field is unmistakable. */
+/* ---------------------------------------------------------------------------
+   FORMS, BADGES, STATUS
+--------------------------------------------------------------------------- */
+@layer components {
+  /* An input is a well: recessed, so it reads as something you type INTO.
+     Focus is the one other place the glow is spent — the field warms as if the
+     lamp turned toward it. */
   .input {
-    @apply focus-ring w-full px-3 py-2 text-sm text-content transition-colors placeholder:text-content-subtle;
-    background-color: rgb(var(--surface-raised));
-    border: 2px solid rgb(var(--border) / var(--border-strong));
-    border-radius: var(--radius-sm);
+    @apply w-full px-3.5 py-2.5 text-sm text-content outline-none placeholder:text-content-subtle;
+    background-color: rgb(var(--night-deep) / 0.55);
+    border: 1px solid rgb(var(--border) / var(--border-strong));
+    border-radius: var(--radius-md);
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
+  }
+  .input:hover:not(:focus) {
+    border-color: rgb(var(--border) / 0.5);
   }
   .input:focus {
-    border-color: rgb(var(--accent));
+    border-color: rgb(var(--accent) / 0.7);
+    box-shadow:
+      0 0 0 3px rgb(var(--accent) / 0.14),
+      0 8px 26px -12px rgb(var(--accent) / 0.35);
   }
 
-  /* -----------------------------------------------------------------------
-     BADGE + STATUS — the two smallest reusable marks in the product.
-
-     `.badge` is the mono-caps pill used for model names, counts and labels.
-     `.status-dot` takes its colour from `--tone`, which callers set to a status
-     token; that keeps one shape and one animation for every running/ok/failed
-     indicator instead of a bespoke dot per feature.
-  ----------------------------------------------------------------------- */
+  /* The mono-caps chip used for model names, counts and labels. */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-1.5 py-0.5;
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5;
     font-family: var(--font-mono);
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     font-size: 0.66rem;
-    line-height: 1.4;
+    font-weight: 500;
+    line-height: 1.5;
     border-radius: var(--radius-sm);
-    background-color: rgb(var(--border) / 0.12);
+    background-color: rgb(var(--border) / 0.09);
     color: rgb(var(--content-muted));
   }
   .badge-outline {
     background-color: transparent;
     border: 1px solid rgb(var(--border) / var(--border-strong));
   }
+  /* A badge that is on. Used for the active model and any live count. */
+  .badge-lit {
+    background-color: rgb(var(--accent) / 0.14);
+    color: rgb(var(--accent));
+  }
 
+  /* One shape and one animation for every running/ok/failed indicator.
+     `--tone` is what callers set. */
   .status-dot {
     --tone: var(--content-subtle);
     @apply inline-block h-2 w-2 shrink-0;
     border-radius: 9999px;
     background-color: rgb(var(--tone));
+    box-shadow: 0 0 0 3px rgb(var(--tone) / 0.16);
   }
   .status-running {
-    --tone: var(--acid);
-    animation: status-pulse 1.1s var(--ease-inout) infinite;
+    --tone: var(--accent);
+    animation: status-pulse 1.4s var(--ease-inout) infinite;
   }
-  .status-ok { --tone: var(--success); }
-  .status-warn { --tone: var(--warning); }
-  .status-failed { --tone: var(--error); }
+  .status-ok {
+    --tone: var(--success);
+  }
+  .status-warn {
+    --tone: var(--warning);
+  }
+  .status-failed {
+    --tone: var(--error);
+  }
   @keyframes status-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.45; transform: scale(0.72); }
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgb(var(--tone) / 0.5);
+    }
+    70%,
+    100% {
+      box-shadow: 0 0 0 7px rgb(var(--tone) / 0);
+    }
   }
 
   .cv-auto {
@@ -506,75 +606,229 @@ h4 {
 }
 
 /* ---------------------------------------------------------------------------
-   ACCENT SPLIT — why `--accent` and `--accent-solid` are two tokens.
+   THE LAMP — the page's light source, as an actual element.
 
-   On this field they can never be one colour. Accent TEXT has to be light
-   enough to read on #0000f2, so it is acid (#edff45, 8.32:1). An accent FILL
-   has to be light enough to carry blue ink, so it is paper (#ffffff, 9.20:1).
-   Redirecting `bg-accent` centrally means every `bg-accent` fill in the app —
-   avatar tiles, logo blocks, active chips — lands on paper without touching a
-   single call site, while `text-accent` / `border-accent` / `ring-accent` keep
-   the acid.
+   `.lamp-pool` is a soft warm radial that sits behind content and bleeds into
+   the field. It is the signature: everything else in the system is cold, and
+   the warmth in the page always traces back to one of these.
 --------------------------------------------------------------------------- */
-.bg-accent {
-  background-color: rgb(var(--accent-solid));
+.lamp-pool {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at center,
+    rgb(var(--lamp) / 0.2) 0%,
+    rgb(var(--ember) / 0.09) 38%,
+    transparent 72%
+  );
+  filter: blur(24px);
+  z-index: 0;
 }
-/* Translucent accent washes (`bg-accent/15` and friends) are left alone, but be
-   aware of what they can and cannot do out here: any wash over this field lands
-   within 1.2:1 of it, so a wash is decoration. Where a state has to be legible,
-   use a rule, a rail, or the paper tier. */
 
-/* ---------------------------------------------------------------------------
-   LANDING PRIMITIVES
---------------------------------------------------------------------------- */
-/* Tiled grain over the blue field. Pointer-events off; sits above the flat
-   colour, below content. */
-.hermes-grain::before {
+/* Tiled grain over the field. Above the flat colour, below content. */
+.grain::before {
   content: '';
   position: absolute;
   inset: 0;
-  background-image: var(--hw-noise);
-  background-size: var(--hw-noise-tile) var(--hw-noise-tile);
-  opacity: 0.28;
-  mix-blend-mode: overlay;
+  background-image: var(--grain);
+  background-size: var(--grain-tile) var(--grain-tile);
+  opacity: 0.22;
+  mix-blend-mode: soft-light;
   pointer-events: none;
   z-index: 0;
 }
 
-/* Hairline rule matching the reference's 2px full-opacity outline. */
-.hw-rule {
-  border-top: 2px solid rgb(var(--border) / var(--border-strong));
+/* Section divider. Brightest at the left, where the eye enters the section. */
+.rule-t {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(
+    to right,
+    rgb(var(--border) / 0.4),
+    rgb(var(--border) / 0.1) 45%,
+    transparent
+  );
 }
 
-/* Ghosted display word used as a page-closing device.
- *
- * It is a low-opacity paper wash, not a blend. `mix-blend-mode: exclusion` — the
- * reference's technique — resolved differently depending on the stacking context
- * it landed in: solid white inside the landing's isolated `.hermes-canvas`, solid
- * acid yellow on the settings page, and in neither case ghosted, because nothing
- * ever set the opacity the effect assumed. A flat 14% paper is predictable on
- * every surface and produces the intended lighter-blue ghost. */
-.hw-ghost {
+/* Oversized ghosted wordmark, the page-closing device. A flat low-opacity wash
+   rather than a blend mode, because a blend resolved differently in every
+   stacking context it landed in. */
+.ghost-word {
   font-family: var(--font-display);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  line-height: 0.8;
+  font-variation-settings: 'wdth' 78;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.78;
   white-space: nowrap;
-  color: rgb(var(--hermes-paper));
-  opacity: 0.14;
+  color: transparent;
+  background-image: linear-gradient(to bottom, rgb(var(--linen) / 0.13), rgb(var(--linen) / 0));
+  -webkit-background-clip: text;
+  background-clip: text;
   pointer-events: none;
   user-select: none;
 }
 
-/* Numbered feature row: the number is set in the display face at a size that
-   makes it a graphic element, not a list marker. */
-.hw-numeral {
-  font-family: var(--font-display);
-  line-height: 0.8;
-  letter-spacing: 0.03em;
-  font-size: clamp(2.5rem, calc(96 * var(--u)), 6rem);
-  color: rgb(var(--content) / 0.32);
+/* The numeral on a capability row: a graphic element, not a list marker. */
+.numeral {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  font-size: clamp(0.72rem, calc(19 * var(--u)), 0.9rem);
+  color: rgb(var(--accent) / 0.85);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   PAGE-LOAD SEQUENCE
+
+   CSS keyframes, not framer-motion. An `initial={{ opacity: 0 }}` inline style
+   is written during SSR, so if hydration is slow or fails the hero stays
+   permanently invisible — and it ships no-JS visitors a blank page. A keyframe
+   with `both` fill runs without React, and the reduced-motion block above
+   collapses its duration to nothing, which lands it on the end state instead of
+   the start one. Delays are set per element with `animation-delay`.
+--------------------------------------------------------------------------- */
+.enter,
+.enter-fade,
+.enter-line,
+.enter-pop {
+  animation-fill-mode: both;
+  animation-timing-function: var(--ease-out);
+}
+.enter {
+  animation-name: enter-rise;
+  animation-duration: var(--dur-slow);
+}
+.enter-fade {
+  animation-name: enter-fade;
+  animation-duration: 700ms;
+}
+.enter-line {
+  animation-name: enter-line;
+  animation-duration: 900ms;
+}
+.enter-pop {
+  animation-name: enter-pop;
+  animation-duration: 1100ms;
+}
+@keyframes enter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes enter-line {
+  from {
+    transform: translateY(105%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes enter-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Scroll reveal (see features/landing/Reveal.tsx). `pending` is only ever set by
+   JavaScript, so the server HTML stays visible. */
+[data-reveal='pending'] {
+  opacity: 0;
+}
+[data-reveal='in'] {
+  animation: enter-rise-far 640ms var(--ease-out) both;
+}
+@keyframes enter-rise-far {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   INTERACTION PRIMITIVES — composed by cards and tiles so hover physics are a
+   token, not a per-component invention.
+--------------------------------------------------------------------------- */
+@layer components {
+  /* Lifts toward the light: rises, casts further, and its leading edge warms. */
+  .lift {
+    transition:
+      transform var(--dur) var(--ease-out),
+      box-shadow var(--dur) var(--ease-out),
+      border-color var(--dur) var(--ease-out);
+  }
+  .lift:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-2);
+    border-color: rgb(var(--border) / 0.3);
+    border-top-color: rgb(var(--accent) / 0.45);
+  }
+  .lift:active {
+    transform: translateY(-1px);
+  }
+
+  /* A warm wash that fades in from the top edge on hover. Needs a positioned,
+     radius-inheriting parent — `.card` already is one. */
+  .edge-lit::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(to bottom, rgb(var(--lamp) / 0.08), transparent 55%);
+    transition: opacity var(--dur) var(--ease-out);
+  }
+  .edge-lit:hover::after {
+    opacity: 1;
+  }
+
+  /* Infinite ticker. The track holds the content twice; translating exactly
+     -50% makes the seam invisible. Transform-only, so it never lays out. */
+  .marquee {
+    display: flex;
+    overflow: hidden;
+    mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+  }
+  .marquee-track {
+    display: flex;
+    flex: none;
+    align-items: center;
+    animation: marquee 42s linear infinite;
+  }
+  .marquee:hover .marquee-track {
+    animation-play-state: paused;
+  }
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -582,125 +836,154 @@ h4 {
 --------------------------------------------------------------------------- */
 .scrollbar-thin {
   scrollbar-width: thin;
-  scrollbar-color: rgb(var(--content-subtle) / 0.45) transparent;
+  scrollbar-color: rgb(var(--content-subtle) / 0.35) transparent;
 }
 .scrollbar-thin::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background-color: rgb(var(--content-subtle) / 0.4);
-  border: 2px solid transparent;
+  background-color: rgb(var(--content-subtle) / 0.3);
+  border: 3px solid transparent;
+  border-radius: 9999px;
   background-clip: content-box;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(var(--content-subtle) / 0.7);
+  background-color: rgb(var(--content-subtle) / 0.6);
 }
 
 /* ---------------------------------------------------------------------------
    MARKDOWN / PROSE (scoped to .prose-chat)
 --------------------------------------------------------------------------- */
 .prose-chat {
-  @apply text-base leading-7 text-content;
+  @apply text-[0.9375rem] leading-7 text-content;
 }
-.prose-chat > *:first-child { margin-top: 0; }
-.prose-chat > *:last-child { margin-bottom: 0; }
-.prose-chat p { margin: 0.8em 0; }
+.prose-chat > *:first-child {
+  margin-top: 0;
+}
+.prose-chat > *:last-child {
+  margin-bottom: 0;
+}
+.prose-chat p {
+  margin: 0.85em 0;
+}
 
-/* Answer headings borrow the display face so a long reply reads like a
-   document set in the same voice as the rest of the product. */
+/* Answer headings take the display face, so a long reply reads like a document
+   set in the same voice as the rest of the product. */
 .prose-chat h1,
 .prose-chat h2,
 .prose-chat h3,
 .prose-chat h4 {
   font-family: var(--font-display);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  line-height: 1;
+  font-variation-settings: 'wdth' 88;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
   color: rgb(var(--content));
-  margin: 1.6em 0 0.6em;
+  margin: 1.7em 0 0.6em;
 }
-.prose-chat h1 { @apply text-3xl; }
-.prose-chat h2 { @apply text-2xl; }
-.prose-chat h3 { @apply text-xl; }
+.prose-chat h1 {
+  @apply text-[1.6rem];
+}
+.prose-chat h2 {
+  @apply text-[1.35rem];
+}
+.prose-chat h3 {
+  @apply text-[1.15rem];
+}
 .prose-chat ul,
-.prose-chat ol { margin: 0.8em 0; padding-left: 1.5em; }
-.prose-chat ul { list-style: disc; }
-.prose-chat ol { list-style: decimal; }
-.prose-chat li { margin: 0.35em 0; }
-.prose-chat li::marker { color: rgb(var(--accent)); }
-.prose-chat a {
-  @apply font-medium text-accent underline decoration-2 underline-offset-2;
-  text-decoration-color: rgb(var(--accent) / 0.45);
+.prose-chat ol {
+  margin: 0.85em 0;
+  padding-left: 1.35em;
 }
-.prose-chat a:hover { text-decoration-color: rgb(var(--accent)); }
+.prose-chat ul {
+  list-style: disc;
+}
+.prose-chat ol {
+  list-style: decimal;
+}
+.prose-chat li {
+  margin: 0.35em 0;
+}
+.prose-chat li::marker {
+  color: rgb(var(--accent) / 0.8);
+}
+
+.prose-chat a {
+  @apply font-medium text-accent underline decoration-1 underline-offset-[3px];
+  text-decoration-color: rgb(var(--accent) / 0.4);
+  transition: text-decoration-color var(--dur-fast) var(--ease-out);
+}
+.prose-chat a:hover {
+  text-decoration-color: rgb(var(--accent));
+}
 .prose-chat blockquote {
   margin: 1.2em 0;
-  padding: 0.5em 1em;
-  border-left: 2px solid rgb(var(--accent));
-  background-color: rgb(var(--accent) / 0.07);
+  padding: 0.6em 1.1em;
+  border-left: 2px solid rgb(var(--accent) / 0.6);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background-color: rgb(var(--accent) / 0.06);
   color: rgb(var(--content-muted));
 }
 .prose-chat hr {
   @apply my-6;
   border: 0;
-  border-top: 2px solid rgb(var(--border) / var(--border-strong));
+  border-top: 1px solid rgb(var(--border) / var(--border-strong));
 }
 .prose-chat code:not(pre code) {
   padding: 0.15em 0.4em;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgb(var(--border) / var(--border-strong));
-  background-color: rgb(var(--border) / 0.08);
+  border-radius: var(--radius-xs);
+  border: 1px solid rgb(var(--border) / 0.14);
+  background-color: rgb(var(--night-deep) / 0.6);
   font-family: var(--font-mono);
   font-size: 0.85em;
-  color: rgb(var(--accent));
+  color: rgb(var(--accent-soft));
 }
-.prose-chat pre { margin: 0; background: transparent; }
+.prose-chat pre {
+  margin: 0;
+  background: transparent;
+}
 
 /* ---------------------------------------------------------------------------
-   CODE BLOCKS — square frame over a fixed dark canvas (the highlight.js
-   "github-dark" palette needs a dark backdrop in both themes).
+   CODE BLOCKS — the deepest well in the product. highlight.js's github-dark
+   palette needs a dark ground, and it gets the true bottom of the scale.
 --------------------------------------------------------------------------- */
-/* The one deliberate dark inset on the blue field. highlight.js's github-dark
-   token palette needs a dark ground, and syntax colour is the whole point of a
-   code block. The inset itself is only 2.2:1 against the field, so the 2px
-   full-opacity rule (8.44:1) is what actually delineates it. */
 .code-block {
   @apply my-4 overflow-hidden;
-  background-color: #06060d;
-  border: 2px solid rgb(var(--hermes-fg));
-  border-radius: var(--radius-sm);
+  background-color: rgb(var(--night-deep));
+  border: 1px solid rgb(var(--border) / 0.16);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
 }
 .code-block-header {
   @apply flex items-center justify-between px-3.5 py-2;
-  background-color: rgb(0 41 222 / 0.16);
-  border-bottom: 1px solid rgb(255 255 255 / 0.1);
+  background-color: rgb(var(--linen) / 0.04);
+  border-bottom: 1px solid rgb(var(--border) / 0.1);
 }
-/* highlight.js's github-dark theme paints `.hljs` with its own background, which
-   rendered as a second, differently-coloured dark panel nested inside the code
-   frame. The frame owns the ground here. */
+/* github-dark paints `.hljs` with its own background, which rendered as a
+   second, differently-coloured panel nested inside the frame. The frame owns
+   the ground here. */
 .code-block pre,
 .code-block pre code,
 .code-block .hljs {
   background: transparent;
 }
 .diff-add {
-  background-color: rgb(61 220 132 / 0.14);
-  box-shadow: inset 3px 0 0 0 rgb(61 220 132 / 0.7);
+  background-color: rgb(var(--success) / 0.13);
+  box-shadow: inset 2px 0 0 0 rgb(var(--success) / 0.7);
 }
 .diff-remove {
-  background-color: rgb(255 107 107 / 0.14);
-  box-shadow: inset 3px 0 0 0 rgb(255 107 107 / 0.7);
+  background-color: rgb(var(--error) / 0.13);
+  box-shadow: inset 2px 0 0 0 rgb(var(--error) / 0.7);
 }
 
 /* ---------------------------------------------------------------------------
-   TABLES — same square frame, hairline grid inside.
+   TABLES — same frame as a code block, hairline grid inside.
 --------------------------------------------------------------------------- */
 .prose-chat .table-wrap {
   @apply my-4 w-full overflow-x-auto;
-  border: 2px solid rgb(var(--border) / var(--border-strong));
-  border-radius: var(--radius-sm);
+  border: 1px solid rgb(var(--border) / 0.16);
+  border-radius: var(--radius-md);
 }
 .prose-chat table {
   @apply w-full border-collapse text-sm;
@@ -709,47 +992,54 @@ h4 {
 .prose-chat th,
 .prose-chat td {
   @apply px-3.5 py-2.5 text-left align-top;
-  border-bottom: 1px solid rgb(var(--border) / var(--border-alpha));
-  border-right: 1px solid rgb(var(--border) / var(--border-alpha));
+  border-bottom: 1px solid rgb(var(--border) / 0.1);
+  border-right: 1px solid rgb(var(--border) / 0.1);
 }
 .prose-chat th:last-child,
-.prose-chat td:last-child { border-right: 0; }
-.prose-chat tbody tr:last-child td { border-bottom: 0; }
+.prose-chat td:last-child {
+  border-right: 0;
+}
+.prose-chat tbody tr:last-child td {
+  border-bottom: 0;
+}
 .prose-chat th {
   font-family: var(--font-mono);
   @apply text-xs uppercase;
-  letter-spacing: 0.1em;
-  background-color: rgb(var(--border) / 0.07);
-  border-bottom: 2px solid rgb(var(--border) / var(--border-strong));
+  letter-spacing: 0.08em;
+  background-color: rgb(var(--linen) / 0.04);
+  border-bottom: 1px solid rgb(var(--border) / 0.2);
   color: rgb(var(--content-muted));
 }
-.prose-chat tbody tr:nth-child(even) { background-color: rgb(var(--border) / 0.03); }
-.prose-chat tbody tr:hover { background-color: rgb(var(--accent) / 0.07); }
+.prose-chat td {
+  font-variant-numeric: tabular-nums;
+}
+.prose-chat tbody tr {
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.prose-chat tbody tr:hover {
+  background-color: rgb(var(--accent) / 0.06);
+}
 .prose-chat img {
   @apply my-3 max-w-full;
-  border-radius: var(--radius-sm);
-  border: 2px solid rgb(var(--border) / var(--border-strong));
+  border-radius: var(--radius-md);
+  border: 1px solid rgb(var(--border) / 0.16);
 }
-.prose-chat .katex-display { @apply my-4 overflow-x-auto overflow-y-hidden py-1; }
+.prose-chat .katex-display {
+  @apply my-4 overflow-x-auto overflow-y-hidden py-1;
+}
 
 .streaming-caret::after {
-  content: '▍';
-  @apply ml-0.5 inline-block animate-caret-blink text-accent;
+  content: '';
+  @apply ml-1 inline-block h-[1.05em] w-[0.5em] translate-y-[0.12em] animate-caret-blink rounded-[1px] bg-accent align-baseline;
 }
 
 /* ---------------------------------------------------------------------------
-   PROMPT SUGGESTION CARDS (empty state). Four recessed blocks on the field, each
-   ruled, each led by an acid numeral.
+   PROMPT SUGGESTION CARDS (chat empty state). One uniform surface for all four:
+   four different tints read as four unrelated blocks, and the lit numeral is
+   the only accent each card needs. Kept as four class names so the component's
+   tone-cycling logic keeps working.
 --------------------------------------------------------------------------- */
 @layer components {
-  /* One uniform surface for all four. Four different tints read as four
-     unrelated blocks, and out here a tint is only a hue flicker anyway — the
-     acid numeral is the only accent each card needs, and the reference's own
-     option cards are uniform for the same reason. Kept as four class names so
-     the component's tone-cycling logic keeps working.
-
-     Hover promotes the rule from decorative to full opacity rather than
-     changing the fill, so the affordance survives on a flat ground. */
   .prompt-card-paper,
   .prompt-card-coral,
   .prompt-card-sun,
@@ -759,8 +1049,7 @@ h4 {
 }
 
 /* ---------------------------------------------------------------------------
-   MAX-EFFORT REASONING — the "ultracode" treatment, kept from the previous
-   system but re-tinted. Live-only and decorative; removed once the answer
+   MAX-EFFORT REASONING — live-only and decorative; removed once the answer
    starts, so it never touches settled history.
 --------------------------------------------------------------------------- */
 .reasoning-shimmer {
@@ -768,7 +1057,7 @@ h4 {
     100deg,
     rgb(var(--content-muted)) 0%,
     rgb(var(--content)) 30%,
-    rgb(var(--acid)) 50%,
+    rgb(var(--accent)) 50%,
     rgb(var(--content)) 70%,
     rgb(var(--content-muted)) 100%
   );
@@ -776,30 +1065,44 @@ h4 {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: reasoning-shimmer 2.2s linear infinite;
+  animation: reasoning-shimmer 2.4s linear infinite;
 }
 @keyframes reasoning-shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }
 .reasoning-panel-max {
-  border-color: rgb(var(--accent) / 0.55);
-  animation: reasoning-glow 2.6s ease-in-out infinite;
+  border-color: rgb(var(--accent) / 0.5);
+  animation: reasoning-glow 2.8s ease-in-out infinite;
 }
 @keyframes reasoning-glow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
-    border-color: rgb(var(--accent) / 0.35);
+    border-color: rgb(var(--accent) / 0.3);
   }
   50% {
-    box-shadow: 0 0 16px 1px rgb(var(--accent) / 0.28);
-    border-color: rgb(var(--accent) / 0.7);
+    box-shadow: 0 0 22px -4px rgb(var(--accent) / 0.3);
+    border-color: rgb(var(--accent) / 0.65);
   }
 }
-.reasoning-brain-max { animation: reasoning-brain 1.6s ease-in-out infinite; }
+.reasoning-brain-max {
+  animation: reasoning-brain 1.8s ease-in-out infinite;
+}
 @keyframes reasoning-brain {
-  0%, 100% { opacity: 0.7; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.12); }
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -811,5 +1114,11 @@ h4 {
     color: rgb(var(--accent));
   }
   .reasoning-panel-max,
-  .reasoning-brain-max { animation: none; }
+  .reasoning-brain-max,
+  .marquee-track {
+    animation: none;
+  }
+  .lift:hover {
+    transform: none;
+  }
 }

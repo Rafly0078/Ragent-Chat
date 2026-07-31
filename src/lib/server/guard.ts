@@ -39,10 +39,7 @@ export interface GuardFail {
   response: Response;
 }
 
-export async function guard(
-  request: Request,
-  options: GuardOptions,
-): Promise<GuardOk | GuardFail> {
+export async function guard(request: Request, options: GuardOptions): Promise<GuardOk | GuardFail> {
   // Flood guard FIRST, keyed on IP, before the session lookup. `getUser()` is a
   // network round trip to Supabase, so checking auth first would let an
   // unauthenticated flood amplify into one upstream request per hit. The ceiling
@@ -63,10 +60,7 @@ export async function guard(
     if (!data.user) {
       return {
         ok: false,
-        response: Response.json(
-          { error: 'Sign in to use this feature.' },
-          { status: 401 },
-        ),
+        response: Response.json({ error: 'Sign in to use this feature.' }, { status: 401 }),
       };
     }
     userId = data.user.id;

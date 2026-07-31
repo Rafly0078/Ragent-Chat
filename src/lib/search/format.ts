@@ -61,7 +61,10 @@ export function mergeSearchResponses(responses: SearchResponse[]): SearchRespons
   const merged = [...byUrl.values()].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   // Combine the distinct queries into the displayed "query" line; prefer the
   // first provider answer that exists.
-  const query = responses.map((r) => r.query).filter(Boolean).join(' · ');
+  const query = responses
+    .map((r) => r.query)
+    .filter(Boolean)
+    .join(' · ');
   const answer = responses.find((r) => r.answer?.trim())?.answer;
   return { query, answer, results: merged };
 }

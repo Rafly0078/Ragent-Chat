@@ -1,12 +1,7 @@
 import type { ModelInfo } from '@/types';
 import { ApiError, DEFAULT_TIMEOUT_MS, STREAM_IDLE_TIMEOUT_MS, apiUrl } from './config';
 import { parseChatStream } from './stream';
-import type {
-  ChatRequest,
-  ChatStreamChunk,
-  ModelsResponse,
-  RawModel,
-} from './types';
+import type { ChatRequest, ChatStreamChunk, ModelsResponse, RawModel } from './types';
 
 /**
  * Direct mode sends these from the BROWSER straight to Ollama. Any custom header
@@ -20,7 +15,10 @@ import type {
 const TUNNEL_HEADERS = {} as const;
 
 /** Combine an external signal with an internal timeout. */
-function withTimeout(ms: number, external?: AbortSignal): { signal: AbortSignal; cancel: () => void } {
+function withTimeout(
+  ms: number,
+  external?: AbortSignal,
+): { signal: AbortSignal; cancel: () => void } {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(new DOMException('timeout', 'TimeoutError')), ms);
   const onAbort = () => ctrl.abort(external?.reason);
@@ -72,8 +70,7 @@ function mapModel(raw: RawModel): ModelInfo {
       format: d.format,
     },
     supportsVision:
-      caps.includes('vision') ||
-      /vision|llava|bakllava|moondream|llama3\.2-vision/i.test(name),
+      caps.includes('vision') || /vision|llava|bakllava|moondream|llama3\.2-vision/i.test(name),
   };
 }
 
@@ -122,7 +119,7 @@ export async function fetchModels(signal?: AbortSignal): Promise<ModelInfo[]> {
     });
     await assertOk(res);
     const data = (await res.json()) as ModelsResponse | RawModel[];
-    const list = Array.isArray(data) ? data : data.models ?? [];
+    const list = Array.isArray(data) ? data : (data.models ?? []);
     return list.map(mapModel).sort((a, b) => a.label.localeCompare(b.label));
   } catch (err) {
     throw normalize(err);
@@ -195,7 +192,8 @@ export async function streamChat(
     }
 
     await assertOk(res);
-    if (!res.body) throw new ApiError('The server did not return a stream body.', { kind: 'parse' });
+    if (!res.body)
+      throw new ApiError('The server did not return a stream body.', { kind: 'parse' });
 
     let final: ChatStreamChunk = {};
     try {

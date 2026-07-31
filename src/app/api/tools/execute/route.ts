@@ -58,7 +58,9 @@ export async function POST(request: Request): Promise<Response> {
   try {
     body = await readJson<GenerateRequest>(request, MAX_BODY_BYTES);
   } catch (err) {
-    return bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    return (
+      bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    );
   }
 
   if (!body.tool) {
@@ -98,7 +100,8 @@ export async function POST(request: Request): Promise<Response> {
 
     // Persist to Supabase Storage if configured
     if (supabase && userId !== 'guest') {
-      const bucket = getTool(body.tool as ToolName)?.category === 'export' ? 'exports' : 'artifacts';
+      const bucket =
+        getTool(body.tool as ToolName)?.category === 'export' ? 'exports' : 'artifacts';
 
       const { error: uploadErr } = await supabase.storage
         .from(bucket)
@@ -111,7 +114,10 @@ export async function POST(request: Request): Promise<Response> {
         // Previously swallowed silently — the artifact would fall back to
         // ephemeral (data URL) with no way to tell why. Log it so a missing
         // bucket / RLS misconfiguration is actually visible.
-        console.error(`[tools/execute] Storage upload failed for ${storagePath}:`, uploadErr.message);
+        console.error(
+          `[tools/execute] Storage upload failed for ${storagePath}:`,
+          uploadErr.message,
+        );
       } else {
         // Signed URL — long-lived (7 days) rather than 1 hour, since it gets
         // stored in chat history and read back much later. ArtifactPanel
@@ -176,7 +182,9 @@ export async function POST(request: Request): Promise<Response> {
           console.error(
             '[tools/execute] artifacts insert failed:',
             artifactInsertErr.message,
-            artifactSaved ? '— retried without parent links' : `— retry also failed: ${retry.error?.message}`,
+            artifactSaved
+              ? '— retried without parent links'
+              : `— retry also failed: ${retry.error?.message}`,
           );
         }
 

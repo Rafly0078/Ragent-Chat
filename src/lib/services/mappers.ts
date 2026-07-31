@@ -67,8 +67,7 @@ function safeSummary(raw: unknown): ConversationSummary | undefined {
     text: src.text,
     upToMessageId: src.upToMessageId,
     createdAt: typeof src.createdAt === 'number' ? src.createdAt : Date.now(),
-    tokensAtSummary:
-      typeof src.tokensAtSummary === 'number' ? src.tokensAtSummary : undefined,
+    tokensAtSummary: typeof src.tokensAtSummary === 'number' ? src.tokensAtSummary : undefined,
   };
 }
 

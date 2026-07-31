@@ -59,7 +59,13 @@ const KIND_STYLE: Record<
 };
 
 function kindStyle(kind: ArtifactKind) {
-  return KIND_STYLE[kind] ?? { icon: File, tile: 'bg-border/20 text-content-muted', label: kind.toUpperCase() };
+  return (
+    KIND_STYLE[kind] ?? {
+      icon: File,
+      tile: 'bg-border/20 text-content-muted',
+      label: kind.toUpperCase(),
+    }
+  );
 }
 
 function formatSize(bytes: number): string {
@@ -129,10 +135,10 @@ function ArtifactCard({
       <m.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="group/art flex items-center gap-3 rounded-2xl border border-border bg-surface-raised p-3 shadow-subtle transition-all hover:border-accent/40 hover:shadow-card sm:p-3.5"
+        className="group/art card lift flex items-center gap-3 p-3 hover:border-accent/40 sm:p-3.5"
       >
         {/* File-type tile */}
-        <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-xl', tile)}>
+        <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-md', tile)}>
           <Icon className="h-6 w-6" />
         </div>
 
@@ -158,7 +164,10 @@ function ArtifactCard({
               </Tooltip>
             )}
             {stale && (
-              <Tooltip side="top" label="Tautan file gagal diperbarui. Muat ulang halaman untuk mencoba lagi.">
+              <Tooltip
+                side="top"
+                label="Tautan file gagal diperbarui. Muat ulang halaman untuk mencoba lagi."
+              >
                 <span className="inline-flex items-center gap-1 rounded-md bg-error/15 px-1.5 py-0.5 font-medium text-error">
                   <AlertTriangle className="h-3 w-3" />
                   Kedaluwarsa
@@ -218,12 +227,17 @@ function ArtifactCard({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="relative flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-card"
+              className="relative flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border/20 bg-surface-overlay shadow-float"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <div className="flex items-center justify-between border-b border-border/15 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', tile)}>
+                  <span
+                    className={cn(
+                      'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                      tile,
+                    )}
+                  >
                     <Icon className="h-4 w-4" />
                   </span>
                   <p className="truncate text-sm font-medium text-content">{artifact.name}</p>
@@ -371,7 +385,7 @@ export function ArtifactPanel({ artifacts, onDelete }: Props) {
   if (artifacts.length === 0) return null;
 
   return (
-    <div className="border-t border-border bg-surface-mid/40">
+    <div className="border-t border-border/15 bg-surface-mid/40">
       <button
         onClick={() => setCollapsed((c) => !c)}
         className="flex w-full items-center gap-2.5 px-4 py-3 text-left transition-colors hover:bg-border/5"
@@ -386,7 +400,10 @@ export function ArtifactPanel({ artifacts, onDelete }: Props) {
         </span>
         <span className="ml-auto">
           <ChevronDown
-            className={cn('h-4 w-4 text-content-subtle transition-transform', collapsed && '-rotate-90')}
+            className={cn(
+              'h-4 w-4 text-content-subtle transition-transform',
+              collapsed && '-rotate-90',
+            )}
           />
         </span>
       </button>

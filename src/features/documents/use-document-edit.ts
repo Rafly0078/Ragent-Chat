@@ -20,7 +20,15 @@ export interface DocumentEditState {
   /** Generated artifact from the improved content */
   generatedArtifact: Artifact | null;
   /** Current step in the flow */
-  step: 'idle' | 'extracting' | 'extracted' | 'improving' | 'improved' | 'generating' | 'done' | 'error';
+  step:
+    | 'idle'
+    | 'extracting'
+    | 'extracted'
+    | 'improving'
+    | 'improved'
+    | 'generating'
+    | 'done'
+    | 'error';
   /** Error message if something failed */
   error: string | null;
 }
@@ -80,7 +88,9 @@ export function useDocumentEdit(conversationId: string | null) {
         const text = await extractFileContent(file);
         if (controller.signal.aborted) return;
         if (!text.trim()) {
-          throw new Error(`Could not extract text from "${file.name}". The file may be empty or unsupported.`);
+          throw new Error(
+            `Could not extract text from "${file.name}". The file may be empty or unsupported.`,
+          );
         }
         setState((s) => ({ ...s, extractedContent: text, step: 'extracted' }));
       } catch (err) {
@@ -125,7 +135,9 @@ export function useDocumentEdit(conversationId: string | null) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: useChatStore.getState().conversations.find((c) => c.id === conversationId)?.model ?? '',
+            model:
+              useChatStore.getState().conversations.find((c) => c.id === conversationId)?.model ??
+              '',
             messages: [{ role: 'user', content: prompt }],
             stream: false,
           }),
@@ -134,7 +146,7 @@ export function useDocumentEdit(conversationId: string | null) {
 
         if (!res.ok) throw new Error('Failed to get AI improvement');
 
-        const data = await res.json() as { message?: { content?: string }; response?: string };
+        const data = (await res.json()) as { message?: { content?: string }; response?: string };
         if (controller.signal.aborted) return;
         const improved = data.message?.content ?? data.response ?? '';
         if (!improved) throw new Error('AI returned empty response');
@@ -152,45 +164,44 @@ export function useDocumentEdit(conversationId: string | null) {
     [beginRequest, conversationId, state.extractedContent],
   );
 
-  const generateDocument = useCallback(async (opts: {
-    tool: GenerateRequest['tool'];
-    name?: string;
-    title?: string;
-  }) => {
-    const controller = beginRequest();
-    setState((s) => ({ ...s, step: 'generating', error: null }));
+  const generateDocument = useCallback(
+    async (opts: { tool: GenerateRequest['tool']; name?: string; title?: string }) => {
+      const controller = beginRequest();
+      setState((s) => ({ ...s, step: 'generating', error: null }));
 
-    try {
-      const res = await fetch('/api/tools/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tool: opts.tool,
-          name: opts.name,
-          title: opts.title,
-          content: state.improvedContent || state.extractedContent,
-          conversationId,
-        }),
-        signal: controller.signal,
-      });
+      try {
+        const res = await fetch('/api/tools/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: opts.tool,
+            name: opts.name,
+            title: opts.title,
+            content: state.improvedContent || state.extractedContent,
+            conversationId,
+          }),
+          signal: controller.signal,
+        });
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: 'Generation failed' }));
-        throw new Error(body.error ?? 'Document generation failed');
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: 'Generation failed' }));
+          throw new Error(body.error ?? 'Document generation failed');
+        }
+
+        const { artifact } = (await res.json()) as { artifact: Artifact };
+        if (controller.signal.aborted) return;
+        setState((s) => ({ ...s, generatedArtifact: artifact, step: 'done' }));
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setState((s) => ({
+          ...s,
+          step: 'error',
+          error: err instanceof Error ? err.message : 'Failed to generate document',
+        }));
       }
-
-      const { artifact } = (await res.json()) as { artifact: Artifact };
-      if (controller.signal.aborted) return;
-      setState((s) => ({ ...s, generatedArtifact: artifact, step: 'done' }));
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      setState((s) => ({
-        ...s,
-        step: 'error',
-        error: err instanceof Error ? err.message : 'Failed to generate document',
-      }));
-    }
-  }, [beginRequest, state.improvedContent, state.extractedContent, conversationId]);
+    },
+    [beginRequest, state.improvedContent, state.extractedContent, conversationId],
+  );
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -215,7 +226,32 @@ async function extractFileContent(file: File): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
 
   // Plain text / code / markdown
-  if (['txt', 'md', 'csv', 'json', 'log', 'xml', 'yaml', 'yml', 'ts', 'tsx', 'js', 'jsx', 'py', 'go', 'rs', 'java', 'c', 'cpp', 'sh', 'html', 'css'].includes(ext) || file.type.startsWith('text/')) {
+  if (
+    [
+      'txt',
+      'md',
+      'csv',
+      'json',
+      'log',
+      'xml',
+      'yaml',
+      'yml',
+      'ts',
+      'tsx',
+      'js',
+      'jsx',
+      'py',
+      'go',
+      'rs',
+      'java',
+      'c',
+      'cpp',
+      'sh',
+      'html',
+      'css',
+    ].includes(ext) ||
+    file.type.startsWith('text/')
+  ) {
     return file.text();
   }
 
@@ -329,7 +365,10 @@ async function extractFileContent(file: File): Promise<string> {
     } catch {
       throw new Error(`Could not read "${file.name}" — it may not be a valid .pptx file.`);
     }
-    const out = texts.join('\n').replace(/^(?:---\n?)+/, '').trim();
+    const out = texts
+      .join('\n')
+      .replace(/^(?:---\n?)+/, '')
+      .trim();
     if (!out || /^-{3}$/.test(out)) throw new Error(`No text found in "${file.name}".`);
     return out;
   }

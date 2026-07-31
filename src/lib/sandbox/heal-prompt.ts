@@ -24,7 +24,9 @@ Rules:
 function formatIssues(report: SandboxReport): string {
   const lines: string[] = [];
   if (report.blank) {
-    lines.push('- The page rendered a BLANK screen (nothing visible). Ensure content is actually shown.');
+    lines.push(
+      '- The page rendered a BLANK screen (nothing visible). Ensure content is actually shown.',
+    );
   }
   // Warnings are separated out: `isClean` deliberately ignores them, so telling
   // the model to "fix every reported problem" for a third-party deprecation

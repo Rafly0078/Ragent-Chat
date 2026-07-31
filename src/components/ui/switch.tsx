@@ -45,7 +45,7 @@ export function Switch({
           'relative flex h-6 w-11 items-center rounded-full border-2 transition-colors duration-fast ease-out',
           checked
             ? 'border-[rgb(var(--accent))] bg-[rgb(var(--accent))]'
-            : 'border-border bg-border/15',
+            : 'border-border/15 bg-border/15',
         )}
       >
         <span

@@ -1,12 +1,16 @@
 /**
- * The reference's platform cards, mapped to this app's real choice: how the
- * browser reaches your models. Two options, so two cards — a third would be
- * padding, and each gets its own diagram rather than a shared icon.
+ * How the browser reaches your models. Two real options, so two cards — a third
+ * would be padding — and each gets its own diagram rather than a shared icon.
+ * The install block lands at the end of the section because that is the step you
+ * take right after choosing.
  */
+
+import { Reveal } from './Reveal';
+import { InstallBlock } from './InstallBlock';
 
 function BridgeDiagram() {
   return (
-    <svg viewBox="0 0 200 90" className="h-auto w-full text-content/75" aria-hidden>
+    <svg viewBox="0 0 200 90" className="h-auto w-full text-content-muted" aria-hidden>
       <g stroke="currentColor" fill="none" strokeWidth={1.3}>
         <rect x="4" y="30" width="44" height="30" />
         <rect x="78" y="30" width="44" height="30" />
@@ -32,7 +36,7 @@ function BridgeDiagram() {
 
 function DirectDiagram() {
   return (
-    <svg viewBox="0 0 200 90" className="h-auto w-full text-content/75" aria-hidden>
+    <svg viewBox="0 0 200 90" className="h-auto w-full text-content-muted" aria-hidden>
       <g stroke="currentColor" fill="none" strokeWidth={1.3}>
         <rect x="4" y="30" width="44" height="30" />
         <rect x="152" y="30" width="44" height="30" />
@@ -76,39 +80,46 @@ const MODES = [
 
 export function ModeCards() {
   return (
-    <section className="relative px-6 py-20 sm:px-10 sm:py-28">
-      <div className="hw-rule mb-10 sm:mb-14" />
-      <div className="mb-12 max-w-2xl">
-        <p className="type-eyebrow mb-4 text-content">Two ways in</p>
-        <h2 className="type-display text-[clamp(1.9rem,5.2vw,3.5rem)] text-content">
+    <section id="connect" className="relative px-6 pb-16 pt-24 sm:px-10 sm:pb-20 sm:pt-32">
+      <div className="rule-t mb-12 sm:mb-16" />
+
+      <Reveal className="mb-12 max-w-2xl sm:mb-16">
+        <p className="type-eyebrow">Two ways in</p>
+        <h2 className="type-display mt-5 text-[clamp(1.9rem,5vw,3.4rem)] text-content">
           Pick how the browser reaches your models
         </h2>
-      </div>
+      </Reveal>
 
       <div className="grid gap-5 md:grid-cols-2">
-        {MODES.map((m) => (
-          <article
-            key={m.name}
-            className="flex flex-col gap-6 border-2 border-content/25 p-6 transition-colors hover:border-content/60 sm:p-8"
-          >
-            <div className="flex items-baseline justify-between gap-4">
-              <h3 className="type-display text-[1.75rem] text-content">{m.name}</h3>
-              <span className="type-label shrink-0 text-acid">{m.tag}</span>
-            </div>
+        {MODES.map((m, i) => (
+          <Reveal key={m.name} delay={i * 80}>
+            <article className="card edge-lit lift group flex h-full flex-col gap-6 p-6 sm:p-8">
+              <div className="flex items-baseline justify-between gap-4">
+                <h3 className="type-display text-[1.6rem] text-content">{m.name}</h3>
+                <span className={m.tag === 'Default' ? 'badge badge-lit' : 'badge badge-outline'}>
+                  {m.tag}
+                </span>
+              </div>
 
-            <div className="border-y-2 border-content/15 py-5">{m.diagram}</div>
+              <div className="well px-4 py-5">{m.diagram}</div>
 
-            <div>
-              <p className="text-[0.975rem] leading-relaxed text-content-muted">{m.body}</p>
-              <p className="mt-3 font-mono text-[0.72rem] uppercase tracking-[0.1em] text-content-subtle">
-                {m.caveat}
-              </p>
-            </div>
-          </article>
+              <div className="mt-auto">
+                <p className="text-[0.95rem] leading-relaxed text-content-muted">{m.body}</p>
+                <p className="mt-4 flex items-start gap-2 font-mono text-[0.72rem] uppercase leading-5 tracking-[0.08em] text-content-subtle">
+                  <span aria-hidden className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent/70" />
+                  {m.caveat}
+                </p>
+              </div>
+            </article>
+          </Reveal>
         ))}
       </div>
 
-      <p className="mt-6 font-mono text-[0.75rem] leading-6 text-content-muted">
+      <Reveal delay={120} className="mt-14 sm:mt-20">
+        <InstallBlock />
+      </Reveal>
+
+      <p className="mt-8 font-mono text-[0.75rem] leading-6 text-content-subtle">
         Switchable any time from Settings &rarr; Connection.
       </p>
     </section>

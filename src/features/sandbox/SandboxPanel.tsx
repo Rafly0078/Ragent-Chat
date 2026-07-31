@@ -70,9 +70,9 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
   const warnIssues = state.report?.issues.filter((i) => i.kind === 'console-warn');
 
   return (
-    <div className="my-3 overflow-hidden rounded-2xl border border-border bg-surface-raised shadow-subtle">
+    <div className="my-3 overflow-hidden rounded-2xl border border-border/15 bg-surface-raised shadow-subtle">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-border/15 px-3 py-2">
         <button
           onClick={() => setOpen((v) => !v)}
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
@@ -148,7 +148,7 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
 
             {/* Issue report */}
             {state.report && (
-              <div className="border-t border-border px-3 py-2.5 text-xs">
+              <div className="border-t border-border/15 px-3 py-2.5 text-xs">
                 {errorIssues && errorIssues.length > 0 && (
                   <IssueGroup
                     tone="error"
@@ -179,7 +179,7 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
             )}
 
             {state.error && (
-              <div className="border-t border-border px-3 py-2.5 text-xs text-error">
+              <div className="border-t border-border/15 px-3 py-2.5 text-xs text-error">
                 {state.error}
               </div>
             )}

@@ -7,21 +7,26 @@ import { REPO_URL } from '@/lib/app-meta';
 import { cn } from '@/lib/utils/cn';
 
 /**
- * Landing nav, in the reference's arrangement: two links left, the wordmark
- * centred with its social row beneath, one section link and the CTA right.
- * Everything is mono caps at .1em tracking.
+ * Landing nav: wordmark left, section links centre, one primary action right.
  *
- * The wordmark is one line. Stacked as "Ragent / AI" it was badly lopsided — the
- * reference can stack because "Hermes" and "Agent" are the same width, and a
- * two-character second line under a six-character first line reads as a wrap
- * bug rather than a lockup.
+ * The CTA is a real button rather than the text link it used to be — on the old
+ * nav "Open chat" was styled identically to "Docs" and "Source", so the one
+ * thing the page wants you to do looked like navigation.
  *
  * Sticky, and it solidifies once the page has moved. Detection is an
  * IntersectionObserver on a zero-height sentinel rather than a scroll listener,
- * so nothing runs on the main thread per scroll frame. On mobile the five slots
- * collapse to wordmark + CTA; the secondary links are all reachable from the
- * page body, which beats a hamburger for a page this short.
+ * so nothing runs on the main thread per scroll frame. Below `md` the section
+ * links collapse and only the wordmark and the CTA remain; both targets are
+ * still reachable from the page body, which beats a hamburger for a page this
+ * short.
  */
+
+const LINKS = [
+  { href: '#capabilities', label: 'Capabilities' },
+  { href: '#connect', label: 'Connect' },
+  { href: `${REPO_URL}#readme`, label: 'Docs' },
+];
+
 export function LandingNav() {
   const sentinel = useRef<HTMLDivElement>(null);
   const [stuck, setStuck] = useState(false);
@@ -41,54 +46,47 @@ export function LandingNav() {
       <div ref={sentinel} aria-hidden className="h-px w-full" />
       <header
         className={cn(
-          'sticky top-0 z-30 grid grid-cols-2 items-start gap-4 px-6 transition-[padding,background-color,border-color] duration-base ease-out sm:px-10 md:grid-cols-5',
+          'sticky top-0 z-30 flex items-center justify-between gap-4 px-6 transition-all duration-base ease-out sm:px-10',
           stuck
-            ? 'border-b-2 border-border bg-surface py-4'
-            : 'border-b-2 border-transparent bg-transparent pb-4 pt-6',
+            ? 'border-border/12 border-b bg-surface/85 py-3 backdrop-blur-xl'
+            : 'border-b border-transparent bg-transparent py-5',
         )}
       >
-        <a
-          href={REPO_URL}
-          className="type-label focus-ring hidden py-1.5 text-content transition-opacity duration-fast hover:opacity-70 md:block"
-        >
-          Source
-        </a>
-        <a
-          href={`${REPO_URL}#readme`}
-          className="type-label focus-ring hidden py-1.5 text-content transition-opacity duration-fast hover:opacity-70 md:block"
-        >
-          Docs
-        </a>
+        <Link href="/" className="focus-ring group flex items-center gap-2.5 rounded py-1">
+          {/* The lit pip: the only warm mark in the chrome, so the wordmark reads
+              as the source of the page's light rather than a logo slot. */}
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inset-0 rounded-full bg-accent" />
+            <span className="absolute -inset-1 rounded-full bg-accent/25 blur-[3px] transition-transform duration-base group-hover:scale-150" />
+          </span>
+          <span className="type-display text-[1.2rem] leading-none text-content sm:text-[1.35rem]">
+            Ragent
+          </span>
+        </Link>
 
-        <div className="flex flex-col items-start gap-1.5 md:items-center">
-          <Link href="/" className="focus-ring block py-1">
-            <span className="type-display block whitespace-nowrap text-[1.35rem] leading-none text-content sm:text-[1.6rem]">
-              Ragent AI
-            </span>
-          </Link>
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Sections">
+          {LINKS.map((l) => (
+            <a
+              key={l.label}
+              href={l.href}
+              className="type-label focus-ring hover:bg-border/8 rounded px-3 py-2 text-content-muted transition-colors duration-fast hover:text-content"
+            >
+              {l.label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-2">
           <a
             href={REPO_URL}
             aria-label="Source on GitHub"
-            className="focus-ring -m-1.5 p-1.5 text-content/80 transition-opacity duration-fast hover:opacity-100"
+            className="btn-ghost btn-md btn-icon hidden sm:inline-flex"
           >
-            <Github className="h-3.5 w-3.5" />
+            <Github className="h-4 w-4" />
           </a>
-        </div>
-
-        <a
-          href="#capabilities"
-          className="type-label focus-ring hidden py-1.5 text-content transition-opacity duration-fast hover:opacity-70 md:block md:text-right"
-        >
-          Capabilities
-        </a>
-
-        <div className="flex items-start justify-end">
-          <Link
-            href="/chat"
-            className="type-label focus-ring group inline-flex items-center gap-1.5 py-1.5 text-content"
-          >
+          <Link href="/chat" className="btn-primary btn-md group">
             Open chat
-            <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-fast group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
           </Link>
         </div>
       </header>

@@ -112,10 +112,24 @@ const createPptx: ExecutorFn = async (req) => {
   cover.addShape('rect', { x: 0, y: 0, w: PW, h: 0.25, fill: { color: ACCENT } });
   cover.addShape('rect', { x: 0, y: PH - 0.25, w: PW, h: 0.25, fill: { color: ACCENT } });
   cover.addText(runs(deckTitle, { fontSize: 40, color: INK }), {
-    x: 0.9, y: 2.6, w: PW - 1.8, h: 1.6, bold: true, align: 'left', valign: 'middle', fontFace: 'Arial',
+    x: 0.9,
+    y: 2.6,
+    w: PW - 1.8,
+    h: 1.6,
+    bold: true,
+    align: 'left',
+    valign: 'middle',
+    fontFace: 'Arial',
   });
   cover.addText(`Generated ${new Date().toLocaleDateString()}`, {
-    x: 0.95, y: 4.3, w: PW - 1.8, h: 0.5, fontSize: 14, color: MUTED, italic: true, fontFace: 'Arial',
+    x: 0.95,
+    y: 4.3,
+    w: PW - 1.8,
+    h: 0.5,
+    fontSize: 14,
+    color: MUTED,
+    italic: true,
+    fontFace: 'Arial',
   });
 
   if (slides.length === 0) {
@@ -126,7 +140,13 @@ const createPptx: ExecutorFn = async (req) => {
     const s = pptx.addSlide({ masterName: 'CONTENT' });
     if (slide.title) {
       s.addText(runs(slide.title, { fontSize: 28, color: INK }), {
-        x: 0.8, y: 0.5, w: PW - 1.6, h: 0.9, bold: true, valign: 'middle', fontFace: 'Arial',
+        x: 0.8,
+        y: 0.5,
+        w: PW - 1.6,
+        h: 0.9,
+        bold: true,
+        valign: 'middle',
+        fontFace: 'Arial',
       });
     }
     const hasBullets = Boolean(slide.bullets?.length);
@@ -160,7 +180,14 @@ const createPptx: ExecutorFn = async (req) => {
             },
           }));
         }),
-        { x: 0.8, y: bulletsY, w: PW - 1.6, h: PH - bulletsY - 0.8, valign: 'top', fontFace: 'Arial' },
+        {
+          x: 0.8,
+          y: bulletsY,
+          w: PW - 1.6,
+          h: PH - bulletsY - 0.8,
+          valign: 'top',
+          fontFace: 'Arial',
+        },
       );
     }
   }

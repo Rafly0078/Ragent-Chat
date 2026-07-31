@@ -23,7 +23,7 @@ export function CompactionBadge({ text, createdAt }: { text: string; createdAt: 
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1 text-xs font-medium text-content-subtle transition-colors hover:text-content"
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/15 bg-surface px-2.5 py-1 text-xs font-medium text-content-subtle transition-colors hover:text-content"
         >
           <Archive className="h-3 w-3" aria-hidden />
           Context compacted
@@ -45,7 +45,7 @@ export function CompactionBadge({ text, createdAt }: { text: string; createdAt: 
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="mt-3 rounded-xl border border-border bg-surface-raised p-3 text-sm text-content-subtle">
+            <div className="mt-3 rounded-xl border border-border/15 bg-surface-raised p-3 text-sm text-content-subtle">
               <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-content-subtle/70">
                 Summary the model still uses
               </p>

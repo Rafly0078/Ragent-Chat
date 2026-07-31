@@ -117,7 +117,10 @@ export const ChatListItem = memo(function ChatListItem({
           <Pin className="h-3.5 w-3.5 shrink-0 text-accent" />
         ) : (
           <MessageSquare
-            className={cn('h-3.5 w-3.5 shrink-0 transition-colors', active ? 'text-accent' : 'opacity-55')}
+            className={cn(
+              'h-3.5 w-3.5 shrink-0 transition-colors',
+              active ? 'text-accent' : 'opacity-55',
+            )}
           />
         )}
         {editing ? (
@@ -179,7 +182,7 @@ export const ChatListItem = memo(function ChatListItem({
                 transition={{ duration: 0.14 }}
                 role="menu"
                 onClick={(e) => e.stopPropagation()}
-                className="popover absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-2xl p-1.5 shadow-card"
+                className="popover absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden p-1.5"
               >
                 {!confirming ? (
                   <>
@@ -209,7 +212,7 @@ export const ChatListItem = memo(function ChatListItem({
                         setMenuOpen(false);
                       }}
                     />
-                    <div className="my-1 h-px bg-border" />
+                    <div className="bg-border/12 my-1 h-px" />
                     <MenuRow
                       icon={Trash2}
                       label="Delete"
@@ -267,7 +270,7 @@ function MenuRow({
         'type-label flex w-full items-center gap-2.5 rounded px-3 py-2.5 text-left transition-colors',
         danger
           ? 'text-error hover:bg-error/15'
-          : 'text-content-muted hover:bg-accent/12 hover:text-content',
+          : 'hover:bg-accent/12 text-content-muted hover:text-content',
       )}
     >
       <Icon className="h-4 w-4 shrink-0" />

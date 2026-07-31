@@ -36,16 +36,20 @@ export function InstallBlock() {
   };
 
   return (
-    <div className="w-full max-w-xl">
-      <p className="type-eyebrow mb-2 text-content-muted">Connect your models</p>
-      {/* `.paper` flips the whole token set to blue-ink-on-white for this
-          subtree, so the card is written in `text-content` / `bg-accent` like
-          everything else instead of in #0000f2 literals. It also fixed a real
-          miss: the inactive tab was #0000f2 at 60% alpha, which measures 4.34:1
-          on white. `--content-subtle` on paper is 5.43:1. */}
-      <div className="paper overflow-hidden rounded-[4px]">
+    <div className="w-full max-w-2xl">
+      <p className="type-eyebrow mb-4">Connect your models</p>
+      {/* `.paper` flips the whole token set to ink-on-white for this subtree, so
+          the card is written in `text-content` / `bg-accent` like everything else
+          instead of in literals. It is the one paper surface in the product — a
+          sheet under the lamp.
+
+          The shadow is written literally rather than taken from `shadow-float`:
+          `.paper` rebinds the elevation tokens to light-mode alphas for the
+          benefit of anything nested inside it, but this card casts onto the night
+          field, so it needs the dark drop the field expects. */}
+      <div className="paper overflow-hidden rounded-lg shadow-[0_18px_50px_-18px_rgb(2_4_10_/_0.8)]">
         <div
-          className="flex items-center gap-1 border-b-2 border-border/20 px-2 py-1.5"
+          className="flex items-center gap-1 border-b border-border/15 px-2 py-2"
           role="tablist"
           aria-label="Connection mode"
         >
@@ -55,30 +59,35 @@ export function InstallBlock() {
               role="tab"
               aria-selected={active === t.id}
               onClick={() => setActive(t.id)}
-              className={`focus-ring px-2.5 py-1 font-mono text-[0.7rem] uppercase tracking-[0.1em] transition-colors duration-fast ${
+              className={`focus-ring rounded px-3 py-1.5 font-mono text-[0.7rem] uppercase tracking-[0.08em] transition-colors duration-fast ${
                 active === t.id
                   ? 'bg-accent text-accent-fg'
-                  : 'text-content-subtle hover:text-content'
+                  : 'hover:bg-border/8 text-content-subtle hover:text-content'
               }`}
             >
               {t.label}
             </button>
           ))}
         </div>
-        <div className="flex items-start gap-3 px-3 py-3">
-          <code className="min-w-0 flex-1 break-all font-mono text-[0.78rem] leading-6 text-content">
+        <div className="flex items-start gap-3 px-4 py-4">
+          <span aria-hidden className="select-none pt-px font-mono text-[0.78rem] text-accent">
+            $
+          </span>
+          <code className="min-w-0 flex-1 break-all font-mono text-[0.8rem] leading-6 text-content">
             {tab.cmd}
           </code>
           <button
             onClick={() => void copy()}
             aria-label={copied ? 'Copied' : 'Copy command'}
-            className="focus-ring shrink-0 p-1 text-content-subtle transition-colors duration-fast hover:text-content"
+            className="focus-ring hover:bg-border/8 -m-1.5 shrink-0 rounded p-1.5 text-content-subtle transition-colors duration-fast hover:text-content"
           >
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
           </button>
         </div>
       </div>
-      <p className="mt-2 font-mono text-[0.72rem] leading-5 text-content-muted">{tab.hint}</p>
+      <p className="mt-3 max-w-prose font-mono text-[0.72rem] leading-5 text-content-subtle">
+        {tab.hint}
+      </p>
     </div>
   );
 }

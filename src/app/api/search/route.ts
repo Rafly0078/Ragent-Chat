@@ -55,7 +55,9 @@ export async function POST(request: Request): Promise<Response> {
   try {
     body = await readJson<{ query?: string; maxResults?: number }>(request, 64 * 1024);
   } catch (err) {
-    return bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    return (
+      bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    );
   }
 
   const query = body.query?.trim().slice(0, MAX_QUERY_CHARS);

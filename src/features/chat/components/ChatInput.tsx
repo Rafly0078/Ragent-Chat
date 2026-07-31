@@ -2,7 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
-import { ArrowUp, Brain, FileText, Globe, Loader2, Paperclip, Plus, Square, X, Check, Command } from 'lucide-react';
+import {
+  ArrowUp,
+  Brain,
+  FileText,
+  Globe,
+  Loader2,
+  Paperclip,
+  Plus,
+  Square,
+  X,
+  Check,
+  Command,
+} from 'lucide-react';
 import type { Attachment, ThinkingConfig } from '@/types';
 import { attachmentPreview, fileToAttachment } from '@/lib/utils/files';
 import { estimateTokens } from '@/lib/utils/format';
@@ -64,11 +76,16 @@ export function ChatInput({
   useEffect(() => {
     if (!menuOpen && !effortOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (menuOpen && menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-      if (effortOpen && effortRef.current && !effortRef.current.contains(e.target as Node)) setEffortOpen(false);
+      if (menuOpen && menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuOpen(false);
+      if (effortOpen && effortRef.current && !effortRef.current.contains(e.target as Node))
+        setEffortOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setMenuOpen(false); setEffortOpen(false); }
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setEffortOpen(false);
+      }
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -149,7 +166,7 @@ export function ChatInput({
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Ctrl/Cmd+Enter always sends. Enter sends when sendOnEnter is on.
     if (e.key === 'Enter') {
-      const wantSend = (e.metaKey || e.ctrlKey) || (sendOnEnter && !e.shiftKey);
+      const wantSend = e.metaKey || e.ctrlKey || (sendOnEnter && !e.shiftKey);
       if (wantSend) {
         e.preventDefault();
         // Autocomplete a lone slash match directly — don't setValue then submit
@@ -165,9 +182,7 @@ export function ChatInput({
   };
 
   const onPaste = (e: React.ClipboardEvent) => {
-    const imageItems = Array.from(e.clipboardData.items).filter((i) =>
-      i.type.startsWith('image/'),
-    );
+    const imageItems = Array.from(e.clipboardData.items).filter((i) => i.type.startsWith('image/'));
     if (imageItems.length) {
       e.preventDefault();
       const files = imageItems.map((i) => i.getAsFile()).filter(Boolean) as File[];
@@ -204,7 +219,7 @@ export function ChatInput({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="popover absolute bottom-full left-4 right-4 mb-2 overflow-hidden rounded-2xl shadow-card sm:left-6 sm:right-6"
+            className="popover absolute bottom-full left-4 right-4 mb-2 overflow-hidden sm:left-6 sm:right-6"
           >
             {slashMatches.map((c) => (
               <button
@@ -227,13 +242,16 @@ export function ChatInput({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          /* A ruled dock, not a pill. Everything else in the product turns on a
-             4px radius and a 2px full-opacity rule; a 16px-radius 1px-bordered
-             capsule was the one shape that did not belong. The rule is also what
-             separates the dock from the thread — a fill cannot, at 1.04:1. */
-          'relative rounded border-2 border-border bg-surface-raised p-2 transition-colors duration-fast',
-          'focus-within:border-accent',
-          dragging && 'border-accent',
+          /* The dock is where the light lands: a raised block that warms and
+             glows as soon as focus enters it. That glow is spent in exactly two
+             places in the product — here and on the hovered primary button — so
+             "the thing you type into" is always the brightest surface on screen.
+             The old dock was a 2px full-opacity white rule, which read as a
+             wireframe rather than a surface. */
+          'border-border/22 relative rounded-xl border bg-surface-raised p-2 shadow-raised',
+          'transition-[border-color,box-shadow] duration-base ease-out',
+          'focus-within:border-accent/55 focus-within:shadow-glow',
+          dragging && 'border-accent/70 shadow-glow',
         )}
       >
         {/* Drag overlay */}
@@ -243,7 +261,7 @@ export function ChatInput({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-10 flex items-center justify-center rounded bg-accent/15"
+              className="bg-accent/12 absolute inset-0 z-10 flex items-center justify-center rounded-xl backdrop-blur-[2px]"
             >
               <p className="type-label text-accent">Drop files to attach</p>
             </m.div>
@@ -258,7 +276,7 @@ export function ChatInput({
               return (
                 <div
                   key={a.id}
-                  className="group/att relative flex items-center gap-2 rounded-xl border border-border bg-border/5 py-1 pl-1 pr-2 text-xs"
+                  className="group/att relative flex items-center gap-2 rounded-lg border border-border/20 bg-border/5 py-1 pl-1 pr-2 text-xs"
                 >
                   {preview ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -293,7 +311,7 @@ export function ChatInput({
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
                 className={cn(
-                  'focus-ring relative flex h-11 w-11 items-center justify-center rounded-2xl transition-colors disabled:opacity-40',
+                  'focus-ring relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-fast disabled:opacity-40',
                   menuOpen
                     ? 'bg-accent/15 text-accent'
                     : 'text-content-muted hover:bg-border/10 hover:text-content',
@@ -314,7 +332,7 @@ export function ChatInput({
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
                   transition={{ duration: 0.14 }}
                   role="menu"
-                  className="popover absolute bottom-full left-0 z-30 mb-2 w-60 overflow-hidden rounded-2xl p-1.5 shadow-card"
+                  className="popover absolute bottom-full left-0 z-30 mb-2 w-60 overflow-hidden p-1.5"
                 >
                   <button
                     role="menuitem"
@@ -325,11 +343,17 @@ export function ChatInput({
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-content transition-colors hover:bg-border/10"
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-border/15 text-content-muted">
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                      {busy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Paperclip className="h-4 w-4" />
+                      )}
                     </span>
                     <span className="flex-1">
                       <span className="block font-medium">Attach files</span>
-                      <span className="block text-xs text-content-subtle">Images, PDF, Office, code</span>
+                      <span className="block text-xs text-content-subtle">
+                        Images, PDF, Office, code
+                      </span>
                     </span>
                   </button>
 
@@ -346,7 +370,9 @@ export function ChatInput({
                     </span>
                     <span className="flex-1">
                       <span className="block font-medium">Edit a document</span>
-                      <span className="block text-xs text-content-subtle">Rewrite a file with AI</span>
+                      <span className="block text-xs text-content-subtle">
+                        Rewrite a file with AI
+                      </span>
                     </span>
                   </button>
 
@@ -366,7 +392,9 @@ export function ChatInput({
                     </span>
                     <span className="flex-1">
                       <span className="block font-medium">Web search</span>
-                      <span className="block text-xs text-content-subtle">Search before answering</span>
+                      <span className="block text-xs text-content-subtle">
+                        Search before answering
+                      </span>
                     </span>
                     {webSearch && <Check className="h-4 w-4 text-accent" />}
                   </button>
@@ -394,9 +422,7 @@ export function ChatInput({
             onPaste={onPaste}
             disabled={disabled}
             rows={1}
-            placeholder={
-              disabled ? 'Select model to start' : 'Message...'
-            }
+            placeholder={disabled ? 'Select model to start' : 'Message...'}
             aria-label="Message input"
             className="scrollbar-thin max-h-[220px] flex-1 resize-none bg-transparent px-1 py-2.5 text-[0.95rem] leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
           />
@@ -426,7 +452,7 @@ export function ChatInput({
                 aria-haspopup="menu"
                 aria-expanded={effortOpen}
                 className={cn(
-                  'focus-ring relative flex h-11 w-11 items-center justify-center rounded-2xl transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  'focus-ring relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-fast disabled:cursor-not-allowed disabled:opacity-40',
                   thinking.enabled
                     ? 'bg-accent/15 text-accent'
                     : 'text-content-muted hover:bg-border/10 hover:text-content',
@@ -447,7 +473,7 @@ export function ChatInput({
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
                   transition={{ duration: 0.14 }}
                   role="menu"
-                  className="popover absolute bottom-full right-0 z-30 mb-2 w-48 overflow-hidden rounded-2xl p-1.5 shadow-card"
+                  className="popover absolute bottom-full right-0 z-30 mb-2 w-48 overflow-hidden p-1.5"
                 >
                   <div className="px-3 py-1.5 text-[0.7rem] font-medium uppercase tracking-wide text-content-subtle">
                     Thinking effort

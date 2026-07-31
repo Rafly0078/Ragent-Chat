@@ -63,13 +63,24 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
   switch (b.type) {
     case 'heading': {
       const level =
-        b.level === 1 ? HeadingLevel.HEADING_1 :
-        b.level === 2 ? HeadingLevel.HEADING_2 :
-        b.level === 3 ? HeadingLevel.HEADING_3 :
-        b.level === 4 ? HeadingLevel.HEADING_4 :
-        b.level === 5 ? HeadingLevel.HEADING_5 :
-        HeadingLevel.HEADING_6;
-      return [new Paragraph({ heading: level, children: inlineRuns(b.text), spacing: { before: 240, after: 120 } })];
+        b.level === 1
+          ? HeadingLevel.HEADING_1
+          : b.level === 2
+            ? HeadingLevel.HEADING_2
+            : b.level === 3
+              ? HeadingLevel.HEADING_3
+              : b.level === 4
+                ? HeadingLevel.HEADING_4
+                : b.level === 5
+                  ? HeadingLevel.HEADING_5
+                  : HeadingLevel.HEADING_6;
+      return [
+        new Paragraph({
+          heading: level,
+          children: inlineRuns(b.text),
+          spacing: { before: 240, after: 120 },
+        }),
+      ];
     }
     case 'paragraph':
       return [new Paragraph({ children: inlineRuns(b.text), spacing: { after: 160, line: 276 } })];
@@ -97,7 +108,9 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
       return b.text.split('\n').map(
         (line, i, arr) =>
           new Paragraph({
-            children: [new TextRun({ text: line || ' ', font: 'Consolas', size: 18, color: CODE_INK })],
+            children: [
+              new TextRun({ text: line || ' ', font: 'Consolas', size: 18, color: CODE_INK }),
+            ],
             shading: { type: ShadingType.CLEAR, fill: CODE_FILL, color: 'auto' },
             spacing: { after: i === arr.length - 1 ? 160 : 0, before: i === 0 ? 80 : 0 },
           }),
@@ -112,9 +125,11 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
       ];
     case 'table': {
       const alignFor = (ci: number) =>
-        b.align?.[ci] === 'right' ? AlignmentType.RIGHT :
-        b.align?.[ci] === 'center' ? AlignmentType.CENTER :
-        AlignmentType.LEFT;
+        b.align?.[ci] === 'right'
+          ? AlignmentType.RIGHT
+          : b.align?.[ci] === 'center'
+            ? AlignmentType.CENTER
+            : AlignmentType.LEFT;
       // Widen to the longest row instead of clipping to the header. A table whose
       // data rows carry more cells than the header (common when the model forgets
       // a header column) silently lost the extras here, while the PDF executor
@@ -125,7 +140,12 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
         children: Array.from({ length: cols }, (_, ci) => b.header[ci] ?? '').map(
           (h, ci) =>
             new TableCell({
-              children: [new Paragraph({ alignment: alignFor(ci), children: parseInline(h).flatMap((s) => spanToRuns({ ...s, bold: true })) })],
+              children: [
+                new Paragraph({
+                  alignment: alignFor(ci),
+                  children: parseInline(h).flatMap((s) => spanToRuns({ ...s, bold: true })),
+                }),
+              ],
               shading: { type: ShadingType.CLEAR, fill: 'EEF1F5', color: 'auto' },
               margins: { top: 60, bottom: 60, left: 100, right: 100 },
             }),
@@ -137,8 +157,13 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
             children: Array.from({ length: cols }, (_, ci) => row[ci] ?? '').map(
               (cell, ci) =>
                 new TableCell({
-                  children: [new Paragraph({ alignment: alignFor(ci), children: inlineRuns(cell) })],
-                  shading: ri % 2 === 1 ? { type: ShadingType.CLEAR, fill: 'F9FAFB', color: 'auto' } : undefined,
+                  children: [
+                    new Paragraph({ alignment: alignFor(ci), children: inlineRuns(cell) }),
+                  ],
+                  shading:
+                    ri % 2 === 1
+                      ? { type: ShadingType.CLEAR, fill: 'F9FAFB', color: 'auto' }
+                      : undefined,
                   margins: { top: 60, bottom: 60, left: 100, right: 100 },
                 }),
             ),
@@ -149,7 +174,14 @@ function blockToDocx(b: Block): (Paragraph | Table)[] {
         new Table({
           rows: [headerRow, ...dataRows],
           width: { size: 100, type: WidthType.PERCENTAGE },
-          borders: { top: edge, bottom: edge, left: edge, right: edge, insideHorizontal: edge, insideVertical: edge },
+          borders: {
+            top: edge,
+            bottom: edge,
+            left: edge,
+            right: edge,
+            insideHorizontal: edge,
+            insideVertical: edge,
+          },
         }),
         new Paragraph({ children: [], spacing: { after: 160 } }),
       ];
@@ -176,13 +208,25 @@ const createDocx: ExecutorFn = async (req) => {
         {
           reference: 'ordered-list',
           levels: [
-            { level: 0, format: LevelFormat.DECIMAL, text: '%1.', alignment: AlignmentType.START, style: { paragraph: { indent: { left: 360, hanging: 260 } } } },
+            {
+              level: 0,
+              format: LevelFormat.DECIMAL,
+              text: '%1.',
+              alignment: AlignmentType.START,
+              style: { paragraph: { indent: { left: 360, hanging: 260 } } },
+            },
           ],
         },
         {
           reference: 'bullet-list',
           levels: [
-            { level: 0, format: LevelFormat.BULLET, text: '•', alignment: AlignmentType.START, style: { paragraph: { indent: { left: 360, hanging: 260 } } } },
+            {
+              level: 0,
+              format: LevelFormat.BULLET,
+              text: '•',
+              alignment: AlignmentType.START,
+              style: { paragraph: { indent: { left: 360, hanging: 260 } } },
+            },
           ],
         },
       ],
@@ -193,7 +237,14 @@ const createDocx: ExecutorFn = async (req) => {
         children: [
           new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: title })] }),
           new Paragraph({
-            children: [new TextRun({ text: `Generated ${new Date().toLocaleDateString()}`, color: MUTED, size: 20, italics: true })],
+            children: [
+              new TextRun({
+                text: `Generated ${new Date().toLocaleDateString()}`,
+                color: MUTED,
+                size: 20,
+                italics: true,
+              }),
+            ],
             spacing: { after: 360 },
             border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: BORDER, space: 8 } },
           }),

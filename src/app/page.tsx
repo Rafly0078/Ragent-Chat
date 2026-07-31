@@ -12,15 +12,10 @@ export const metadata: Metadata = {
 /**
  * Landing page.
  *
- * `.hermes-canvas` is what makes this surface different from the rest of the
- * app: it rebinds every colour token to the electric-blue field and opens a
- * container-query context, which the fluid `--u` unit needs. The chat app keeps
- * its own dark/paper canvas — same type, same radii, same rules, different
- * ground. See globals.css.
- *
- * A server component: nothing here needs client state except the copy button in
- * the install block and the nav's stuck-state observer, which are client islands
- * of their own.
+ * `.lamp-field` is what grounds this surface: it paints the night field and
+ * opens a container-query context, which the fluid `--u` unit needs. The chat
+ * app shares the same field via AmbientBackground — same type, same radii, same
+ * light source, one canvas.
  *
  * `overflow-x-clip` rather than `overflow-x-hidden`: `hidden` on one axis forces
  * the other axis to `auto`, which turns this element into a scroll container —
@@ -29,8 +24,8 @@ export const metadata: Metadata = {
  */
 export default function LandingPage() {
   return (
-    <main className="hermes-grain hermes-canvas relative min-h-[100dvh] w-full max-w-full overflow-x-clip">
-      <div className="relative z-10 mx-auto w-full max-w-[1600px]">
+    <main className="grain lamp-field relative min-h-[100dvh] w-full max-w-full overflow-x-clip">
+      <div className="relative z-10 mx-auto w-full max-w-[1400px]">
         <LandingNav />
         <Hero />
         <FeatureList />

@@ -20,7 +20,12 @@ export type Block =
   | { type: 'quote'; text: string }
   | { type: 'code'; lang?: string; text: string }
   | { type: 'hr' }
-  | { type: 'table'; header: string[]; rows: string[][]; align?: Array<'left' | 'center' | 'right'> };
+  | {
+      type: 'table';
+      header: string[];
+      rows: string[][];
+      align?: Array<'left' | 'center' | 'right'>;
+    };
 
 /** A run of inline text carrying its accumulated formatting. */
 export interface Span {
@@ -95,7 +100,7 @@ function nextToken(s: string): Token | null {
         kind,
         // For a link/image with empty text, fall back to the destination —
         // `[](url)` used to emit nothing at all, losing both label and URL.
-        inner: kind === 'link' || kind === 'image' ? (m[1] || m[2] || '') : (m[1] ?? ''),
+        inner: kind === 'link' || kind === 'image' ? m[1] || m[2] || '' : (m[1] ?? ''),
         href: kind === 'link' || kind === 'image' ? m[2] : undefined,
       };
       if (m.index === 0) break; // can't beat index 0

@@ -40,14 +40,21 @@ export function useModelDetails() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: 'Failed to fetch model details' }));
-        throw new ApiError(body.error ?? 'Failed to fetch model details', { kind: 'http', status: res.status });
+        throw new ApiError(body.error ?? 'Failed to fetch model details', {
+          kind: 'http',
+          status: res.status,
+        });
       }
-      const data = await res.json() as ModelDetails;
+      const data = (await res.json()) as ModelDetails;
       setState({ details: data, loading: false, error: null });
     } catch (err) {
       if (err instanceof ApiError && err.kind === 'aborted') return;
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setState({ details: null, loading: false, error: err instanceof ApiError ? err.userMessage : 'Failed to load model details.' });
+      setState({
+        details: null,
+        loading: false,
+        error: err instanceof ApiError ? err.userMessage : 'Failed to load model details.',
+      });
     }
   }, []);
 

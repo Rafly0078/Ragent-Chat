@@ -13,7 +13,7 @@ export function TypingIndicator() {
   return (
     <div className="flex items-center gap-3" role="status" aria-label="Assistant is responding">
       <span className="relative block h-[3px] w-28 overflow-hidden rounded-full bg-border/15">
-        <span className="animate-scan absolute inset-y-0 left-0 w-1/3 rounded-full bg-accent" />
+        <span className="absolute inset-y-0 left-0 w-1/3 animate-scan rounded-full bg-accent" />
       </span>
       <span className="type-label text-content-subtle">Thinking</span>
     </div>

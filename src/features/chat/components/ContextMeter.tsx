@@ -31,7 +31,10 @@ function estimateContextUsage(convo: Conversation): number {
   if (lastMetricsIdx === -1) {
     // Nothing round-tripped through the API yet — estimate the whole thing.
     const sysTokens = estimateTokens(systemPrompt);
-    const msgTokens = messages.reduce((sum, m) => sum + estimateTokens(m.content) + MESSAGE_OVERHEAD, 0);
+    const msgTokens = messages.reduce(
+      (sum, m) => sum + estimateTokens(m.content) + MESSAGE_OVERHEAD,
+      0,
+    );
     return sysTokens + msgTokens;
   }
 
@@ -39,7 +42,10 @@ function estimateContextUsage(convo: Conversation): number {
   const baseTokens = (base.promptTokens ?? 0) + (base.completionTokens ?? 0);
 
   const newer = messages.slice(lastMetricsIdx + 1);
-  const newerTokens = newer.reduce((sum: number, m: Message) => sum + estimateTokens(m.content) + MESSAGE_OVERHEAD, 0);
+  const newerTokens = newer.reduce(
+    (sum: number, m: Message) => sum + estimateTokens(m.content) + MESSAGE_OVERHEAD,
+    0,
+  );
 
   return baseTokens + newerTokens;
 }
@@ -67,7 +73,7 @@ export function ContextMeter({ conversation }: { conversation: Conversation }) {
       }`}
       side="bottom"
     >
-      <div className="hidden items-center gap-1.5 rounded-xl border border-border px-2 py-1.5 md:flex">
+      <div className="hidden items-center gap-1.5 rounded-xl border border-border/15 px-2 py-1.5 md:flex">
         <div className="h-1.5 w-12 overflow-hidden rounded-full bg-border/15">
           <div
             className={cn(
@@ -82,7 +88,11 @@ export function ContextMeter({ conversation }: { conversation: Conversation }) {
         <span
           className={cn(
             'text-xs font-medium tabular-nums',
-            tone === 'error' ? 'text-error' : tone === 'warning' ? 'text-warning' : 'text-content-subtle',
+            tone === 'error'
+              ? 'text-error'
+              : tone === 'warning'
+                ? 'text-warning'
+                : 'text-content-subtle',
           )}
         >
           {Math.round(pct)}%

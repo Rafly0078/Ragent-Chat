@@ -53,20 +53,32 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
   }, []);
 
   const exportMd = () => {
-    downloadText(`${slugify(conversation.title)}.md`, conversationToMarkdown(conversation), 'text/markdown');
+    downloadText(
+      `${slugify(conversation.title)}.md`,
+      conversationToMarkdown(conversation),
+      'text/markdown',
+    );
     toast('Exported as Markdown', 'success');
     setMenuOpen(false);
   };
   const exportJson = () => {
-    downloadText(`${slugify(conversation.title)}.json`, conversationToJson(conversation), 'application/json');
+    downloadText(
+      `${slugify(conversation.title)}.json`,
+      conversationToJson(conversation),
+      'application/json',
+    );
     toast('Exported as JSON', 'success');
     setMenuOpen(false);
   };
 
   return (
-    <header className="glass sticky top-0 z-30 flex items-center gap-1.5 border-0 px-2 py-2.5 sm:gap-2 sm:px-4">
+    <header className="glass sticky top-0 z-30 flex items-center gap-1.5 px-2 py-2.5 sm:gap-2 sm:px-4">
       <Tooltip label="Toggle sidebar" side="bottom">
-        <button onClick={onToggleSidebar} className="btn-ghost btn-md btn-icon" aria-label="Toggle sidebar">
+        <button
+          onClick={onToggleSidebar}
+          className="btn-ghost btn-md btn-icon"
+          aria-label="Toggle sidebar"
+        >
           <PanelLeft className="h-[1.15rem] w-[1.15rem]" />
         </button>
       </Tooltip>
@@ -89,13 +101,21 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
         <span className="mx-0.5 hidden h-5 w-px bg-border/25 sm:block" aria-hidden />
 
         <Tooltip label="System prompt" side="bottom" className="hidden sm:inline-flex">
-          <button onClick={onOpenSystem} className="btn-ghost btn-md btn-icon" aria-label="Edit system prompt">
+          <button
+            onClick={onOpenSystem}
+            className="btn-ghost btn-md btn-icon"
+            aria-label="Edit system prompt"
+          >
             <Terminal className="h-[1.15rem] w-[1.15rem]" />
           </button>
         </Tooltip>
 
         <Tooltip label="Parameters" side="bottom" className="hidden sm:inline-flex">
-          <button onClick={onOpenParams} className="btn-ghost btn-md btn-icon" aria-label="Generation parameters">
+          <button
+            onClick={onOpenParams}
+            className="btn-ghost btn-md btn-icon"
+            aria-label="Generation parameters"
+          >
             <Sliders className="h-[1.15rem] w-[1.15rem]" />
           </button>
         </Tooltip>
@@ -117,7 +137,7 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
                 exit={{ opacity: 0, y: -8, scale: 0.98 }}
                 transition={{ duration: 0.14 }}
                 role="menu"
-                className="popover absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl p-1.5 shadow-card"
+                className="popover absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden p-1.5"
               >
                 <MenuItem icon={FileText} label="Export as Markdown" onClick={exportMd} />
                 <MenuItem icon={FileJson} label="Export as JSON" onClick={exportJson} />
@@ -137,7 +157,7 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
                     setMenuOpen(false);
                   }}
                 />
-                <div className="my-1 h-px bg-border" />
+                <div className="bg-border/12 my-1 h-px" />
                 <MenuItem
                   icon={Eraser}
                   label="Clear messages"
@@ -171,6 +191,11 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
   );
 }
 
+/**
+ * A menu row. Sentence-case sans rather than the mono-caps `.type-label` the rest
+ * of the chrome uses: "Generation parameters" set in tracked uppercase is a
+ * label, and a label is not something you read at a glance while pointing at it.
+ */
 function MenuItem({
   icon: Icon,
   label,
@@ -186,10 +211,10 @@ function MenuItem({
     <button
       role="menuitem"
       onClick={onClick}
-      className={`type-label flex w-full items-center gap-2.5 rounded px-3 py-2.5 text-left transition-colors ${
+      className={`flex w-full items-center gap-2.5 rounded px-3 py-2.5 text-left text-[0.8125rem] transition-colors duration-fast ${
         danger
-          ? 'text-error hover:bg-error/15'
-          : 'text-content-muted hover:bg-accent/12 hover:text-content'
+          ? 'hover:bg-error/12 text-error'
+          : 'text-content-muted hover:bg-border/10 hover:text-content'
       }`}
     >
       <Icon className="h-4 w-4 shrink-0" />

@@ -20,7 +20,9 @@ export async function POST(request: Request): Promise<Response> {
     const body = await readJson<{ name?: string; model?: string }>(request, 16 * 1024);
     name = (body.name ?? body.model ?? '').trim();
   } catch (err) {
-    return bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    return (
+      bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    );
   }
   if (!name) return NextResponse.json({ error: 'Missing model name.' }, { status: 400 });
 

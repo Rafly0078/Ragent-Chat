@@ -1,12 +1,21 @@
 'use client';
 
 import { useEffect } from 'react';
-import { Loader2, AlertCircle, Cpu, Eye, HardDrive, Hash, Layers, BookOpen, FileText } from 'lucide-react';
+import {
+  Loader2,
+  AlertCircle,
+  Cpu,
+  Eye,
+  HardDrive,
+  Hash,
+  Layers,
+  BookOpen,
+  FileText,
+} from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { useModelDetails } from './use-model-details';
 import type { ModelInfo } from '@/types';
 import { formatBytes, formatNumber } from '@/lib/utils/format';
-
 
 interface Props {
   open: boolean;
@@ -72,7 +81,7 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
 
           {/* Context length */}
           {model?.contextLength && (
-            <div className="rounded-xl border-2 border-border bg-surface-raised p-3 shadow-subtle">
+            <div className="rounded-xl border border-border/15 bg-surface-raised p-3 shadow-subtle">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4 text-accent" />
                 <span className="text-sm font-medium text-content">Context Length</span>
@@ -86,7 +95,9 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
           {/* Capabilities */}
           {details.capabilities && details.capabilities.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-medium text-content-muted uppercase tracking-wide">Capabilities</p>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-content-muted">
+                Capabilities
+              </p>
               <div className="flex flex-wrap gap-2">
                 {details.capabilities.map((cap) => (
                   <span
@@ -104,8 +115,10 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
           {/* Parameters string */}
           {details.parameters && (
             <div>
-              <p className="mb-2 text-xs font-medium text-content-muted uppercase tracking-wide">Generation Parameters</p>
-              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border-2 border-border bg-surface p-3 font-mono text-xs text-content-subtle">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-content-muted">
+                Generation Parameters
+              </p>
+              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border border-border/15 bg-surface p-3 font-mono text-xs text-content-subtle">
                 {details.parameters}
               </pre>
             </div>
@@ -114,8 +127,10 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
           {/* Template */}
           {details.template && (
             <div>
-              <p className="mb-2 text-xs font-medium text-content-muted uppercase tracking-wide">Template</p>
-              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border-2 border-border bg-surface p-3 font-mono text-xs text-content-subtle">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-content-muted">
+                Template
+              </p>
+              <pre className="scrollbar-thin max-h-40 overflow-auto rounded-xl border border-border/15 bg-surface p-3 font-mono text-xs text-content-subtle">
                 {details.template}
               </pre>
             </div>
@@ -124,15 +139,18 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
           {/* License */}
           {details.license && (
             <div>
-              <p className="mb-2 text-xs font-medium text-content-muted uppercase tracking-wide">License</p>
-              <p className="rounded-xl border-2 border-border bg-surface-raised p-3 text-xs text-content-muted leading-relaxed">
-                {details.license.slice(0, 500)}{details.license.length > 500 ? '…' : ''}
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-content-muted">
+                License
+              </p>
+              <p className="rounded-xl border border-border/15 bg-surface-raised p-3 text-xs leading-relaxed text-content-muted">
+                {details.license.slice(0, 500)}
+                {details.license.length > 500 ? '…' : ''}
               </p>
             </div>
           )}
 
           {/* Model name */}
-          <div className="rounded-xl border border-border bg-border/5 p-2">
+          <div className="rounded-xl border border-border/15 bg-border/5 p-2">
             <p className="text-[0.7rem] text-content-subtle">
               <FileText className="mr-1 inline h-3 w-3" />
               Full name: <code className="font-mono text-accent-soft">{details.name}</code>
@@ -144,12 +162,22 @@ export function ModelDetailsPanel({ open, onClose, model }: Props) {
   );
 }
 
-function DetailCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function DetailCard({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-xl border-2 border-border bg-surface-raised p-3 shadow-subtle">
+    <div className="rounded-xl border border-border/15 bg-surface-raised p-3 shadow-subtle">
       <div className="flex items-center gap-2">
         {icon}
-        <span className="text-xs font-medium text-content-muted uppercase tracking-wide">{label}</span>
+        <span className="text-xs font-medium uppercase tracking-wide text-content-muted">
+          {label}
+        </span>
       </div>
       <p className="mt-1 truncate text-sm font-bold text-content">{value}</p>
     </div>

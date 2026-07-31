@@ -15,15 +15,42 @@ import { MIME_BY_KIND, EXT_BY_KIND, displayTitle } from '../types';
  */
 
 const PUNCT: Record<string, string> = {
-  '‘': "'", '’': "'", '‚': ',', '‛': "'",
-  '“': '"', '”': '"', '„': '"',
-  '–': '-', '—': '-', '―': '-', '−': '-',
-  '…': '...', '•': '-', '·': '-', '‣': '-',
-  ' ': ' ', ' ': ' ', ' ': ' ', '​': '',
-  '→': '->', '←': '<-', '↔': '<->', '⇒': '=>',
-  '≤': '<=', '≥': '>=', '≠': '!=', '×': 'x', '÷': '/',
-  '™': '(TM)', '®': '(R)', '©': '(C)', '€': 'EUR',
-  '☑': '[x]', '☐': '[ ]', '✓': 'v', '✗': 'x',
+  '‘': "'",
+  '’': "'",
+  '‚': ',',
+  '‛': "'",
+  '“': '"',
+  '”': '"',
+  '„': '"',
+  '–': '-',
+  '—': '-',
+  '―': '-',
+  '−': '-',
+  '…': '...',
+  '•': '-',
+  '·': '-',
+  '‣': '-',
+  ' ': ' ',
+  ' ': ' ',
+  ' ': ' ',
+  '​': '',
+  '→': '->',
+  '←': '<-',
+  '↔': '<->',
+  '⇒': '=>',
+  '≤': '<=',
+  '≥': '>=',
+  '≠': '!=',
+  '×': 'x',
+  '÷': '/',
+  '™': '(TM)',
+  '®': '(R)',
+  '©': '(C)',
+  '€': 'EUR',
+  '☑': '[x]',
+  '☐': '[ ]',
+  '✓': 'v',
+  '✗': 'x',
 };
 
 /** Fold text into the Latin-1 range the standard PDF fonts can render. */
@@ -54,7 +81,8 @@ function assertRenderable(content: string, title: string): void {
   const source = `${title}\n${content}`;
   const meaningful = Array.from(source).filter((ch) => !/\s/.test(ch));
   if (meaningful.length === 0) return;
-  const dropped = meaningful.length - Array.from(toWinAnsi(source)).filter((ch) => !/\s/.test(ch)).length;
+  const dropped =
+    meaningful.length - Array.from(toWinAnsi(source)).filter((ch) => !/\s/.test(ch)).length;
   if (dropped / meaningful.length > 0.2) {
     throw new Error(
       'This text uses characters the PDF generator cannot render (the built-in PDF fonts ' +
@@ -195,7 +223,10 @@ const createPdf: ExecutorFn = async (req) => {
   };
 
   /** Render styled spans as a wrapped paragraph at the current cursor. */
-  const flowSpans = (spans: Span[], opts?: { size?: number; indent?: number; color?: RGB; lead?: number }) => {
+  const flowSpans = (
+    spans: Span[],
+    opts?: { size?: number; indent?: number; color?: RGB; lead?: number },
+  ) => {
     const size = opts?.size ?? bodySize;
     const indent = opts?.indent ?? 0;
     const lead = opts?.lead ?? bodyLead;
@@ -240,7 +271,13 @@ const createPdf: ExecutorFn = async (req) => {
           const marker = b.ordered ? `${idx + 1}.` : '-';
           const markerW = fonts.regular.widthOfTextAtSize(`${marker} `, bodySize);
           ensure(bodyLead);
-          page.drawText(`${marker}`, { x: marginX + 6, y, size: bodySize, font: fonts.regular, color: INK });
+          page.drawText(`${marker}`, {
+            x: marginX + 6,
+            y,
+            size: bodySize,
+            font: fonts.regular,
+            color: INK,
+          });
           const words = toWords(parseInline(item), bodySize);
           const lines = layout(words, contentW - markerW - 12);
           lines.forEach((line, li) => {
@@ -336,17 +373,20 @@ const createPdf: ExecutorFn = async (req) => {
       // Pre-wrap every cell to know the row height before drawing.
       const wrapped = Array.from({ length: cols }, (_, ci) => {
         const spans = parseInline(cells[ci] ?? '');
-        const words = toWords(
-          isHeader ? spans.map((s) => ({ ...s, bold: true })) : spans,
-          size,
-        );
+        const words = toWords(isHeader ? spans.map((s) => ({ ...s, bold: true })) : spans, size);
         return layout(words, colW - 2 * cellPad);
       });
       const rowH = Math.max(1, ...wrapped.map((w) => w.length)) * lineH + cellPad;
       ensure(rowH);
       const rowTop = y;
       if (isHeader) {
-        page.drawRectangle({ x: marginX, y: rowTop - rowH + lineH - 1, width: contentW, height: rowH, color: TABLE_HEAD_BG });
+        page.drawRectangle({
+          x: marginX,
+          y: rowTop - rowH + lineH - 1,
+          width: contentW,
+          height: rowH,
+          color: TABLE_HEAD_BG,
+        });
       }
       wrapped.forEach((lines, ci) => {
         const align = b.align?.[ci] ?? 'left';
@@ -369,7 +409,12 @@ const createPdf: ExecutorFn = async (req) => {
         });
       });
       y = rowTop - rowH;
-      page.drawLine({ start: { x: marginX, y: y + lineH - 2 }, end: { x: width - marginX, y: y + lineH - 2 }, thickness: 0.5, color: RULE });
+      page.drawLine({
+        start: { x: marginX, y: y + lineH - 2 },
+        end: { x: width - marginX, y: y + lineH - 2 },
+        thickness: 0.5,
+        color: RULE,
+      });
     };
 
     y -= 4;
@@ -390,7 +435,12 @@ const createPdf: ExecutorFn = async (req) => {
     color: MUTED,
     lead: 16,
   });
-  page.drawLine({ start: { x: marginX, y: y + 4 }, end: { x: width - marginX, y: y + 4 }, thickness: 1, color: RULE });
+  page.drawLine({
+    start: { x: marginX, y: y + 4 },
+    end: { x: width - marginX, y: y + 4 },
+    thickness: 1,
+    color: RULE,
+  });
   y -= 16;
 
   for (const b of blocks) renderBlock(b);

@@ -1,3 +1,5 @@
+import { Reveal } from './Reveal';
+
 const MARK = 'stroke-current fill-none';
 
 /**
@@ -8,7 +10,8 @@ const MARK = 'stroke-current fill-none';
 function Mark({ id }: { id: number }) {
   const common = {
     viewBox: '0 0 48 48',
-    className: 'h-11 w-11 text-content/70',
+    className:
+      'h-11 w-11 text-content-subtle transition-colors duration-base group-hover:text-accent',
     strokeWidth: 1.4,
     'aria-hidden': true,
   } as const;
@@ -100,40 +103,50 @@ const FEATURES = [
 
 export function FeatureList() {
   return (
-    <section id="capabilities" className="relative px-6 py-20 sm:px-10 sm:py-28">
-      <div className="hw-rule mb-10 sm:mb-14" />
-      <p className="type-eyebrow mb-12 text-content">Capabilities</p>
+    <section id="capabilities" className="relative px-6 pb-10 pt-24 sm:px-10 sm:pb-14 sm:pt-32">
+      <div className="rule-t mb-12 sm:mb-16" />
 
-      <ol className="space-y-0">
+      <Reveal className="mb-14 max-w-2xl sm:mb-20">
+        <p className="type-eyebrow">Capabilities</p>
+        <h2 className="type-display mt-5 text-[clamp(1.9rem,5vw,3.4rem)] text-content">
+          Six things it does that a chat box usually doesn&rsquo;t
+        </h2>
+      </Reveal>
+
+      {/* An ordered list because the order is real: this is the sequence a
+          request actually moves through, from tokens arriving to the web being
+          searched. The numbers are information, not markers. */}
+      <ol>
         {FEATURES.map((f, i) => (
-          <li
-            key={f.verb}
-            className="grid grid-cols-1 items-start gap-x-8 gap-y-4 border-t-2 border-content/20 py-9 first:border-t-0 sm:py-11 lg:grid-cols-[auto_minmax(0,22rem)_minmax(0,1fr)_auto] lg:items-center"
-          >
-            {/* The numeral is a graphic element, not a list marker — hence the
-                display face at display scale. */}
-            <span className="hw-numeral shrink-0" aria-hidden>
-              {i + 1}
-            </span>
+          <Reveal key={f.verb} delay={Math.min(i, 4) * 55}>
+            <li className="border-border/12 group relative grid min-w-0 grid-cols-1 items-start gap-x-10 gap-y-4 border-t py-9 sm:py-11 lg:grid-cols-[3.5rem_minmax(0,20rem)_minmax(0,1fr)_auto] lg:items-center">
+              {/* The rail: the lamp catching the row you are pointing at. Scaled
+                  from the top so it wipes downward instead of fading in. */}
+              <span
+                aria-hidden
+                className="absolute left-0 top-0 h-full w-[2px] origin-top scale-y-0 rounded-full bg-accent transition-transform duration-base ease-out group-hover:scale-y-100"
+              />
 
-            <div>
-              {/* `#N Verb` exactly as the reference sets it — the number is real
-                  ordering information here (capability order, not decoration),
-                  which is the only reason a numbered list earns its numbers. */}
-              <p className="type-label mb-1.5 text-acid">{`#${i + 1} ${f.verb}`}</p>
-              <h3 className="type-display text-[clamp(1.5rem,3.4vw,2.35rem)] text-content">
-                {f.title}
-              </h3>
-            </div>
+              <span className="numeral" aria-hidden>
+                {String(i + 1).padStart(2, '0')}
+              </span>
 
-            <p className="max-w-prose text-[0.975rem] leading-relaxed text-content-muted">
-              {f.body}
-            </p>
+              <div>
+                <p className="type-label mb-2 text-accent">{f.verb}</p>
+                <h3 className="type-display text-[clamp(1.35rem,3vw,1.9rem)] text-content">
+                  {f.title}
+                </h3>
+              </div>
 
-            <div className="hidden shrink-0 justify-self-end lg:block">
-              <Mark id={i + 1} />
-            </div>
-          </li>
+              <p className="max-w-prose text-[0.95rem] leading-relaxed text-content-muted">
+                {f.body}
+              </p>
+
+              <div className="hidden shrink-0 justify-self-end transition-transform duration-base ease-out group-hover:-translate-y-1 lg:block">
+                <Mark id={i + 1} />
+              </div>
+            </li>
+          </Reveal>
         ))}
       </ol>
     </section>

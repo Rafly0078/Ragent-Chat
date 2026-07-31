@@ -91,18 +91,15 @@ export function apiUrl(path: string): string {
 }
 
 export type ApiErrorKind =
-  | 'config'
-  | 'network'
-  | 'timeout'
-  | 'aborted'
-  | 'http'
-  | 'parse'
-  | 'unknown';
+  'config' | 'network' | 'timeout' | 'aborted' | 'http' | 'parse' | 'unknown';
 
 export class ApiError extends Error {
   kind: ApiErrorKind;
   status?: number;
-  constructor(message: string, opts: { kind: ApiErrorKind; status?: number } = { kind: 'unknown' }) {
+  constructor(
+    message: string,
+    opts: { kind: ApiErrorKind; status?: number } = { kind: 'unknown' },
+  ) {
     super(message);
     this.name = 'ApiError';
     this.kind = opts.kind;

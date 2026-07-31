@@ -1,6 +1,14 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import { CheckCircle2, XCircle, Info, X } from 'lucide-react';
 
@@ -58,7 +66,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     (message: string, kind: ToastKind = 'info') => {
       const id = ++counter.current;
       setToasts((t) => [...t, { id, kind, message }]);
-      timers.current.set(id, setTimeout(() => remove(id), 4200));
+      timers.current.set(
+        id,
+        setTimeout(() => remove(id), 4200),
+      );
     },
     [remove],
   );
@@ -103,7 +114,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.15 } }}
                 transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                className="popover pointer-events-auto flex max-w-md items-start gap-3 rounded-2xl px-4 py-3 shadow-card"
+                className="popover pointer-events-auto flex max-w-md items-start gap-3 px-4 py-3"
               >
                 <Icon
                   className={

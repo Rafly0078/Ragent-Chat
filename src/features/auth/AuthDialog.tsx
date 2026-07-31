@@ -117,7 +117,8 @@ export function AuthDialog({
     setBusy(null);
   }
 
-  const title = mode === 'signup' ? 'Create account' : mode === 'magic' ? 'Email sign-in link' : 'Sign in';
+  const title =
+    mode === 'signup' ? 'Create account' : mode === 'magic' ? 'Email sign-in link' : 'Sign in';
   const description = mandatory
     ? 'Sign in to use Ragent — an account is required.'
     : 'Sync your workspace across devices.';
@@ -133,12 +134,26 @@ export function AuthDialog({
       <div className="flex flex-col gap-4">
         {/* OAuth */}
         <div className="grid grid-cols-2 gap-3">
-          <Button type="button" variant="surface" onClick={() => oauth('google')} disabled={Boolean(busy)}>
+          <Button
+            type="button"
+            variant="surface"
+            onClick={() => oauth('google')}
+            disabled={Boolean(busy)}
+          >
             {busy === 'google' ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleGlyph />}
             <span className="ml-2">Google</span>
           </Button>
-          <Button type="button" variant="surface" onClick={() => oauth('github')} disabled={Boolean(busy)}>
-            {busy === 'github' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Github className="h-4 w-4" />}
+          <Button
+            type="button"
+            variant="surface"
+            onClick={() => oauth('github')}
+            disabled={Boolean(busy)}
+          >
+            {busy === 'github' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Github className="h-4 w-4" />
+            )}
             <span className="ml-2">GitHub</span>
           </Button>
         </div>
@@ -200,17 +215,38 @@ export function AuthDialog({
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-content/60">
           <div className="flex gap-3">
             {mode !== 'signin' && (
-              <button type="button" className="underline" onClick={() => { setMode('signin'); reset(); }}>
+              <button
+                type="button"
+                className="underline"
+                onClick={() => {
+                  setMode('signin');
+                  reset();
+                }}
+              >
                 Sign in
               </button>
             )}
             {mode !== 'signup' && (
-              <button type="button" className="underline" onClick={() => { setMode('signup'); reset(); }}>
+              <button
+                type="button"
+                className="underline"
+                onClick={() => {
+                  setMode('signup');
+                  reset();
+                }}
+              >
                 Create account
               </button>
             )}
             {mode !== 'magic' && (
-              <button type="button" className="underline" onClick={() => { setMode('magic'); reset(); }}>
+              <button
+                type="button"
+                className="underline"
+                onClick={() => {
+                  setMode('magic');
+                  reset();
+                }}
+              >
                 Email link
               </button>
             )}
@@ -238,7 +274,10 @@ export function AuthDialog({
 function GoogleGlyph() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
-      <path fill="#4285F4" d="M21.35 11.1H12v3.2h5.35c-.23 1.5-1.6 4.4-5.35 4.4-3.2 0-5.8-2.65-5.8-5.9s2.6-5.9 5.8-5.9c1.82 0 3.05.78 3.75 1.45l2.55-2.45C16.9 3.95 14.7 3 12 3 6.98 3 3 6.98 3 12s3.98 9 9 9c5.2 0 8.64-3.65 8.64-8.8 0-.6-.06-1.05-.29-2.1z" />
+      <path
+        fill="#4285F4"
+        d="M21.35 11.1H12v3.2h5.35c-.23 1.5-1.6 4.4-5.35 4.4-3.2 0-5.8-2.65-5.8-5.9s2.6-5.9 5.8-5.9c1.82 0 3.05.78 3.75 1.45l2.55-2.45C16.9 3.95 14.7 3 12 3 6.98 3 3 6.98 3 12s3.98 9 9 9c5.2 0 8.64-3.65 8.64-8.8 0-.6-.06-1.05-.29-2.1z"
+      />
     </svg>
   );
 }

@@ -88,11 +88,7 @@ export default function HomePage() {
       <OfflineBanner />
 
       <div className="flex h-[100dvh] overflow-hidden">
-        <Sidebar
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          onNewChat={newChat}
-        />
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onNewChat={newChat} />
 
         <main className="relative flex min-w-0 flex-1 flex-col">
           {!hydrated ? (

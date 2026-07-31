@@ -69,7 +69,9 @@ export function Mermaid({ code, streaming = false }: { code: string; streaming?:
   );
 
   if (streaming) {
-    return <div className="my-4 h-32 animate-pulse rounded-xl border border-border bg-border/5" />;
+    return (
+      <div className="my-4 h-32 animate-pulse rounded-xl border border-border/15 bg-border/5" />
+    );
   }
 
   if (error) {
@@ -85,13 +87,15 @@ export function Mermaid({ code, streaming = false }: { code: string; streaming?:
   }
 
   if (!svg) {
-    return <div className="my-4 h-32 animate-pulse rounded-xl border border-border bg-border/5" />;
+    return (
+      <div className="my-4 h-32 animate-pulse rounded-xl border border-border/15 bg-border/5" />
+    );
   }
 
   return (
     <div
       ref={hostRef}
-      className="my-4 flex justify-center overflow-x-auto rounded-xl border border-border bg-border/[0.02] p-4"
+      className="my-4 flex justify-center overflow-x-auto rounded-xl border border-border/15 bg-border/[0.02] p-4"
       // Mermaid output is sanitized (securityLevel: 'strict').
       dangerouslySetInnerHTML={{ __html: svg }}
     />

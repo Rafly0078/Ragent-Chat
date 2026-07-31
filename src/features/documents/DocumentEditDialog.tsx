@@ -1,14 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import {
-  FileText,
-  Upload,
-  Sparkles,
-  Download,
-  Check,
-  AlertCircle,
-} from 'lucide-react';
+import { FileText, Upload, Sparkles, Download, Check, AlertCircle } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { useDocumentEdit } from './use-document-edit';
@@ -92,7 +85,12 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
   };
 
   return (
-    <Modal open={open} onClose={handleClose} title="Document Editor" description="Upload a document, improve it with AI, and generate a new version.">
+    <Modal
+      open={open}
+      onClose={handleClose}
+      title="Document Editor"
+      description="Upload a document, improve it with AI, and generate a new version."
+    >
       <div className="space-y-4">
         {/* Step 1: Upload */}
         <StepRow
@@ -130,7 +128,7 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
                   const dropped = e.dataTransfer.files?.[0];
                   if (dropped) void extractContent(dropped);
                 }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-sm text-content-muted transition-colors hover:border-accent/50 hover:text-content"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border/25 p-6 text-sm text-content-muted transition-colors duration-fast hover:border-accent/50 hover:bg-accent/[0.04] hover:text-content"
               >
                 <Upload className="h-5 w-5" />
                 Click to upload or drag and drop
@@ -146,25 +144,38 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
               Extracting content from {originalFile?.name}…
             </div>
           )}
-          {(step === 'extracted' || step === 'improving' || step === 'improved' || step === 'generating' || step === 'done') && originalFile && (
-            <div className="flex items-center gap-2 rounded-xl border-2 border-border bg-surface-raised p-3">
-              <FileText className="h-5 w-5 text-accent" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-content">{originalFile.name}</p>
-                <p className="text-[0.7rem] text-content-subtle">
-                  {extractedContent.length.toLocaleString()} characters extracted
-                </p>
+          {(step === 'extracted' ||
+            step === 'improving' ||
+            step === 'improved' ||
+            step === 'generating' ||
+            step === 'done') &&
+            originalFile && (
+              <div className="flex items-center gap-2 rounded-xl border border-border/15 bg-surface-raised p-3">
+                <FileText className="h-5 w-5 text-accent" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-content">{originalFile.name}</p>
+                  <p className="text-[0.7rem] text-content-subtle">
+                    {extractedContent.length.toLocaleString()} characters extracted
+                  </p>
+                </div>
+                <Check className="h-4 w-4 text-success" />
               </div>
-              <Check className="h-4 w-4 text-success" />
-            </div>
-          )}
+            )}
         </StepRow>
 
         {/* Step 2: Improve with AI */}
         <StepRow
           number={2}
           title="Improve with AI"
-          status={step === 'extracted' ? 'active' : step === 'improving' ? 'processing' : step === 'improved' || step === 'generating' || step === 'done' ? 'done' : 'pending'}
+          status={
+            step === 'extracted'
+              ? 'active'
+              : step === 'improving'
+                ? 'processing'
+                : step === 'improved' || step === 'generating' || step === 'done'
+                  ? 'done'
+                  : 'pending'
+          }
         >
           {step === 'extracted' && (
             <div className="space-y-2">
@@ -191,7 +202,7 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
             </div>
           )}
           {step === 'improved' && improvedContent && (
-            <div className="flex items-center gap-2 rounded-xl border-2 border-border bg-surface-raised p-3">
+            <div className="flex items-center gap-2 rounded-xl border border-border/15 bg-surface-raised p-3">
               <Sparkles className="h-5 w-5 text-accent" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-content">Content improved</p>
@@ -209,9 +220,13 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
           number={3}
           title="Generate output"
           status={
-            step === 'improved' ? 'active' :
-            step === 'generating' ? 'processing' :
-            step === 'done' ? 'done' : 'pending'
+            step === 'improved'
+              ? 'active'
+              : step === 'generating'
+                ? 'processing'
+                : step === 'done'
+                  ? 'done'
+                  : 'pending'
           }
         >
           {step === 'improved' && (
@@ -242,15 +257,22 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
           )}
           {step === 'done' && generatedArtifact && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 rounded-xl border-2 border-border bg-surface-raised p-3">
+              <div className="flex items-center gap-2 rounded-xl border border-border/15 bg-surface-raised p-3">
                 <FileText className="h-5 w-5 text-success" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-content">{generatedArtifact.name}</p>
+                  <p className="truncate text-sm font-medium text-content">
+                    {generatedArtifact.name}
+                  </p>
                   <p className="text-[0.7rem] text-content-subtle">
-                    {generatedArtifact.kind.toUpperCase()} · {(generatedArtifact.size / 1024).toFixed(1)} KB
+                    {generatedArtifact.kind.toUpperCase()} ·{' '}
+                    {(generatedArtifact.size / 1024).toFixed(1)} KB
                   </p>
                 </div>
-                <Button variant="primary" onClick={() => void handleDownload()} className="h-8 px-3 text-xs">
+                <Button
+                  variant="primary"
+                  onClick={() => void handleDownload()}
+                  className="h-8 px-3 text-xs"
+                >
                   <Download className="h-3.5 w-3.5" /> Download
                 </Button>
               </div>
@@ -278,31 +300,51 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
   );
 }
 
-function StepRow({ number, title, status, children }: {
+function StepRow({
+  number,
+  title,
+  status,
+  children,
+}: {
   number: number;
   title: string;
   status: 'active' | 'processing' | 'done' | 'pending';
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn(
-      'rounded-xl border-2 p-3 transition-colors',
-      status === 'active' ? 'border-accent/50 bg-accent/5' :
-      status === 'done' ? 'border-success/30 bg-success/5' :
-      status === 'processing' ? 'border-warning/30 bg-warning/5' :
-      'border-border bg-surface-raised',
-    )}>
+    <div
+      className={cn(
+        'rounded-lg border p-3 transition-colors duration-fast',
+        status === 'active'
+          ? 'border-accent/50 bg-accent/5'
+          : status === 'done'
+            ? 'border-success/30 bg-success/5'
+            : status === 'processing'
+              ? 'border-warning/30 bg-warning/5'
+              : 'border-border/15 bg-surface-raised',
+      )}
+    >
       <div className="mb-2 flex items-center gap-2">
-        <div className={cn(
-          'flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
-          status === 'active' ? 'bg-accent text-accent-fg' :
-          status === 'done' ? 'bg-success text-white' :
-          status === 'processing' ? 'bg-warning text-white' :
-          'bg-border/20 text-content-subtle',
-        )}>
+        <div
+          className={cn(
+            'flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold',
+            status === 'active'
+              ? 'bg-accent text-accent-fg'
+              : status === 'done'
+                ? 'bg-success text-white'
+                : status === 'processing'
+                  ? 'bg-warning text-white'
+                  : 'bg-border/20 text-content-subtle',
+          )}
+        >
           {status === 'done' ? <Check className="h-3.5 w-3.5" /> : number}
         </div>
-        <span className={cn('text-sm font-medium', status === 'pending' ? 'text-content-subtle' : 'text-content')}>
+        <span
+          className={cn(
+            'text-sm font-medium',
+            status === 'pending' ? 'text-content-subtle' : 'text-content',
+          )}
+        >
           {title}
         </span>
         {status === 'processing' && (

@@ -4,16 +4,17 @@ import { useSettings } from '@/lib/store/settings-store';
 import { useHydrated } from '@/lib/hooks/use-hydrated';
 
 /**
- * Ambient canvas: the field, plus the reference's film grain. Fully static — no
- * animation, no canvas, no WebGL, no particles, no blur. Costs nothing after
- * paint and is battery-safe.
+ * Ambient canvas for the app surfaces: the night field, two lamp pools, and
+ * film grain. Fully static — no animation, no canvas, no WebGL, no particles.
+ * Costs one paint and nothing after that, which matters on a screen people
+ * leave open for hours.
  *
- * There is deliberately no wash or glow layer. Every candidate tint measured
- * within 1.2:1 of #0000f2, so a gradient here would have cost a full-viewport
- * paint to produce something invisible — and the one time it was visible it was
- * because `--accent-solid` resolves to paper on this field, which hazed the top
- * of the app white. The grain is the only texture the field needs; it is lighter
- * here than on the landing (0.14 vs 0.28) because text sits on it for hours.
+ * The pools are what stop a near-black field from reading as an empty void:
+ * one warms the top of the page where the chrome is, the other sits low and
+ * centred, under the input dock, so the thing you type into is the brightest
+ * part of the room. Both are far below any text — the brighter of the two lifts
+ * the field by about 2% luminance, so contrast ratios in globals.css still hold
+ * wherever content actually sits.
  */
 export function AmbientBackground() {
   const texture = useSettings((s) => s.animatedBackground);
@@ -24,14 +25,17 @@ export function AmbientBackground() {
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-surface">
-      {/* Grain: baseFrequency .72 / 4 octaves / desaturated, tiled — the same
-          filter the reference uses, so the app and the landing share a texture. */}
+      <div className="lamp-pool left-1/2 top-[-28vh] h-[62vh] w-[120vw] -translate-x-1/2 opacity-50" />
+      <div className="lamp-pool bottom-[-30vh] left-1/2 h-[52vh] w-[86vw] -translate-x-1/2 opacity-40" />
+
+      {/* Grain: baseFrequency .72 / 4 octaves / desaturated, tiled. Lighter here
+          than on the landing (0.10 vs 0.22) because text sits on it for hours. */}
       {hydrated && texture && (
         <div
-          className="absolute inset-0 opacity-[0.14] mix-blend-overlay"
+          className="absolute inset-0 opacity-[0.1] mix-blend-soft-light"
           style={{
-            backgroundImage: 'var(--hw-noise)',
-            backgroundSize: 'var(--hw-noise-tile) var(--hw-noise-tile)',
+            backgroundImage: 'var(--grain)',
+            backgroundSize: 'var(--grain-tile) var(--grain-tile)',
           }}
         />
       )}
