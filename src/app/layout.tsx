@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from 'next/font/
 import './globals.css';
 import { Providers } from './providers';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
+import { SITE_URL } from '@/lib/app-meta';
 
 /**
  * Type system for the Lamplight direction.
@@ -36,7 +37,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ollama-chat.vercel.app'),
+  metadataBase: new URL(SITE_URL),
   title: 'Ragent — the models that run on your own machine',
   description:
     'A private, local-first chat interface for your own Ollama models. Streaming, extended thinking, document generation, a code sandbox, and web search — none of it leaves your hardware.',
@@ -51,7 +52,7 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://ollama-chat.vercel.app',
+    url: SITE_URL,
     title: 'Ragent — the models that run on your own machine',
     description:
       'A private, local-first chat interface for your own Ollama models. Nothing leaves your hardware.',
