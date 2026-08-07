@@ -40,8 +40,8 @@ Formatting:
 - Reply in the same language the user writes in.`;
 
 /**
- * Runtime-themeable accents — the bulb in the lamp. All measured against the
- * #0B1020 field.
+ * Runtime-themeable graphite accents. All values are grayscale so user choice
+ * stays inside the monochrome product system.
  *
  *   rgb    accent TEXT, icons, rails, carets. Must clear 4.5:1 on the field.
  *   soft   hover / secondary tint, one step brighter.
@@ -62,52 +62,52 @@ export const ACCENT_PRESETS: {
   ember: string;
 }[] = [
   {
-    name: 'Lamp',
+    name: 'Graphite',
     value: 'lamp',
-    rgb: '255 182 92',
-    soft: '255 205 138',
-    solid: '255 182 92',
-    ember: '255 122 69',
+    rgb: '24 24 22',
+    soft: '72 72 67',
+    solid: '24 24 22',
+    ember: '82 82 76',
   },
   {
-    name: 'Ember',
+    name: 'Carbon',
     value: 'ember',
-    rgb: '255 138 91',
-    soft: '255 175 140',
-    solid: '255 138 91',
-    ember: '236 88 84',
+    rgb: '48 48 44',
+    soft: '88 88 81',
+    solid: '48 48 44',
+    ember: '104 104 96',
   },
   {
-    name: 'Mint',
+    name: 'Steel',
     value: 'mint',
-    rgb: '94 226 173',
-    soft: '150 240 203',
-    solid: '94 226 173',
-    ember: '64 196 208',
+    rgb: '61 65 67',
+    soft: '99 104 106',
+    solid: '61 65 67',
+    ember: '116 121 123',
   },
   {
-    name: 'Sky',
+    name: 'Ash',
     value: 'sky',
-    rgb: '143 211 255',
-    soft: '186 229 255',
-    solid: '143 211 255',
-    ember: '124 160 255',
+    rgb: '86 85 80',
+    soft: '118 117 110',
+    solid: '86 85 80',
+    ember: '134 132 124',
   },
   {
-    name: 'Lilac',
+    name: 'Silver',
     value: 'lilac',
-    rgb: '201 180 255',
-    soft: '221 208 255',
-    solid: '201 180 255',
-    ember: '242 160 226',
+    rgb: '76 75 71',
+    soft: '106 105 99',
+    solid: '76 75 71',
+    ember: '132 130 123',
   },
   {
-    name: 'Linen',
+    name: 'Chalk',
     value: 'linen',
-    rgb: '242 239 232',
-    soft: '255 255 255',
-    solid: '242 239 232',
-    ember: '210 205 194',
+    rgb: '94 93 88',
+    soft: '124 122 116',
+    solid: '94 93 88',
+    ember: '146 144 136',
   },
 ];
 

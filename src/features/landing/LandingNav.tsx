@@ -59,7 +59,7 @@ export function LandingNav() {
             <span className="absolute inset-0 rounded-full bg-accent" />
             <span className="absolute -inset-1 rounded-full bg-accent/25 blur-[3px] transition-transform duration-base group-hover:scale-150" />
           </span>
-          <span className="type-display text-[1.2rem] leading-none text-content sm:text-[1.35rem]">
+          <span className="type-brand text-[1.08rem] leading-none text-content sm:text-[1.2rem]">
             Ragent
           </span>
         </Link>
@@ -77,6 +77,9 @@ export function LandingNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <Link href="/chat" className="btn-ghost btn-md hidden sm:inline-flex">
+            Log in
+          </Link>
           <a
             href={REPO_URL}
             aria-label="Source on GitHub"

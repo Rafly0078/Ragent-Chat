@@ -195,9 +195,8 @@ export default function SettingsPage() {
               <Section icon={Palette} title="Appearance">
                 <Field label="Canvas">
                   <p className="text-sm leading-6 text-content-muted">
-                    One canvas, everywhere: the electric-blue field with off-white type. There is no
-                    light/dark switch because the design has no light/dark pair &mdash; only the
-                    accent below is adjustable.
+                    One canvas, everywhere: warm paper, graphite ink, and restrained surface depth.
+                    The accent below changes the ink tone without introducing a second visual theme.
                   </p>
                 </Field>
 
@@ -230,7 +229,7 @@ export default function SettingsPage() {
 
                 <ToggleRow
                   label="Animated background"
-                  description="Ambient gradient blobs. Disable to save battery."
+                  description="Subtle texture and grid. Disable to save battery."
                   checked={s.animatedBackground}
                   onChange={() => s.toggle('animatedBackground')}
                 />
@@ -562,7 +561,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="glass mb-6 animate-fade-in p-5 sm:p-6">
+    <section className="glass mb-6 animate-fade-in rounded-2xl p-5 sm:p-6">
       <div className="mb-4 flex items-center gap-2">
         <Icon className="h-5 w-5 text-accent" />
         <h2 className="type-display text-xl text-content">{title}</h2>

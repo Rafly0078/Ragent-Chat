@@ -96,7 +96,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
         <div className="flex h-8 w-8 items-center justify-center rounded-md border border-accent/25 bg-accent/10 text-accent">
           <BrandMark className="h-5 w-5" />
         </div>
-        <span className="type-display flex-1 text-[1.15rem] leading-none text-content">Ragent</span>
+        <span className="type-brand flex-1 text-[1.05rem] leading-none text-content">Ragent</span>
         {isMobile && (
           <button
             onClick={onClose}

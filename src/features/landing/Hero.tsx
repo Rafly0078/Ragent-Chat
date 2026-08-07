@@ -1,17 +1,16 @@
 import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
-import { HeroCore } from './HeroCore';
+import { ProductPreview } from './ProductPreview';
 
 /**
- * Hero: the thesis on the left, the room with the light in it on the right.
+ * Hero: the thesis on the left, the working product on the right.
  *
  * The headline is hard-broken into two lines rather than left to wrap. Each line
  * gets its own overflow-hidden mask and rises out of it, which only reads as
  * deliberate if the break points are fixed — a wrap that moves with the viewport
  * turns the same animation into a stack of accidents.
  *
- * A server component. The entrance is CSS (see `.enter*` in globals.css), so the
- * only JavaScript this section costs is the canvas mark.
+ * A server component. The entrance is CSS (see `.enter*` in globals.css).
  */
 
 /** Models people actually run locally. Content, not decoration. */
@@ -42,7 +41,7 @@ export function Hero() {
             Local models &middot; MIT licensed
           </p>
 
-          <h1 className="type-mega mt-7 max-w-[19ch] text-[clamp(2.6rem,8.4vw,6.25rem)] text-content">
+          <h1 className="type-mega mt-7 max-w-[13ch] text-[clamp(2.5rem,7.3vw,6rem)] text-content">
             {LINES.map((line, i) => (
               <span key={line} className="block overflow-hidden pb-[0.06em]">
                 <span className="enter-line block" style={beat(160 + i * 110)}>
@@ -72,16 +71,11 @@ export function Hero() {
           </div>
         </div>
 
-        {/* Right: the mark. Decorative, so it drops out of the a11y tree; on the
-            small layout it sits behind the text at low opacity. */}
-        <div
-          className="enter-pop pointer-events-none absolute inset-0 z-0 lg:relative lg:inset-auto lg:z-10"
-          style={beat(120)}
-        >
-          <div className="lamp-pool left-1/2 top-1/2 h-[62%] w-[62%] -translate-x-1/2 -translate-y-1/2 animate-breathe" />
-          {/* Not a square: at 1:1 the mark was taller than the column of text
-              beside it, so the row centred and left a dead band under the CTAs. */}
-          <HeroCore className="relative h-full w-full opacity-[0.22] lg:aspect-[7/5] lg:h-auto lg:opacity-100" />
+        <div className="enter-pop relative z-10 lg:pl-6" style={beat(120)}>
+          <ProductPreview />
+          <p className="mt-5 text-center font-mono text-[0.68rem] uppercase tracking-[0.12em] text-content-subtle">
+            private by default / your hardware, your history
+          </p>
         </div>
       </div>
 

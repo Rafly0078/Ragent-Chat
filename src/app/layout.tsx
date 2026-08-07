@@ -1,30 +1,17 @@
 import type { Metadata, Viewport } from 'next';
-import { Bricolage_Grotesque, Instrument_Sans, JetBrains_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono, Unbounded } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SITE_URL } from '@/lib/app-meta';
 
-/**
- * Type system for the Lamplight direction.
- *
- *   display  Bricolage Grotesque  variable grotesque with a real width axis
- *   body     Instrument Sans      slightly narrow, holds up at 15px on a dark ground
- *   mono     JetBrains Mono       the face a developer tool should already be using
- *
- * The `wdth` and `opsz` axes have to be requested explicitly or
- * `font-variation-settings` in globals.css has nothing to move. The display
- * voice is set condensed (wdth 78-88), which is what keeps a long headline on
- * two or three lines instead of six.
- */
-const display = Bricolage_Grotesque({
+const display = Unbounded({
   subsets: ['latin'],
   variable: '--font-display',
   display: 'swap',
-  axes: ['opsz', 'wdth'],
 });
 
-const sans = Instrument_Sans({
+const sans = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
   display: 'swap',
@@ -79,8 +66,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  // One canvas, so one theme colour: the field itself.
-  themeColor: '#0B1020',
+  themeColor: '#F1F0EC',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

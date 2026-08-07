@@ -25,14 +25,22 @@ export function AmbientBackground() {
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-surface">
-      <div className="lamp-pool left-1/2 top-[-28vh] h-[62vh] w-[120vw] -translate-x-1/2 opacity-50" />
-      <div className="lamp-pool bottom-[-30vh] left-1/2 h-[52vh] w-[86vw] -translate-x-1/2 opacity-40" />
+      <div
+        className="absolute inset-0 opacity-[0.32]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgb(var(--border) / .035) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--border) / .035) 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+          maskImage: 'linear-gradient(to bottom, black, transparent 72%)',
+        }}
+      />
+      <div className="lamp-pool left-1/2 top-[-36vh] h-[76vh] w-[110vw] -translate-x-1/2 opacity-70" />
 
       {/* Grain: baseFrequency .72 / 4 octaves / desaturated, tiled. Lighter here
           than on the landing (0.10 vs 0.22) because text sits on it for hours. */}
       {hydrated && texture && (
         <div
-          className="absolute inset-0 opacity-[0.1] mix-blend-soft-light"
+          className="absolute inset-0 opacity-[0.035] mix-blend-multiply"
           style={{
             backgroundImage: 'var(--grain)',
             backgroundSize: 'var(--grain-tile) var(--grain-tile)',

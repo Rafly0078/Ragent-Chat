@@ -163,7 +163,7 @@ export const useSettings = create<SettingsState>()(
       storage: createJSONStorage(browserStorage),
       version: 4,
       /**
-       * v* -> v4: the product moved from the blue field to the Lamplight system,
+       * v* -> v4: the product moved from a colored field to the monochrome system,
        * which renamed every accent preset (Acid, Paper and Peach no longer
        * exist). Any accent that isn't one of the current presets falls back to
        * the default rather than leaving `--accent` pointing at a colour that was

@@ -8,8 +8,7 @@ import { AuthDialog } from './AuthDialog';
 /**
  * Routes that are public by design. The landing page is a marketing surface —
  * putting the mandatory sign-in dialog over it would hide the very thing a
- * first-time visitor came to read (and its 70% black backdrop dims the whole
- * blue field).
+ * first-time visitor came to read.
  */
 const PUBLIC_PATHS = new Set(['/']);
 

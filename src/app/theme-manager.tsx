@@ -9,7 +9,7 @@ import { setApiOverride, setApiToken, setConnectionMode } from '@/lib/api/config
  * Applies the accent choice to the document root and propagates the API URL
  * override to the API layer. Runs entirely on the client after hydration.
  *
- * There is no theme resolution: the product has one canvas (#0B1020), so there
+ * There is no theme resolution: the product has one monochrome canvas, so there
  * is no dark/light class to toggle and no wrong-theme flash to guard against.
  * The `theme` setting is left in the store — harmless, and it keeps the
  * export/import format stable — but nothing reads it.

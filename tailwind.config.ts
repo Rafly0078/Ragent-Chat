@@ -4,7 +4,7 @@ import type { Config } from 'tailwindcss';
  * Design tokens are CSS variables (see globals.css) so the whole product
  * restyles from one place and the accent stays runtime-themeable.
  *
- * The scales here are the "Lamplight" system:
+ * The scales here are the "Quiet Machine" system:
  *   radius     4 / 6 / 10 / 14 / 20 / 28px — a real scale, not one value
  *   shadow     three elevation steps plus `glow`, the lamp landing on a surface
  *   motion     four durations, four easings, read from CSS variables
@@ -53,7 +53,7 @@ const config: Config = {
         error: 'rgb(var(--error) / <alpha-value>)',
       },
       fontFamily: {
-        /** Bricolage Grotesque — variable width axis, set condensed for display. */
+        /** Unbounded — used only for brand and hero-scale display type. */
         display: ['var(--font-display)', 'Georgia', 'serif'],
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
