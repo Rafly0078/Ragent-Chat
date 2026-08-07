@@ -43,7 +43,6 @@ export function useAutoScroll<T extends HTMLElement>(dep: unknown) {
       const el = ref.current;
       if (el) el.scrollTop = el.scrollHeight;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dep]);
 
   // Content that grows without changing `dep` — an image finishing load, the

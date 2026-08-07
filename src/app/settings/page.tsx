@@ -285,10 +285,12 @@ export default function SettingsPage() {
                 {s.connectionMode === 'direct' ? (
                   <>
                     <Field
+                      htmlFor="settings-api-url"
                       label="API URL"
                       hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
                     >
                       <input
+                        id="settings-api-url"
                         value={s.apiUrlOverride}
                         onChange={(e) => s.setApiUrlOverride(e.target.value)}
                         placeholder={API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'}
@@ -304,10 +306,12 @@ export default function SettingsPage() {
                     </Field>
 
                     <Field
+                      htmlFor="settings-access-token"
                       label="Access token"
                       hint="Bearer token, if the tunnel in front of Ollama requires one. Leave empty for a plain endpoint."
                     >
                       <input
+                        id="settings-access-token"
                         type="password"
                         value={s.apiToken}
                         onChange={(e) => s.setApiToken(e.target.value)}
@@ -341,8 +345,9 @@ export default function SettingsPage() {
                   </Field>
                 )}
 
-                <Field label="Default model">
+                <Field htmlFor="settings-default-model" label="Default model">
                   <select
+                    id="settings-default-model"
                     value={s.defaultModel}
                     onChange={(e) => s.setDefaultModel(e.target.value)}
                     className="input"
@@ -362,6 +367,7 @@ export default function SettingsPage() {
             {active === 'prompt' && (
               <Section icon={Terminal} title="Default system prompt">
                 <textarea
+                  aria-label="Default system prompt"
                   value={s.defaultSystemPrompt}
                   onChange={(e) => s.setDefaultSystemPrompt(e.target.value)}
                   rows={4}
@@ -567,17 +573,25 @@ function Section({
 }
 
 function Field({
+  htmlFor,
   label,
   hint,
   children,
 }: {
+  htmlFor?: string;
   label: string;
   hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="type-label mb-2 block text-content">{label}</label>
+      {htmlFor ? (
+        <label htmlFor={htmlFor} className="type-label mb-2 block text-content">
+          {label}
+        </label>
+      ) : (
+        <p className="type-label mb-2 block text-content">{label}</p>
+      )}
       {hint && <p className="mb-2 text-xs text-content-subtle">{hint}</p>}
       {children}
     </div>
@@ -623,11 +637,13 @@ function PresetManager({ presets }: { presets: PromptPreset[] }) {
             className="flex flex-col gap-2 rounded-xl border border-border/15 bg-border/[0.02] p-2 sm:flex-row sm:items-start"
           >
             <input
+              aria-label={`Preset name: ${p.name}`}
               value={p.name}
               onChange={(e) => updatePreset(p.id, { name: e.target.value })}
               className="input h-9 w-full text-sm sm:h-8 sm:w-40 sm:shrink-0"
             />
             <textarea
+              aria-label={`Preset content: ${p.name}`}
               value={p.content}
               onChange={(e) => updatePreset(p.id, { content: e.target.value })}
               rows={2}
@@ -645,12 +661,14 @@ function PresetManager({ presets }: { presets: PromptPreset[] }) {
       </div>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-start">
         <input
+          aria-label="New preset name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Preset name"
           className="input h-9 w-full text-sm sm:h-8 sm:w-40 sm:shrink-0"
         />
         <input
+          aria-label="New preset content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="Prompt content…"

@@ -14,7 +14,6 @@ function escapeXml(s: string): string {
       // Characters XML 1.0 forbids outright. A stray \x07 from scraped text
       // produced a file every parser rejects with "PCDATA invalid Char value 7"
       // — the same failure mode tagName() exists to prevent.
-      // eslint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
   );
 }

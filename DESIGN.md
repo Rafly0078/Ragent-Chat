@@ -118,10 +118,14 @@ on the landing's install card), `.lift` / `.edge-lit` (hover physics as tokens),
 
 - WCAG AA body-text contrast, verified per token above
 - Visible focus rings (`.focus-ring`)
+- Every form control has a programmatic label; placeholders are hints only
 - 44px interactive targets on mobile (`.btn-lg` and up)
 - Reduced-motion support, including delays
 
 ## Last updated
+
+2026-08-07 — accessibility audit: added programmatic form labels without
+changing Lamplight tokens or layout.
 
 2026-07-31 — replaced the mangled brown/olive palette (surfaces at 1.49:1, body
 text at 4.02:1, no accent colour at all) with the Lamplight system; real radius

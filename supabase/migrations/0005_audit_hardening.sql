@@ -1,10 +1,8 @@
 -- ============================================================================
--- 0005_audit_hardening.sql — audit follow-ups (NOT YET APPLIED)
+-- 0005_audit_hardening.sql — audit follow-ups
 --
--- Written by the project audit. It is intentionally NOT pushed: every statement
--- here touches a live database, and two of them change data-visibility rules.
--- Review, then apply with `supabase db push` (or paste into the SQL editor)
--- during a maintenance window.
+-- Applied to the linked project. `supabase migration list --linked` is the
+-- source of truth for deployment state; keep this file immutable after release.
 --
 -- Idempotent: safe to run more than once.
 -- ============================================================================
@@ -202,4 +200,3 @@ alter table public.downloads
   drop constraint if exists downloads_artifact_id_fkey,
   add constraint downloads_artifact_id_fkey
     foreign key (artifact_id) references public.artifacts (id) on delete cascade;
-

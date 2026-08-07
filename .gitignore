@@ -37,3 +37,5 @@ yarn-error.log*
 # Machine-local — should never have been committed.
 supabase/.temp/
 supabase/.branches/
+
+.vercel

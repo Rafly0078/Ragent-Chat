@@ -10,6 +10,7 @@ import type {
 } from '@/types';
 import { uid } from '@/lib/utils/id';
 import { notify } from '@/components/ui/toast';
+import { browserStorage } from './storage';
 import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, DEFAULT_THINKING } from './defaults';
 
 interface ChatState {
@@ -127,6 +128,7 @@ function slimSnapshot(json: string): string | null {
  * losing up to `delayMs` of the conversation.
  */
 function throttledStorage(delayMs: number) {
+  const storage = browserStorage();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingKey: string | null = null;
   let pendingValue: string | null = null;
@@ -136,7 +138,7 @@ function throttledStorage(delayMs: number) {
 
   const tryWrite = (key: string, value: string): boolean => {
     try {
-      localStorage.setItem(key, value);
+      storage.setItem(key, value);
       return true;
     } catch {
       return false;
@@ -187,7 +189,7 @@ function throttledStorage(delayMs: number) {
   }
 
   return {
-    getItem: (key: string) => localStorage.getItem(key),
+    getItem: (key: string) => storage.getItem(key),
     setItem: (key: string, value: string) => {
       pendingKey = key;
       pendingValue = value;
@@ -201,7 +203,7 @@ function throttledStorage(delayMs: number) {
         clearTimeout(timer);
         timer = null;
       }
-      localStorage.removeItem(key);
+      storage.removeItem(key);
     },
   };
 }

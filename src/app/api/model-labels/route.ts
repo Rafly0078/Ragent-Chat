@@ -1,12 +1,19 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer, getSupabaseAdmin } from '@/lib/supabase/server';
 import { isOwner } from '@/lib/supabase/owner';
+import { guard } from '@/lib/server/guard';
+import { bodyErrorResponse, readJson } from '@/lib/server/body';
 import type { Database } from '@/lib/supabase/types';
 
 type ModelLabelInsert = Database['public']['Tables']['model_labels']['Insert'];
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const MAX_BODY_BYTES = 32 * 1024;
+const MAX_MODEL_NAME_CHARS = 500;
+const MAX_DISPLAY_NAME_CHARS = 120;
+const MAX_DESCRIPTION_CHARS = 1_000;
 
 /**
  * /api/model-labels — owner-curated display names for models.
@@ -45,6 +52,9 @@ interface PutBody {
 }
 
 export async function PUT(request: Request): Promise<Response> {
+  const gate = await guard(request, { bucket: 'model-labels-write', limit: 30, windowMs: 60_000 });
+  if (!gate.ok) return gate.response;
+
   const supabase = await getSupabaseServer();
   if (!supabase) {
     return NextResponse.json({ error: 'Auth is not configured.' }, { status: 500 });
@@ -55,18 +65,31 @@ export async function PUT(request: Request): Promise<Response> {
 
   let body: PutBody;
   try {
-    body = (await request.json()) as PutBody;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    body = await readJson<PutBody>(request, MAX_BODY_BYTES);
+  } catch (err) {
+    return (
+      bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    );
   }
 
   const modelName = body.modelName?.trim();
+  if (modelName && modelName.length > MAX_MODEL_NAME_CHARS) {
+    return NextResponse.json({ error: 'modelName is too long.' }, { status: 400 });
+  }
   if (!modelName) {
     return NextResponse.json({ error: 'Missing "modelName".' }, { status: 400 });
   }
   const displayName = body.displayName?.trim();
+  if (displayName && displayName.length > MAX_DISPLAY_NAME_CHARS) {
+    return NextResponse.json({ error: 'displayName is too long.' }, { status: 400 });
+  }
   if (!displayName) {
     return NextResponse.json({ error: 'Missing "displayName".' }, { status: 400 });
+  }
+
+  const description = body.description?.toString().trim() || null;
+  if (description && description.length > MAX_DESCRIPTION_CHARS) {
+    return NextResponse.json({ error: 'description is too long.' }, { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
@@ -80,9 +103,11 @@ export async function PUT(request: Request): Promise<Response> {
   const row: ModelLabelInsert = {
     model_name: modelName,
     display_name: displayName,
-    description: body.description?.toString().trim() || null,
+    description,
     hidden: Boolean(body.hidden),
-    ...(typeof body.sortOrder === 'number' ? { sort_order: body.sortOrder } : {}),
+    ...(typeof body.sortOrder === 'number' && Number.isSafeInteger(body.sortOrder)
+      ? { sort_order: body.sortOrder }
+      : {}),
   };
 
   const { data, error } = await admin
@@ -97,6 +122,9 @@ export async function PUT(request: Request): Promise<Response> {
 }
 
 export async function DELETE(request: Request): Promise<Response> {
+  const gate = await guard(request, { bucket: 'model-labels-write', limit: 30, windowMs: 60_000 });
+  if (!gate.ok) return gate.response;
+
   const supabase = await getSupabaseServer();
   if (!supabase) {
     return NextResponse.json({ error: 'Auth is not configured.' }, { status: 500 });
@@ -106,6 +134,9 @@ export async function DELETE(request: Request): Promise<Response> {
   }
 
   const modelName = new URL(request.url).searchParams.get('modelName')?.trim();
+  if (modelName && modelName.length > MAX_MODEL_NAME_CHARS) {
+    return NextResponse.json({ error: 'modelName is too long.' }, { status: 400 });
+  }
   if (!modelName) {
     return NextResponse.json({ error: 'Missing "modelName".' }, { status: 400 });
   }

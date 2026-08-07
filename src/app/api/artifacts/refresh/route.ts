@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { guard } from '@/lib/server/guard';
+import { bodyErrorResponse, readJson } from '@/lib/server/body';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,6 +14,7 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 /** The only buckets this app writes to — anything else is a malformed request. */
 const ALLOWED_BUCKETS = new Set(['artifacts', 'exports']);
+const MAX_BODY_BYTES = 16 * 1024;
 
 /**
  * POST /api/artifacts/refresh — mint a fresh signed URL for a previously
@@ -21,11 +24,16 @@ const ALLOWED_BUCKETS = new Set(['artifacts', 'exports']);
  * we just need a new signed URL for it — not the whole artifact again.
  */
 export async function POST(request: Request): Promise<Response> {
+  const gate = await guard(request, { bucket: 'artifact-refresh', limit: 120, windowMs: 60_000 });
+  if (!gate.ok) return gate.response;
+
   let body: { bucket?: string; storagePath?: string };
   try {
-    body = (await request.json()) as { bucket?: string; storagePath?: string };
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
+    body = await readJson<{ bucket?: string; storagePath?: string }>(request, MAX_BODY_BYTES);
+  } catch (err) {
+    return (
+      bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
+    );
   }
 
   const { bucket, storagePath } = body;
@@ -41,16 +49,11 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'Storage is not configured.' }, { status: 400 });
   }
 
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) {
-    return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
-  }
-
   // Storage RLS already scopes objects to "<uid>/...", but check here too so
   // we never even attempt to sign a path outside the caller's own folder.
   // `..` is rejected explicitly: "<uid>/../<other-uid>/f" starts with the right
   // prefix but resolves elsewhere once the storage layer normalizes it.
-  if (!storagePath.startsWith(`${auth.user.id}/`) || storagePath.includes('..')) {
+  if (!gate.userId || !storagePath.startsWith(`${gate.userId}/`) || storagePath.includes('..')) {
     return NextResponse.json({ error: 'Not found.' }, { status: 404 });
   }
 

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { GenerationParams, PromptPreset } from '@/types';
 import { ACCENT_PRESETS, DEFAULT_PARAMS, DEFAULT_PRESETS, DEFAULT_SYSTEM_PROMPT } from './defaults';
+import { browserStorage } from './storage';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ConnectionMode = 'direct' | 'bridge';
@@ -159,7 +160,7 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: 'ollama-webui:settings',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(browserStorage),
       version: 4,
       /**
        * v* -> v4: the product moved from the blue field to the Lamplight system,

@@ -113,6 +113,7 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
               <input
                 ref={fileRef}
                 type="file"
+                aria-label="Upload document"
                 accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv"
                 className="hidden"
                 onChange={handleFileSelect}
@@ -179,7 +180,11 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
         >
           {step === 'extracted' && (
             <div className="space-y-2">
+              <label htmlFor="document-improvement-prompt" className="sr-only">
+                Improvement instructions
+              </label>
               <textarea
+                id="document-improvement-prompt"
                 value={improvePrompt}
                 onChange={(e) => setImprovePrompt(e.target.value)}
                 rows={2}
@@ -231,7 +236,11 @@ export function DocumentEditDialog({ open, onClose, conversationId }: Props) {
         >
           {step === 'improved' && (
             <div className="space-y-2">
+              <label htmlFor="document-output-format" className="sr-only">
+                Output format
+              </label>
               <select
+                id="document-output-format"
                 value={outputFormat}
                 onChange={(e) => setOutputFormat(e.target.value as GenerateRequest['tool'])}
                 className="input text-sm"

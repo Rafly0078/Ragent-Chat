@@ -65,6 +65,7 @@ export function SystemPromptEditor({ open, onClose, value, onChange }: Props) {
           </div>
         )}
         <textarea
+          aria-label="System prompt"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={10}

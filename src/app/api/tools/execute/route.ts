@@ -33,7 +33,6 @@ const KNOWN_EXT = new RegExp(`\\.(${Object.values(EXT_BY_KIND).join('|')})$`, 'i
 function safeFilename(raw: string | undefined, ext: string): string {
   const lastSegment = (raw ?? '').split(/[/\\]/).pop() ?? '';
   const base = lastSegment
-    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1F\x7F"*:<>?|]/g, '_')
     .replace(/^\.+/, '')
     .replace(KNOWN_EXT, '')
@@ -67,7 +66,7 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ error: 'Missing "tool" field.' }, { status: 400 });
   }
 
-  const executor = getExecutor(body.tool as ToolName);
+  const executor = await getExecutor(body.tool as ToolName);
   if (!executor) {
     return NextResponse.json({ error: `Unknown tool: ${body.tool}` }, { status: 400 });
   }

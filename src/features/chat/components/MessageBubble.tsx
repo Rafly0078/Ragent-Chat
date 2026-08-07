@@ -239,6 +239,7 @@ export const MessageBubble = memo(function MessageBubble({
         {editing ? (
           <div className="space-y-2">
             <textarea
+              aria-label="Edit message"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={Math.min(12, draft.split('\n').length + 1)}

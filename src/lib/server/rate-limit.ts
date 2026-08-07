@@ -79,9 +79,18 @@ export function hit(key: string, limit: number, windowMs: number): RateLimitResu
  */
 export function clientKey(request: Request, userId?: string | null): string {
   if (userId) return `u:${userId}`;
+  // Managed hosts set x-real-ip themselves. Prefer it over the first
+  // x-forwarded-for entry, which a direct client can often prepend and rotate
+  // to bypass an IP-keyed limiter. When only x-forwarded-for is available, use
+  // the last hop appended by the trusted edge.
+  const realIp = request.headers.get('x-real-ip')?.trim();
   const forwarded = request.headers.get('x-forwarded-for');
-  const ip =
-    forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip')?.trim() || 'unknown';
+  const forwardedIp = forwarded
+    ?.split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .at(-1);
+  const ip = realIp || forwardedIp || 'unknown';
   return `ip:${ip}`;
 }
 

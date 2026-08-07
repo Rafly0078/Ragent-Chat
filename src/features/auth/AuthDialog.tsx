@@ -166,7 +166,9 @@ export function AuthDialog({
 
         {/* Email form */}
         <form onSubmit={submit} className="flex flex-col gap-3">
+          <label htmlFor="auth-email" className="sr-only">Email address</label>
           <input
+            id="auth-email"
             className="input"
             type="email"
             required
@@ -177,6 +179,7 @@ export function AuthDialog({
           />
           {mode !== 'magic' && (
             <input
+              id="auth-password"
               className="input"
               type="password"
               required

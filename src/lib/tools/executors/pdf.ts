@@ -64,7 +64,6 @@ function toWinAnsi(s: string): string {
   // Keep only what WinAnsi can actually encode. 0x7F–0x9F look "Latin-1" but
   // pdf-lib throws on them ("WinAnsi cannot encode ..."), which failed the whole
   // document; they used to slip through the old \x20-\xFF range.
-  // eslint-disable-next-line no-control-regex
   return deaccented.replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '');
 }
 

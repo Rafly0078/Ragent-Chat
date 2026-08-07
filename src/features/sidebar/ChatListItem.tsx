@@ -126,6 +126,7 @@ export const ChatListItem = memo(function ChatListItem({
         {editing ? (
           <input
             ref={inputRef}
+            aria-label={`Rename conversation ${title}`}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commit}
