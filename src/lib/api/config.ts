@@ -20,6 +20,20 @@ export function getApiBase(): string {
   return runtimeOverride || API_BASE_URL;
 }
 
+// Optional Bearer token for a token-protected endpoint, injected by the
+// settings layer after hydration (direct mode only — see authHeaders()).
+let runtimeToken: string | null = null;
+
+/** Set/clear the per-browser upstream access token (called from ThemeManager). */
+export function setApiToken(token: string | null): void {
+  const clean = token?.trim().replace(/^Bearer\s+/i, '') ?? '';
+  runtimeToken = clean || null;
+}
+
+export function getApiToken(): string | null {
+  return runtimeToken;
+}
+
 export const DEFAULT_TIMEOUT_MS = 30_000;
 /** Streaming has no fixed length; use a longer idle guard instead. */
 export const STREAM_IDLE_TIMEOUT_MS = 120_000;
@@ -90,6 +104,27 @@ export function apiUrl(path: string): string {
   return `${base}${normalized}`;
 }
 
+/**
+ * Auth headers for an upstream request.
+ *
+ * Direct mode only. In bridge mode the token is a server-only env var
+ * (OLLAMA_API_TOKEN) added inside lib/bridge/ollama.ts, so sending one from the
+ * browser would just leak it to the network tab for nothing.
+ *
+ * Note the CORS cost: `Authorization` is not a safelisted request header, so as
+ * soon as a token is set every direct request is preceded by an OPTIONS
+ * preflight. Browsers strip credentials from a preflight, which means a token
+ * proxy that authenticates OPTIONS the same way it authenticates POST will
+ * answer 401 and the real request is never sent. The upstream must answer
+ * OPTIONS with 2xx + `Access-Control-Allow-Headers: authorization, content-type`
+ * *before* checking the token. When no token is set the request stays
+ * preflight-free, exactly as before.
+ */
+export function authHeaders(): Record<string, string> {
+  if (connectionMode === 'bridge' || !runtimeToken) return {};
+  return { Authorization: `Bearer ${runtimeToken}` };
+}
+
 export type ApiErrorKind =
   'config' | 'network' | 'timeout' | 'aborted' | 'http' | 'parse' | 'unknown';
 
@@ -134,6 +169,14 @@ export class ApiError extends Error {
       case 'aborted':
         return 'Generation stopped.';
       case 'http':
+        // A 401/403 straight from the model endpoint is not this app's own
+        // sign-in wall — it's the tunnel in front of Ollama asking for its
+        // token, which has its own field in Settings.
+        if ((this.status === 401 || this.status === 403) && connectionMode === 'direct') {
+          return runtimeToken
+            ? 'The API endpoint rejected the access token. Re-copy it from the tunnel output in Settings → Connection.'
+            : 'The API endpoint requires an access token. Paste it in Settings → Connection.';
+        }
         return `The server returned an error${this.status ? ` (${this.status})` : ''}: ${this.message}`;
       default:
         return this.message || 'Something went wrong.';

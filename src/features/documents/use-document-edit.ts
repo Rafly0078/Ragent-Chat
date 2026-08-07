@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Artifact, GenerateRequest } from '@/lib/tools/types';
 import { useChatStore } from '@/lib/store/chat-store';
-import { apiUrl } from '@/lib/api/config';
+import { apiUrl, authHeaders } from '@/lib/api/config';
 
 /** Buffering an arbitrary upload on the main thread freezes the tab. */
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -133,7 +133,7 @@ export function useDocumentEdit(conversationId: string | null) {
 
         const res = await fetch(apiUrl('/api/chat'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({
             model:
               useChatStore.getState().conversations.find((c) => c.id === conversationId)?.model ??

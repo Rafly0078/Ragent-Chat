@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { ApiError, apiUrl } from '@/lib/api/config';
+import { ApiError, apiUrl, authHeaders } from '@/lib/api/config';
 
 export interface ModelDetails {
   name: string;
@@ -34,7 +34,7 @@ export function useModelDetails() {
     try {
       const res = await fetch(apiUrl('/api/show'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ name: modelName }),
         signal,
       });

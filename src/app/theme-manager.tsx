@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { ACCENT_PRESETS } from '@/lib/store/defaults';
 import { useSettings } from '@/lib/store/settings-store';
-import { setApiOverride, setConnectionMode } from '@/lib/api/config';
+import { setApiOverride, setApiToken, setConnectionMode } from '@/lib/api/config';
 
 /**
  * Applies the accent choice to the document root and propagates the API URL
@@ -17,11 +17,16 @@ import { setApiOverride, setConnectionMode } from '@/lib/api/config';
 export function ThemeManager({ children }: { children: React.ReactNode }) {
   const accent = useSettings((s) => s.accent);
   const apiUrlOverride = useSettings((s) => s.apiUrlOverride);
+  const apiToken = useSettings((s) => s.apiToken);
   const connectionMode = useSettings((s) => s.connectionMode);
 
   useEffect(() => {
     setApiOverride(apiUrlOverride);
   }, [apiUrlOverride]);
+
+  useEffect(() => {
+    setApiToken(apiToken);
+  }, [apiToken]);
 
   useEffect(() => {
     setConnectionMode(connectionMode);

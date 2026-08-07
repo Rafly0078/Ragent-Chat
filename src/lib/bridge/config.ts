@@ -19,6 +19,24 @@ export function bridgeConfigured(): boolean {
   return Boolean(getBridgeTarget());
 }
 
+/**
+ * Optional Bearer token for a token-protected upstream (e.g. the Kaggle
+ * heartbeat proxy, which answers 401 to every request without one).
+ *
+ * Server-only on purpose: in bridge mode the browser never sees it. A pasted
+ * `Bearer ` prefix is tolerated so the value can be copied straight from a
+ * log line.
+ */
+export function getBridgeToken(): string {
+  const raw = (
+    process.env.OLLAMA_API_TOKEN ||
+    process.env.OLLAMA_PROXY_TOKEN ||
+    process.env.OLLAMA_API_KEY ||
+    ''
+  ).trim();
+  return raw.replace(/^Bearer\s+/i, '');
+}
+
 export class BridgeError extends Error {
   status: number;
   constructor(message: string, status = 502) {

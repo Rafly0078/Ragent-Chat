@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { BridgeError, getBridgeTarget } from './config';
+import { BridgeError, getBridgeTarget, getBridgeToken } from './config';
 
 /**
  * Thin server-side fetchers against the Ollama-compatible upstream. Endpoint
@@ -28,6 +28,18 @@ const CONNECT_TIMEOUT_MS = 20_000;
  * server ignore the unknown header, so it's safe to send unconditionally.
  */
 const TUNNEL_HEADERS = { 'ngrok-skip-browser-warning': 'true' } as const;
+
+/**
+ * `Authorization: Bearer …` when OLLAMA_API_TOKEN is set. Tunnels that expose a
+ * private Ollama publicly usually put a token in front of it (the Kaggle
+ * heartbeat proxy rejects *every* unauthenticated request with a bodyless 401,
+ * including `/api/tags`), and a bare Ollama ignores the header — so it is safe
+ * to send whenever a token is configured.
+ */
+function authHeader(): Record<string, string> {
+  const token = getBridgeToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 function url(path: string): string {
   const base = getBridgeTarget();
@@ -75,11 +87,26 @@ async function fetchFallback(
   init: RequestInit,
   signal?: AbortSignal,
 ): Promise<Response> {
-  const merged: RequestInit = { ...init, headers: { ...TUNNEL_HEADERS, ...init.headers } };
+  const merged: RequestInit = {
+    ...init,
+    headers: { ...TUNNEL_HEADERS, ...authHeader(), ...init.headers },
+  };
   let last: Response | null = null;
   for (const p of paths) {
     const res = await fetchWithConnectTimeout(url(p), merged, signal);
     if (res.ok) return res;
+    if (res.status === 401 || res.status === 403) {
+      // The upstream is alive but refused us. Its own body is usually empty
+      // (a token proxy answers with bare headers), so the passthrough error
+      // would reach the UI as an unexplained 401 from *this* app's own auth.
+      await res.body?.cancel().catch(() => {});
+      throw new BridgeError(
+        getBridgeToken()
+          ? 'The Ollama endpoint rejected the access token. Check OLLAMA_API_TOKEN against the token printed by the tunnel.'
+          : 'The Ollama endpoint requires an access token. Set OLLAMA_API_TOKEN to the token printed by the tunnel.',
+        502,
+      );
+    }
     if (res.status === 404 || res.status === 405) {
       // Drain the discarded body so the connection can be reused instead of
       // being held open until GC.

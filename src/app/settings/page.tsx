@@ -60,6 +60,8 @@ export default function SettingsPage() {
   const [active, setActive] = useState<SectionId>('account');
 
   const exportSettings = () => {
+    // Allowlist, not a spread: `apiToken` is a credential and must not ride
+    // along in a file the user shares or checks into a repo.
     const payload = {
       theme: s.theme,
       accent: s.accent,
@@ -281,31 +283,60 @@ export default function SettingsPage() {
                 </Field>
 
                 {s.connectionMode === 'direct' ? (
-                  <Field
-                    label="API URL"
-                    hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
-                  >
-                    <input
-                      value={s.apiUrlOverride}
-                      onChange={(e) => s.setApiUrlOverride(e.target.value)}
-                      placeholder={API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'}
-                      className="input font-mono text-sm"
-                      spellCheck={false}
-                    />
-                    <p className="mt-1.5 text-xs text-content-subtle">
-                      Active endpoint:{' '}
-                      <code className="text-accent-soft">{API_BASE_URL || '(unset)'}</code> — the
-                      browser connects to this directly, so make sure CORS is enabled on the Ollama
-                      server (<code className="text-accent-soft">OLLAMA_ORIGINS</code>).
-                    </p>
-                  </Field>
+                  <>
+                    <Field
+                      label="API URL"
+                      hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
+                    >
+                      <input
+                        value={s.apiUrlOverride}
+                        onChange={(e) => s.setApiUrlOverride(e.target.value)}
+                        placeholder={API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'}
+                        className="input font-mono text-sm"
+                        spellCheck={false}
+                      />
+                      <p className="mt-1.5 text-xs text-content-subtle">
+                        Active endpoint:{' '}
+                        <code className="text-accent-soft">{API_BASE_URL || '(unset)'}</code> — the
+                        browser connects to this directly, so make sure CORS is enabled on the
+                        Ollama server (<code className="text-accent-soft">OLLAMA_ORIGINS</code>).
+                      </p>
+                    </Field>
+
+                    <Field
+                      label="Access token"
+                      hint="Bearer token, if the tunnel in front of Ollama requires one. Leave empty for a plain endpoint."
+                    >
+                      <input
+                        type="password"
+                        value={s.apiToken}
+                        onChange={(e) => s.setApiToken(e.target.value)}
+                        placeholder="(none)"
+                        className="input font-mono text-sm"
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+                      <p className="mt-1.5 text-xs text-content-subtle">
+                        Stored in this browser only and left out of exported settings. Sending it
+                        adds a CORS preflight, so the endpoint must answer{' '}
+                        <code className="text-accent-soft">OPTIONS</code> with{' '}
+                        <code className="text-accent-soft">
+                          Access-Control-Allow-Headers: authorization
+                        </code>{' '}
+                        <em>before</em> checking the token — browsers never attach it to a
+                        preflight.
+                      </p>
+                    </Field>
+                  </>
                 ) : (
                   <Field label="Server endpoint">
                     <p className="text-xs text-content-subtle">
                       Requests go to <code className="text-accent-soft">/api/bridge/*</code> on this
                       app&apos;s server, which forwards to the{' '}
                       <code className="text-accent-soft">OLLAMA_API_URL</code> configured in the
-                      deployment&apos;s environment variables — nothing to set here.
+                      deployment&apos;s environment variables — nothing to set here. A
+                      token-protected endpoint also needs{' '}
+                      <code className="text-accent-soft">OLLAMA_API_TOKEN</code> there.
                     </p>
                   </Field>
                 )}

@@ -1,5 +1,11 @@
 import type { ModelInfo } from '@/types';
-import { ApiError, DEFAULT_TIMEOUT_MS, STREAM_IDLE_TIMEOUT_MS, apiUrl } from './config';
+import {
+  ApiError,
+  DEFAULT_TIMEOUT_MS,
+  STREAM_IDLE_TIMEOUT_MS,
+  apiUrl,
+  authHeaders,
+} from './config';
 import { parseChatStream } from './stream';
 import type { ChatRequest, ChatStreamChunk, ModelsResponse, RawModel } from './types';
 
@@ -11,6 +17,10 @@ import type { ChatRequest, ChatStreamChunk, ModelsResponse, RawModel } from './t
  * avoids the preflight entirely. ngrok users who need the skip header should use
  * bridge mode, where the header is added server-side (see lib/bridge/ollama.ts)
  * and no CORS applies.
+ *
+ * `authHeaders()` is the one exception: a token-protected tunnel can't work
+ * without it, so setting a token in Settings knowingly opts into the preflight
+ * (see the note on authHeaders).
  */
 const TUNNEL_HEADERS = {} as const;
 
@@ -114,7 +124,7 @@ export async function fetchModels(signal?: AbortSignal): Promise<ModelInfo[]> {
   try {
     const { res } = await fetchWithFallback(API_TAG_PATHS, {
       method: 'GET',
-      headers: { Accept: 'application/json', ...TUNNEL_HEADERS },
+      headers: { Accept: 'application/json', ...TUNNEL_HEADERS, ...authHeaders() },
       signal: s,
     });
     await assertOk(res);
@@ -182,6 +192,7 @@ export async function streamChat(
           'Content-Type': 'application/json',
           Accept: 'application/x-ndjson, text/event-stream',
           ...TUNNEL_HEADERS,
+          ...authHeaders(),
         },
         body: JSON.stringify({ ...req, stream: true }),
         signal: idle.signal,
@@ -236,7 +247,7 @@ export async function chat(
   try {
     const { res } = await fetchWithFallback(API_CHAT_PATHS, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS },
+      headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS, ...authHeaders() },
       body: JSON.stringify({ ...req, stream: false }),
       signal: s,
     });
@@ -256,7 +267,7 @@ export async function ping(signal?: AbortSignal): Promise<boolean> {
   try {
     const { res } = await fetchWithFallback(API_TAG_PATHS, {
       method: 'GET',
-      headers: { ...TUNNEL_HEADERS },
+      headers: { ...TUNNEL_HEADERS, ...authHeaders() },
       signal: s,
     });
     return res.ok;

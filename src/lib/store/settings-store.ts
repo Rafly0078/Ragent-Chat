@@ -11,6 +11,10 @@ export interface SettingsState {
   accent: string; // one of ACCENT_PRESETS value
   /** User override for the API URL (falls back to env var when empty). */
   apiUrlOverride: string;
+  /** Bearer token for a token-protected endpoint (direct mode only). Kept in
+   *  this browser's localStorage; bridge mode uses the server's OLLAMA_API_TOKEN
+   *  instead so nothing is exposed to the client. */
+  apiToken: string;
   /** 'direct': browser -> Ollama directly (no time limit, needs CORS).
    *  'bridge': browser -> same-origin server proxy -> Ollama (no CORS setup, capped by the host's function duration). */
   connectionMode: ConnectionMode;
@@ -30,6 +34,7 @@ export interface SettingsState {
   setTheme: (t: ThemeMode) => void;
   setAccent: (a: string) => void;
   setApiUrlOverride: (v: string) => void;
+  setApiToken: (v: string) => void;
   setConnectionMode: (m: ConnectionMode) => void;
   setDefaultModel: (m: string) => void;
   setDefaultSystemPrompt: (s: string) => void;
@@ -52,6 +57,7 @@ const initial = {
   theme: 'dark' as ThemeMode,
   accent: ACCENT_PRESETS[0]!.value,
   apiUrlOverride: '',
+  apiToken: '',
   connectionMode: 'direct' as ConnectionMode,
   defaultModel: '',
   defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
@@ -134,6 +140,7 @@ export const useSettings = create<SettingsState>()(
       setTheme: (theme) => set({ theme }),
       setAccent: (accent) => set({ accent }),
       setApiUrlOverride: (apiUrlOverride) => set({ apiUrlOverride }),
+      setApiToken: (apiToken) => set({ apiToken }),
       setConnectionMode: (connectionMode) => set({ connectionMode }),
       setDefaultModel: (defaultModel) => set({ defaultModel }),
       setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
