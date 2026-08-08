@@ -4,7 +4,7 @@ import { useCallback, useRef } from 'react';
 import type { Attachment, Message } from '@/types';
 import { useChatStore } from '@/lib/store/chat-store';
 import { useThinkingStore } from '@/lib/store/thinking-store';
-import { ApiError, providerSupportsThinking } from '@/lib/api/config';
+import { ApiError, providerSupportsThinking, providerThinkingKey } from '@/lib/api/config';
 import { streamChat, chat } from '@/lib/api/client';
 import { toApiMessages, toApiOptions, type ChatStreamChunk } from '@/lib/api/types';
 import { uid } from '@/lib/utils/id';
@@ -413,7 +413,7 @@ export function useChat(conversationId: string | null) {
               msg.includes('invalid') ||
               apiErr.status === 400
             ) {
-              useThinkingStore.getState().markUnsupported(convo.model);
+              useThinkingStore.getState().markUnsupported(providerThinkingKey(convo.model));
             }
           }
           store.getState().updateMessage(convoId, assistantId, {

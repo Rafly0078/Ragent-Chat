@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 
 /**
- * Tracks which models have returned an error when `think: true` was sent, so
+ * Tracks which provider/protocol/model tuples returned an error when thinking
+ * was requested, so
  * the UI can disable the thinking toggle for them and show a tooltip.
  *
  * Non-persistent: this is a per-session cache. A model might gain thinking
@@ -9,35 +10,35 @@ import { create } from 'zustand';
  * can be re-tried.
  */
 interface ThinkingState {
-  /** Model names known to not support thinking. */
+  /** Provider/protocol/model keys known to not support thinking. */
   unsupported: Set<string>;
 
-  /** Mark a model as not supporting thinking. */
-  markUnsupported: (model: string) => void;
-  /** Clear the unsupported flag for a model (e.g. after an update). */
-  clearUnsupported: (model: string) => void;
-  /** Check if a model is known to not support thinking. */
-  isUnsupported: (model: string) => boolean;
+  /** Mark a provider/protocol/model tuple as not supporting thinking. */
+  markUnsupported: (key: string) => void;
+  /** Clear the unsupported flag (e.g. after an upstream update). */
+  clearUnsupported: (key: string) => void;
+  /** Check if a provider/protocol/model tuple is known to not support thinking. */
+  isUnsupported: (key: string) => boolean;
 }
 
 export const useThinkingStore = create<ThinkingState>((set, get) => ({
   unsupported: new Set<string>(),
 
-  markUnsupported: (model) =>
+  markUnsupported: (key) =>
     set((s) => {
-      if (s.unsupported.has(model)) return s;
+      if (s.unsupported.has(key)) return s;
       const next = new Set(s.unsupported);
-      next.add(model);
+      next.add(key);
       return { unsupported: next };
     }),
 
-  clearUnsupported: (model) =>
+  clearUnsupported: (key) =>
     set((s) => {
-      if (!s.unsupported.has(model)) return s;
+      if (!s.unsupported.has(key)) return s;
       const next = new Set(s.unsupported);
-      next.delete(model);
+      next.delete(key);
       return { unsupported: next };
     }),
 
-  isUnsupported: (model) => get().unsupported.has(model),
+  isUnsupported: (key) => get().unsupported.has(key),
 }));

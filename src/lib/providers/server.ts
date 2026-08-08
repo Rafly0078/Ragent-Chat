@@ -284,9 +284,9 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
   if (request.stream && connection.provider === 'openai') {
     body.stream_options = { include_usage: true };
   }
-  if (request.think && connection.provider === 'openai') {
+  if (request.think) {
     const effort = request.think === true ? 'medium' : request.think;
-    body.reasoning_effort = effort === 'max' ? 'high' : effort;
+    body.reasoning_effort = effort;
     delete body.temperature;
     delete body.top_p;
   }

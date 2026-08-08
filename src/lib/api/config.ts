@@ -101,8 +101,24 @@ export function getProviderConnection(): ProviderConnection {
   };
 }
 
-export function providerSupportsThinking(): boolean {
-  return apiProvider === 'ollama' || apiProvider === 'openai' || apiProvider === 'anthropic';
+export function providerSupportsThinking(
+  provider: ApiProvider = apiProvider,
+  customProtocol: ProviderProtocol = customProviderProtocol,
+): boolean {
+  if (provider === 'ollama') return true;
+  const protocol = resolveProviderProtocol(provider, customProtocol);
+  return protocol === 'openai' || protocol === 'anthropic';
+}
+
+/** Scope runtime capability failures to the exact provider/protocol/model tuple. */
+export function providerThinkingKey(
+  model: string,
+  provider: ApiProvider = apiProvider,
+  customProtocol: ProviderProtocol = customProviderProtocol,
+): string {
+  const protocol =
+    provider === 'ollama' ? 'ollama' : resolveProviderProtocol(provider, customProtocol);
+  return `${provider}:${protocol}:${model}`;
 }
 
 /** Real Ollama endpoint path -> same-origin bridge route that proxies it server-side. */
