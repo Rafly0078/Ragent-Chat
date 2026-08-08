@@ -4,7 +4,7 @@ import { useCallback, useRef } from 'react';
 import type { Attachment, Message } from '@/types';
 import { useChatStore } from '@/lib/store/chat-store';
 import { useThinkingStore } from '@/lib/store/thinking-store';
-import { ApiError } from '@/lib/api/config';
+import { ApiError, providerSupportsThinking } from '@/lib/api/config';
 import { streamChat, chat } from '@/lib/api/client';
 import { toApiMessages, toApiOptions, type ChatStreamChunk } from '@/lib/api/types';
 import { uid } from '@/lib/utils/id';
@@ -290,7 +290,7 @@ export function useChat(conversationId: string | null) {
       // Build request — the effort level is sent verbatim as Ollama's `think`
       // parameter ("low" | "medium" | "high" | "max") when thinking is enabled.
       const options = toApiOptions(convo.params);
-      const thinkingEnabled = convo.thinking?.enabled === true;
+      const thinkingEnabled = convo.thinking?.enabled === true && providerSupportsThinking();
 
       // Stamp the effort level onto the message so the reasoning panel can react
       // to it (e.g. the "max" shimmer) and it survives a reload. Cleared when
@@ -571,7 +571,8 @@ export function useChat(conversationId: string | null) {
       // failure is non-fatal — we toast and let the model answer without it.
       let searchContext: string | undefined;
       if (webSearch && trimmed) {
-        const thinkingEnabled = convo.thinking?.enabled === true && !!convo.model;
+        const thinkingEnabled =
+          convo.thinking?.enabled === true && !!convo.model && providerSupportsThinking();
         try {
           searchContext = await runAgenticSearch(
             conversationId,

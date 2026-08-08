@@ -84,9 +84,9 @@ export function ModeCards() {
       <div className="rule-t mb-12 sm:mb-16" />
 
       <Reveal className="mb-12 max-w-2xl sm:mb-16">
-        <p className="type-eyebrow">Two ways in</p>
+        <p className="type-eyebrow">Two Ollama paths</p>
         <h2 className="type-display mt-5 text-[clamp(1.9rem,5vw,3.4rem)] text-content">
-          Pick how the browser reaches your models
+          Pick how the browser reaches local models
         </h2>
       </Reveal>
 

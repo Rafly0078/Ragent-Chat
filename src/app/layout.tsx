@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: 'Ragent — the models that run on your own machine',
   description:
-    'A private, local-first chat interface for your own Ollama models. Streaming, extended thinking, document generation, a code sandbox, and web search — none of it leaves your hardware.',
+    'A private-by-design chat interface for local Ollama models and selected cloud providers. Streaming, extended thinking, document generation, a code sandbox, and web search.',
   applicationName: 'Ragent',
   authors: [{ name: 'Ollama WebUI' }],
   keywords: ['ollama', 'ai', 'chat', 'llm', 'webui', 'local ai', 'private ai'],
@@ -42,14 +42,14 @@ export const metadata: Metadata = {
     url: SITE_URL,
     title: 'Ragent — the models that run on your own machine',
     description:
-      'A private, local-first chat interface for your own Ollama models. Nothing leaves your hardware.',
+      'A private-by-design chat interface for local Ollama models and selected cloud providers.',
     siteName: 'Ragent',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Ragent — the models that run on your own machine',
     description:
-      'A private, local-first chat interface for your own Ollama models. Nothing leaves your hardware.',
+      'A private-by-design chat interface for local Ollama models and selected cloud providers.',
   },
   robots: {
     index: true,

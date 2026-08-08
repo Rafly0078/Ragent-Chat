@@ -6,10 +6,10 @@ import type { MetadataRoute } from 'next';
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Ragent — private, local-first AI',
+    name: 'Ragent — local and cloud AI',
     short_name: 'Ragent',
     description:
-      'A fast, beautiful ChatGPT-style interface for your local Ollama models. Streaming, Markdown, LaTeX, code, and more.',
+      'A fast, beautiful chat interface for local Ollama and cloud models. Streaming, Markdown, LaTeX, code, and more.',
     // The installed app opens straight into chat; `/` is the marketing page.
     start_url: '/chat',
     display: 'standalone',

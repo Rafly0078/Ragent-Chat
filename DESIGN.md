@@ -78,5 +78,8 @@ success, warning, and error feedback.
 
 ## Last updated
 
+2026-08-08 - connection settings expanded for local and cloud providers while
+preserving the Quiet Machine field, form hierarchy, spacing, and security copy.
+
 2026-08-07 - complete monochrome visual redesign; functionality and data flow
 unchanged.

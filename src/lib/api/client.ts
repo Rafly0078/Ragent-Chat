@@ -5,6 +5,9 @@ import {
   STREAM_IDLE_TIMEOUT_MS,
   apiUrl,
   authHeaders,
+  getApiProvider,
+  getProviderConnection,
+  getProviderModel,
 } from './config';
 import { parseChatStream } from './stream';
 import type { ChatRequest, ChatStreamChunk, ModelsResponse, RawModel } from './types';
@@ -80,7 +83,10 @@ function mapModel(raw: RawModel): ModelInfo {
       format: d.format,
     },
     supportsVision:
-      caps.includes('vision') || /vision|llava|bakllava|moondream|llama3\.2-vision/i.test(name),
+      caps.includes('vision') ||
+      /vision|llava|bakllava|moondream|llama3\.2-vision|gpt-(4o|4\.1|5)|claude-(3|sonnet-4|opus-4)|gemini|pixtral|qwen[^/]*vl/i.test(
+        name,
+      ),
   };
 }
 
@@ -122,6 +128,26 @@ async function fetchWithFallback(
 export async function fetchModels(signal?: AbortSignal): Promise<ModelInfo[]> {
   const { signal: s, cancel } = withTimeout(DEFAULT_TIMEOUT_MS, signal);
   try {
+    if (getApiProvider() !== 'ollama') {
+      const manualModel = getProviderModel();
+      const res = await fetch(apiUrl('/api/models'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(getProviderConnection()),
+        signal: s,
+      });
+      if (!res.ok && manualModel && [404, 405, 501].includes(res.status)) {
+        return [mapModel({ name: manualModel })];
+      }
+      await assertOk(res);
+      const data = (await res.json()) as ModelsResponse | RawModel[];
+      const list = Array.isArray(data) ? data : (data.models ?? []);
+      if (manualModel && !list.some((model) => (model.name ?? model.model) === manualModel)) {
+        list.push({ name: manualModel });
+      }
+      return list.map(mapModel).sort((a, b) => a.label.localeCompare(b.label));
+    }
+
     const { res } = await fetchWithFallback(API_TAG_PATHS, {
       method: 'GET',
       headers: { Accept: 'application/json', ...TUNNEL_HEADERS, ...authHeaders() },
@@ -186,18 +212,33 @@ export async function streamChat(
     let res: Response;
     try {
       armIdleTimer();
-      const result = await fetchWithFallback(API_CHAT_PATHS, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/x-ndjson, text/event-stream',
-          ...TUNNEL_HEADERS,
-          ...authHeaders(),
-        },
-        body: JSON.stringify({ ...req, stream: true }),
-        signal: idle.signal,
-      });
-      res = result.res;
+      if (getApiProvider() !== 'ollama') {
+        res = await fetch(apiUrl('/api/chat/stream'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/x-ndjson',
+          },
+          body: JSON.stringify({
+            ...getProviderConnection(),
+            request: { ...req, stream: true },
+          }),
+          signal: idle.signal,
+        });
+      } else {
+        const result = await fetchWithFallback(API_CHAT_PATHS, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/x-ndjson, text/event-stream',
+            ...TUNNEL_HEADERS,
+            ...authHeaders(),
+          },
+          body: JSON.stringify({ ...req, stream: true }),
+          signal: idle.signal,
+        });
+        res = result.res;
+      }
     } catch (err) {
       throw normalize(err);
     }
@@ -245,12 +286,29 @@ export async function chat(
 ): Promise<string> {
   const { signal: s, cancel } = withTimeout(timeoutMs, signal);
   try {
-    const { res } = await fetchWithFallback(API_CHAT_PATHS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...TUNNEL_HEADERS, ...authHeaders() },
-      body: JSON.stringify({ ...req, stream: false }),
-      signal: s,
-    });
+    const res =
+      getApiProvider() !== 'ollama'
+        ? await fetch(apiUrl('/api/chat'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...getProviderConnection(),
+              request: { ...req, stream: false },
+            }),
+            signal: s,
+          })
+        : (
+            await fetchWithFallback(API_CHAT_PATHS, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...TUNNEL_HEADERS,
+                ...authHeaders(),
+              },
+              body: JSON.stringify({ ...req, stream: false }),
+              signal: s,
+            })
+          ).res;
     await assertOk(res);
     const data = (await res.json()) as ChatStreamChunk;
     return data.message?.content ?? data.response ?? '';
@@ -265,6 +323,15 @@ export async function chat(
 export async function ping(signal?: AbortSignal): Promise<boolean> {
   const { signal: s, cancel } = withTimeout(8000, signal);
   try {
+    if (getApiProvider() !== 'ollama') {
+      const res = await fetch(apiUrl('/api/models'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(getProviderConnection()),
+        signal: s,
+      });
+      return res.ok || (Boolean(getProviderModel()) && [404, 405, 501].includes(res.status));
+    }
     const { res } = await fetchWithFallback(API_TAG_PATHS, {
       method: 'GET',
       headers: { ...TUNNEL_HEADERS, ...authHeaders() },

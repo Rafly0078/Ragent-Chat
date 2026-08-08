@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Tooltip } from '@/components/ui/tooltip';
 import { ping } from '@/lib/api/client';
-import { apiConfigured } from '@/lib/api/config';
+import { API_CONFIG_CHANGED_EVENT, apiConfigured } from '@/lib/api/config';
 import { useOnlineStatus } from '@/lib/hooks/use-online-status';
 import { cn } from '@/lib/utils/cn';
 
@@ -82,6 +82,15 @@ export function ConnectionStatus() {
       setStatus('offline');
     }
   }, [online, check]);
+
+  useEffect(() => {
+    const onConfigChanged = () => {
+      attempts.current = 0;
+      void check();
+    };
+    window.addEventListener(API_CONFIG_CHANGED_EVENT, onConfigChanged);
+    return () => window.removeEventListener(API_CONFIG_CHANGED_EVENT, onConfigChanged);
+  }, [check]);
 
   const config = {
     checking: { color: 'bg-warning', label: 'Checking connection…' },

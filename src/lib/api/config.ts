@@ -4,8 +4,17 @@
  * replace it per-browser without a rebuild.
  */
 
+import type { ApiProvider, ProviderConnection, ProviderProtocol } from '@/lib/providers/types';
+import {
+  providerBaseUrl,
+  providerNeedsApiKey,
+  providerProtocol as resolveProviderProtocol,
+} from '@/lib/providers/types';
+
 /** Build-time endpoint from the environment. Shown in the UI for reference. */
 export const API_BASE_URL: string = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
+
+export const API_CONFIG_CHANGED_EVENT = 'ragent:api-config-changed';
 
 // Optional per-browser override, injected by the settings layer after hydration.
 let runtimeOverride: string | null = null;
@@ -52,6 +61,50 @@ export function getConnectionMode(): ConnectionMode {
   return connectionMode;
 }
 
+let apiProvider: ApiProvider = 'ollama';
+let providerApiUrl = '';
+let providerApiKey = '';
+let providerModel = '';
+let customProviderProtocol: ProviderProtocol = 'openai';
+
+export function setProviderConfig(config: {
+  provider: ApiProvider;
+  apiUrl: string;
+  apiKey: string;
+  model: string;
+  protocol: ProviderProtocol;
+}): void {
+  apiProvider = config.provider;
+  providerApiUrl = config.apiUrl.trim();
+  providerApiKey = config.apiKey.trim();
+  providerModel = config.model.trim();
+  customProviderProtocol = config.protocol;
+}
+
+export function getApiProvider(): ApiProvider {
+  return apiProvider;
+}
+
+export function getProviderModel(): string {
+  return providerModel;
+}
+
+export function getProviderConnection(): ProviderConnection {
+  if (apiProvider === 'ollama') {
+    throw new ApiError('Cloud provider is not selected.', { kind: 'config' });
+  }
+  return {
+    provider: apiProvider,
+    baseUrl: providerBaseUrl(apiProvider, providerApiUrl),
+    apiKey: providerApiKey,
+    protocol: resolveProviderProtocol(apiProvider, customProviderProtocol),
+  };
+}
+
+export function providerSupportsThinking(): boolean {
+  return apiProvider === 'ollama' || apiProvider === 'openai' || apiProvider === 'anthropic';
+}
+
 /** Real Ollama endpoint path -> same-origin bridge route that proxies it server-side. */
 const BRIDGE_ROUTES: Record<string, string> = {
   '/api/chat': '/api/bridge/chat',
@@ -70,6 +123,18 @@ const BRIDGE_ROUTES: Record<string, string> = {
  *   report configured and let real errors surface at request time.
  */
 export function apiConfigured(): boolean {
+  if (apiProvider !== 'ollama') {
+    const connection = getProviderConnection();
+    if (!connection.baseUrl) return false;
+    if (apiProvider === 'custom') {
+      try {
+        if (new URL(connection.baseUrl).protocol !== 'https:') return false;
+      } catch {
+        return false;
+      }
+    }
+    return !providerNeedsApiKey(apiProvider) || Boolean(connection.apiKey);
+  }
   if (connectionMode === 'bridge') {
     return process.env.NEXT_PUBLIC_DISABLE_BRIDGE !== 'true';
   }
@@ -89,6 +154,16 @@ export function apiConfigured(): boolean {
  */
 export function apiUrl(path: string): string {
   const normalized = path.startsWith('/') ? path : `/${path}`;
+
+  if (apiProvider !== 'ollama') {
+    if (normalized === '/api/tags' || normalized === '/api/models') {
+      return '/api/providers/models';
+    }
+    if (normalized === '/api/chat' || normalized === '/api/chat/stream') {
+      return '/api/providers/chat';
+    }
+    throw new ApiError(`Endpoint ${normalized} is only available for Ollama.`, { kind: 'config' });
+  }
 
   if (connectionMode === 'bridge') {
     return BRIDGE_ROUTES[normalized] ?? normalized; // same-origin
@@ -121,7 +196,7 @@ export function apiUrl(path: string): string {
  * preflight-free, exactly as before.
  */
 export function authHeaders(): Record<string, string> {
-  if (connectionMode === 'bridge' || !runtimeToken) return {};
+  if (apiProvider !== 'ollama' || connectionMode === 'bridge' || !runtimeToken) return {};
   return { Authorization: `Bearer ${runtimeToken}` };
 }
 
@@ -161,6 +236,9 @@ export class ApiError extends Error {
       case 'config':
         return this.message;
       case 'network':
+        if (apiProvider !== 'ollama') {
+          return 'Connection failed. The cloud provider may be offline or rejecting this server.';
+        }
         return connectionMode === 'bridge'
           ? 'Connection failed. The Ollama server may be offline or unreachable from Vercel.'
           : 'Connection failed. The API server may be offline or blocking this origin (CORS).';
@@ -169,6 +247,9 @@ export class ApiError extends Error {
       case 'aborted':
         return 'Generation stopped.';
       case 'http':
+        if ((this.status === 401 || this.status === 403) && apiProvider !== 'ollama') {
+          return 'The provider rejected the API key. Check it in Settings → Connection.';
+        }
         // A 401/403 straight from the model endpoint is not this app's own
         // sign-in wall — it's the tunnel in front of Ollama asking for its
         // token, which has its own field in Settings.

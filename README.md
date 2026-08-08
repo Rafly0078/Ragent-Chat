@@ -1,20 +1,21 @@
-# Ollama Chat — AI WebUI
+# Ragent — AI WebUI
 
-A ChatGPT-style web interface for **your own Ollama models**, built with Next.js 15 (App Router) and React 19.
+A premium AI workspace for **Ollama and cloud model providers**, built with Next.js App Router and React 19.
 
-It runs as a full Next.js app: the chat UI is client-rendered, and a small set of Route Handlers act as a
-server-side bridge to Ollama, a web-search proxy, and a document generator. Optional Supabase integration adds
+It runs as a full Next.js app: the chat UI is client-rendered, and Route Handlers provide Ollama bridging,
+secure cloud-provider adapters, web search, and document generation. Optional Supabase integration adds
 sign-in, cloud sync and file storage; without it the app runs guest-only on `localStorage`.
 
-![Next.js 15](https://img.shields.io/badge/Next.js-15-black) ![React 19](https://img.shields.io/badge/React-19-149eca) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-black) ![React 19](https://img.shields.io/badge/React-19-149eca) ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6) ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8)
 
 ---
 
 ## ✨ Features
 
 **Chat**
+
 - Real token **streaming** with `AbortController` (stop / regenerate / continue) and an idle watchdog
-- **Extended thinking** (Ollama `think`) with a low/medium/high/max effort selector and a collapsible reasoning panel
+- **Extended thinking** for Ollama, OpenAI, and Anthropic with a low/medium/high/max effort selector and a collapsible reasoning panel
 - **Markdown**, syntax-highlighted code, **LaTeX** (KaTeX), tables, and **Mermaid** diagrams
 - **Vision** support (upload / paste / drag & drop images) and text extraction from PDF / DOCX / XLSX / PPTX
 - **Context compaction** — older turns are condensed into a running summary once the prompt nears `num_ctx`
@@ -23,7 +24,7 @@ sign-in, cloud sync and file storage; without it the app runs guest-only on `loc
 **Agentic web search** — the model plans queries, they run through a server-side Tavily proxy, and the answer
 cites its sources inline. Requires `TAVILY_API_KEY`.
 
-**Document generation** — the model emits an ```` ```artifact ```` directive and the server renders a real file:
+**Document generation** — the model emits an ` ```artifact ` directive and the server renders a real file:
 PDF, DOCX, PPTX, XLSX, CSV, MD, HTML, JSON, XML, TXT, or a ZIP bundle. Files are saved to Supabase Storage when
 signed in, or embedded in the message as a `data:` URL for guests.
 
@@ -47,7 +48,7 @@ installable as a PWA, `prefers-reduced-motion` respected globally.
 
 ## 🏗️ Architecture
 
-Two connection modes, switchable in **Settings → Connection**:
+Provider and connection mode are switchable in **Settings → Connection**:
 
 ```
 bridge (default for hosted deploys)
@@ -59,23 +60,33 @@ direct
   Browser ──────────────────────► NEXT_PUBLIC_API_URL ──► Ollama
              (needs CORS/OLLAMA_ORIGINS, but no function
               duration limit on a long generation)
+
+cloud
+  Browser ──► /api/providers/* ──► OpenAI / Anthropic / OpenRouter / Groq /
+             (same origin)         DeepSeek / custom HTTPS endpoint
 ```
+
+Cloud keys live in browser `localStorage`, are excluded from settings exports, and are sent to the same-origin
+proxy only for provider requests. Known providers use fixed endpoints. Custom endpoints must use public HTTPS;
+localhost, private/reserved IPs, private DNS targets, URL credentials, and redirects are blocked.
 
 Server routes:
 
-| Route | Purpose |
-| --- | --- |
-| `POST /api/bridge/chat` | Proxy a chat completion (streams straight through) |
-| `GET  /api/bridge/models` | Proxy the model list |
-| `POST /api/bridge/show` | Proxy `/api/show` for model details |
-| `POST /api/search` | Web search via Tavily (key stays server-side) |
-| `POST /api/tools/execute` | Render a document and (optionally) persist it |
-| `POST /api/artifacts/refresh` | Re-sign an expired Storage URL |
-| `GET/PUT/DELETE /api/model-labels` | Owner-curated model display names |
-| `GET  /auth/callback` | PKCE / magic-link exchange |
+| Route                              | Purpose                                                             |
+| ---------------------------------- | ------------------------------------------------------------------- |
+| `POST /api/bridge/chat`            | Proxy a chat completion (streams straight through)                  |
+| `GET  /api/bridge/models`          | Proxy the model list                                                |
+| `POST /api/bridge/show`            | Proxy `/api/show` for model details                                 |
+| `POST /api/providers/chat`         | Normalize OpenAI-compatible or Anthropic chat responses and streams |
+| `POST /api/providers/models`       | Fetch and normalize cloud model lists                               |
+| `POST /api/search`                 | Web search via Tavily (key stays server-side)                       |
+| `POST /api/tools/execute`          | Render a document and (optionally) persist it                       |
+| `POST /api/artifacts/refresh`      | Re-sign an expired Storage URL                                      |
+| `GET/PUT/DELETE /api/model-labels` | Owner-curated model display names                                   |
+| `GET  /auth/callback`              | PKCE / magic-link exchange                                          |
 
 **Every one of these is gated.** When Supabase is configured, a request without a valid session gets a 401 —
-matching the sign-in wall the UI shows — and all of them are rate limited per user/IP. When Supabase is *not*
+matching the sign-in wall the UI shows — and all of them are rate limited per user/IP. When Supabase is _not_
 configured the deployment is guest-only by design, so only the rate limit applies. See `src/lib/server/guard.ts`.
 
 The streaming parser accepts both Ollama-native NDJSON and SSE (`data: {…}` / `data: [DONE]`), so most proxies
@@ -124,18 +135,19 @@ npm run typecheck  # tsc --noEmit
 
 ### Environment
 
-Only one variable is strictly required — a reachable Ollama endpoint. Everything else unlocks a feature.
+Ollama needs one reachable endpoint. Cloud providers are configured per browser in Settings and need no provider
+environment variables. Everything else unlocks an optional feature.
 
-| Variable | Scope | Purpose |
-| --- | --- | --- |
-| `OLLAMA_API_URL` | server | Upstream Ollama endpoint for bridge mode. **Preferred** — never reaches the browser. |
-| `NEXT_PUBLIC_API_URL` | public | Legacy/direct-mode endpoint. Ships in the client bundle. |
-| `NEXT_PUBLIC_DISABLE_BRIDGE` | public | `true` hides chat (static/demo deploy with no model backend). |
-| `NEXT_PUBLIC_SUPABASE_URL` | public | Supabase project URL. Leave blank for guest-only mode. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | Anon key — safe in the browser under RLS. |
-| `SUPABASE_SERVICE_ROLE_KEY` | **secret** | Bypasses RLS. Server-only, used behind the owner check. |
-| `OWNER_EMAIL` | server | Comma-separated emails allowed to curate model display names. |
-| `TAVILY_API_KEY` | server | Enables web search. Unset → `/api/search` returns 501. |
+| Variable                        | Scope      | Purpose                                                                              |
+| ------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| `OLLAMA_API_URL`                | server     | Upstream Ollama endpoint for bridge mode. **Preferred** — never reaches the browser. |
+| `NEXT_PUBLIC_API_URL`           | public     | Legacy/direct-mode endpoint. Ships in the client bundle.                             |
+| `NEXT_PUBLIC_DISABLE_BRIDGE`    | public     | `true` hides chat (static/demo deploy with no model backend).                        |
+| `NEXT_PUBLIC_SUPABASE_URL`      | public     | Supabase project URL. Leave blank for guest-only mode.                               |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public     | Anon key — safe in the browser under RLS.                                            |
+| `SUPABASE_SERVICE_ROLE_KEY`     | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
+| `OWNER_EMAIL`                   | server     | Comma-separated emails allowed to curate model display names.                        |
+| `TAVILY_API_KEY`                | server     | Enables web search. Unset → `/api/search` returns 501.                               |
 
 `.env.local` is gitignored. Never commit it.
 
@@ -165,10 +177,10 @@ interstitial doesn't corrupt the stream.
 Path mapping most proxies need:
 
 | This app calls | Forward to Ollama |
-| --- | --- |
-| `/api/models` | `/api/tags` |
-| `/api/chat` | `/api/chat` |
-| `/api/show` | `/api/show` |
+| -------------- | ----------------- |
+| `/api/models`  | `/api/tags`       |
+| `/api/chat`    | `/api/chat`       |
+| `/api/show`    | `/api/show`       |
 
 ---
 
@@ -193,4 +205,4 @@ support.
 
 ## 📝 License
 
-MIT. Built as a local-first, privacy-respecting UI: your prompts stay on your own Ollama server.
+MIT. Built as a privacy-respecting UI: select local Ollama or a cloud provider that fits your data policy.

@@ -10,6 +10,7 @@ import { ModelLabelEditor } from './ModelLabelEditor';
 import { formatBytes, formatNumber } from '@/lib/utils/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils/cn';
+import { getApiProvider } from '@/lib/api/config';
 
 interface Props {
   value: string;
@@ -34,10 +35,13 @@ export function ModelSelector({ value, onChange }: Props) {
 
   // Auto-select the first model once loaded if none is set.
   useEffect(() => {
-    if (!value && models.length > 0 && models[0]) onChange(models[0].name);
+    if (models.length > 0 && models[0] && !models.some((model) => model.name === value)) {
+      onChange(models[0].name);
+    }
   }, [value, models, onChange]);
 
   const active = models.find((m) => m.name === value);
+  const showOllamaDetails = getApiProvider() === 'ollama';
 
   return (
     <div ref={ref} className="relative">
@@ -113,8 +117,9 @@ export function ModelSelector({ value, onChange }: Props) {
 
             {!loading && !error && models.length === 0 && (
               <p className="p-3 text-sm text-content-muted">
-                No models found. Pull one with{' '}
-                <code className="text-accent">ollama pull llama3.2</code>.
+                {showOllamaDetails
+                  ? 'No Ollama models found.'
+                  : 'No models returned. Add a manual model ID in Settings.'}
               </p>
             )}
 
@@ -124,6 +129,7 @@ export function ModelSelector({ value, onChange }: Props) {
                 model={model}
                 selected={model.name === value}
                 canEdit={isOwner}
+                showDetails={showOllamaDetails}
                 onSelect={() => {
                   onChange(model.name);
                   setOpen(false);
@@ -150,6 +156,7 @@ function ModelRow({
   model,
   selected,
   canEdit,
+  showDetails,
   onSelect,
   onDetails,
   onEdit,
@@ -157,6 +164,7 @@ function ModelRow({
   model: ModelInfo;
   selected: boolean;
   canEdit: boolean;
+  showDetails: boolean;
   onSelect: () => void;
   onDetails: () => void;
   onEdit: () => void;
@@ -199,16 +207,18 @@ function ModelRow({
               {c}
             </span>
           ))}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDetails();
-            }}
-            className="rounded-md p-0.5 text-content-subtle hover:text-accent"
-            aria-label="Model details"
-          >
-            <Info className="h-3 w-3" />
-          </button>
+          {showDetails && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDetails();
+              }}
+              className="rounded-md p-0.5 text-content-subtle hover:text-accent"
+              aria-label="Model details"
+            >
+              <Info className="h-3 w-3" />
+            </button>
+          )}
           {canEdit && (
             <button
               onClick={(e) => {

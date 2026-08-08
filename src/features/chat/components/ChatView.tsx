@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/toast';
 import { copyText } from '@/lib/utils/clipboard';
 import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import type { Artifact } from '@/lib/tools/types';
+import { useSettings } from '@/lib/store/settings-store';
 
 interface Props {
   conversation: Conversation;
@@ -32,6 +33,8 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
   const clearMessages = useChatStore((s) => s.clearMessages);
   const { models } = useModels();
   const { toast } = useToast();
+  const provider = useSettings((s) => s.apiProvider);
+  const providerThinkingUnsupported = !['ollama', 'openai', 'anthropic'].includes(provider);
   const thinkingUnsupported = useThinkingStore((s) => s.unsupported.has(conversation.model));
 
   const { send, stop, regenerate, continueGeneration, editUserMessage } = useChat(conversation.id);
@@ -120,7 +123,7 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
         visionCapable={visionCapable}
         conversationId={conversation.id}
         thinking={conversation.thinking ?? { enabled: false, effort: 'medium' }}
-        thinkingUnsupported={thinkingUnsupported}
+        thinkingUnsupported={thinkingUnsupported || providerThinkingUnsupported}
         onThinkingChange={(patch) => setThinking(conversation.id, patch)}
       />
 

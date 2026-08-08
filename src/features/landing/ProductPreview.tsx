@@ -11,7 +11,7 @@ export function ProductPreview() {
             <span className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-fg">
               <Sparkles className="h-3.5 w-3.5" />
             </span>
-            <span className="type-label truncate text-content">Local workspace</span>
+            <span className="type-label truncate text-content">Private workspace</span>
           </div>
           <span className="flex items-center gap-2 font-mono text-[0.65rem] text-content-subtle">
             <span className="status-dot status-ok" /> Connected
@@ -59,9 +59,7 @@ export function ProductPreview() {
 
           <div className="border-border/18 flex items-center gap-2 rounded-xl border bg-surface px-2.5 py-2">
             <Paperclip className="h-4 w-4 text-content-subtle" />
-            <span className="flex-1 text-sm text-content-subtle">
-              Ask your local models anything
-            </span>
+            <span className="flex-1 text-sm text-content-subtle">Ask your models anything</span>
             <span className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-fg">
               <ArrowUp className="h-4 w-4" />
             </span>

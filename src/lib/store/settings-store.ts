@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { GenerationParams, PromptPreset } from '@/types';
 import { ACCENT_PRESETS, DEFAULT_PARAMS, DEFAULT_PRESETS, DEFAULT_SYSTEM_PROMPT } from './defaults';
 import { browserStorage } from './storage';
+import type { ApiProvider, ProviderProtocol } from '@/lib/providers/types';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ConnectionMode = 'direct' | 'bridge';
@@ -19,6 +20,16 @@ export interface SettingsState {
   /** 'direct': browser -> Ollama directly (no time limit, needs CORS).
    *  'bridge': browser -> same-origin server proxy -> Ollama (no CORS setup, capped by the host's function duration). */
   connectionMode: ConnectionMode;
+  /** Active model backend. Ollama preserves the existing direct/bridge modes. */
+  apiProvider: ApiProvider;
+  /** Custom provider base URL. Known providers use audited presets. */
+  providerApiUrl: string;
+  /** Cloud API key. Persisted only in this browser and excluded from exports. */
+  providerApiKey: string;
+  /** Manual model id, used when the provider has no model-list endpoint. */
+  providerModel: string;
+  /** Wire format used by a custom endpoint. */
+  providerProtocol: ProviderProtocol;
   defaultModel: string;
   defaultSystemPrompt: string;
   defaultParams: GenerationParams;
@@ -37,6 +48,11 @@ export interface SettingsState {
   setApiUrlOverride: (v: string) => void;
   setApiToken: (v: string) => void;
   setConnectionMode: (m: ConnectionMode) => void;
+  setApiProvider: (p: ApiProvider) => void;
+  setProviderApiUrl: (v: string) => void;
+  setProviderApiKey: (v: string) => void;
+  setProviderModel: (v: string) => void;
+  setProviderProtocol: (p: ProviderProtocol) => void;
   setDefaultModel: (m: string) => void;
   setDefaultSystemPrompt: (s: string) => void;
   setDefaultParams: (p: Partial<GenerationParams>) => void;
@@ -60,6 +76,11 @@ const initial = {
   apiUrlOverride: '',
   apiToken: '',
   connectionMode: 'direct' as ConnectionMode,
+  apiProvider: 'ollama' as ApiProvider,
+  providerApiUrl: '',
+  providerApiKey: '',
+  providerModel: '',
+  providerProtocol: 'openai' as ProviderProtocol,
   defaultModel: '',
   defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultParams: DEFAULT_PARAMS,
@@ -77,6 +98,16 @@ const DATA_KEYS = Object.keys(initial) as (keyof SettingsData)[];
 
 const THEMES: ThemeMode[] = ['dark', 'light', 'system'];
 const MODES: ConnectionMode[] = ['direct', 'bridge'];
+const PROVIDERS: ApiProvider[] = [
+  'ollama',
+  'openai',
+  'anthropic',
+  'openrouter',
+  'groq',
+  'deepseek',
+  'custom',
+];
+const PROVIDER_PROTOCOLS: ProviderProtocol[] = ['openai', 'anthropic'];
 
 /**
  * Validate an imported settings blob against the known data keys.
@@ -101,6 +132,10 @@ function sanitizeSettings(raw: unknown): Partial<SettingsData> {
       if (THEMES.includes(value as ThemeMode)) patch[key] = value;
     } else if (key === 'connectionMode') {
       if (MODES.includes(value as ConnectionMode)) patch[key] = value;
+    } else if (key === 'apiProvider') {
+      if (PROVIDERS.includes(value as ApiProvider)) patch[key] = value;
+    } else if (key === 'providerProtocol') {
+      if (PROVIDER_PROTOCOLS.includes(value as ProviderProtocol)) patch[key] = value;
     } else if (key === 'presets') {
       if (Array.isArray(value)) {
         patch[key] = value
@@ -143,6 +178,23 @@ export const useSettings = create<SettingsState>()(
       setApiUrlOverride: (apiUrlOverride) => set({ apiUrlOverride }),
       setApiToken: (apiToken) => set({ apiToken }),
       setConnectionMode: (connectionMode) => set({ connectionMode }),
+      setApiProvider: (apiProvider) =>
+        set({
+          apiProvider,
+          providerApiUrl: '',
+          providerApiKey: '',
+          providerModel: '',
+          defaultModel: '',
+        }),
+      setProviderApiUrl: (providerApiUrl) => set({ providerApiUrl }),
+      setProviderApiKey: (providerApiKey) => set({ providerApiKey }),
+      setProviderModel: (providerModel) => set({ providerModel }),
+      setProviderProtocol: (providerProtocol) =>
+        set((state) =>
+          state.providerProtocol === providerProtocol
+            ? {}
+            : { providerProtocol, providerModel: '', defaultModel: '' },
+        ),
       setDefaultModel: (defaultModel) => set({ defaultModel }),
       setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
       setDefaultParams: (p) => set((s) => ({ defaultParams: { ...s.defaultParams, ...p } })),
@@ -161,7 +213,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(browserStorage),
-      version: 4,
+      version: 5,
       /**
        * v* -> v4: the product moved from a colored field to the monochrome system,
        * which renamed every accent preset (Acid, Paper and Peach no longer
@@ -171,10 +223,18 @@ export const useSettings = create<SettingsState>()(
        */
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
-        const state = persisted as { accent?: string };
+        const state = persisted as {
+          accent?: string;
+          apiProvider?: ApiProvider;
+          providerProtocol?: ProviderProtocol;
+        };
         if (version < 4) {
           const known = new Set(ACCENT_PRESETS.map((a) => a.value));
           if (!state.accent || !known.has(state.accent)) state.accent = ACCENT_PRESETS[0]!.value;
+        }
+        if (version < 5) {
+          state.apiProvider = 'ollama';
+          state.providerProtocol = 'openai';
         }
         return state;
       },

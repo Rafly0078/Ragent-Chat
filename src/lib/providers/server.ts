@@ -1,0 +1,636 @@
+import 'server-only';
+
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+import type { ChatRequest, ChatStreamChunk } from '@/lib/api/types';
+import { PROVIDER_PRESETS, type ProviderConnection, type ProviderProtocol } from './types';
+
+const CONNECT_TIMEOUT_MS = 20_000;
+const MAX_ERROR_CHARS = 4_000;
+const encoder = new TextEncoder();
+
+export class ProviderError extends Error {
+  status: number;
+
+  constructor(message: string, status = 502) {
+    super(message);
+    this.name = 'ProviderError';
+    this.status = status;
+  }
+}
+
+export interface ProviderInput {
+  provider?: unknown;
+  baseUrl?: unknown;
+  apiKey?: unknown;
+  protocol?: unknown;
+}
+
+const CLOUD_PROVIDERS = [
+  'openai',
+  'anthropic',
+  'openrouter',
+  'groq',
+  'deepseek',
+  'custom',
+] as const;
+
+function isCloudProvider(value: unknown): value is (typeof CLOUD_PROVIDERS)[number] {
+  return CLOUD_PROVIDERS.includes(value as (typeof CLOUD_PROVIDERS)[number]);
+}
+
+export function resolveProviderConnection(raw: ProviderInput): ProviderConnection {
+  const provider = raw.provider;
+  if (!isCloudProvider(provider)) {
+    throw new ProviderError('Unknown cloud provider.', 400);
+  }
+
+  const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey.trim() : '';
+  if (provider !== 'custom') {
+    if (!apiKey) throw new ProviderError('API key is required for this provider.', 400);
+    const preset = PROVIDER_PRESETS[provider];
+    return {
+      provider,
+      baseUrl: preset.baseUrl,
+      protocol: preset.protocol,
+      apiKey,
+    };
+  }
+
+  const protocol = raw.protocol;
+  if (protocol !== 'openai' && protocol !== 'anthropic') {
+    throw new ProviderError('Custom endpoint protocol must be OpenAI or Anthropic.', 400);
+  }
+  const baseUrl = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim() : '';
+  return { provider, baseUrl, apiKey, protocol: protocol as ProviderProtocol };
+}
+
+function blockedIpv4(address: string): boolean {
+  const parts = address.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255))
+    return true;
+  const [a, b, c] = parts as [number, number, number, number];
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
+    (a === 192 && b === 88 && c === 99) ||
+    (a === 192 && b === 168) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224
+  );
+}
+
+function blockedIpv6(address: string): boolean {
+  const value = address.toLowerCase().split('%')[0]!;
+  if (value === '::' || value === '::1') return true;
+  const mapped = value.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  if (mapped) return blockedIpv4(mapped);
+  const first = Number.parseInt(value.split(':')[0] || '0', 16);
+  return (
+    (first >= 0xfc00 && first <= 0xfdff) ||
+    (first >= 0xfe80 && first <= 0xfebf) ||
+    first >= 0xff00 ||
+    value.startsWith('2001:db8:') ||
+    value === '2001:db8::' ||
+    value.startsWith('2001:0:') ||
+    value.startsWith('2002:') ||
+    value.startsWith('64:ff9b:')
+  );
+}
+
+function blockedAddress(address: string): boolean {
+  const family = isIP(address);
+  return family === 4 ? blockedIpv4(address) : family === 6 ? blockedIpv6(address) : true;
+}
+
+async function validateCustomBaseUrl(value: string): Promise<string> {
+  if (!value || value.length > 2_048)
+    throw new ProviderError('Enter a valid custom endpoint URL.', 400);
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new ProviderError('Enter a valid custom endpoint URL.', 400);
+  }
+
+  if (url.protocol !== 'https:') throw new ProviderError('Custom endpoint must use HTTPS.', 400);
+  if (url.username || url.password)
+    throw new ProviderError('Custom endpoint cannot contain URL credentials.', 400);
+  if (url.search || url.hash)
+    throw new ProviderError('Custom endpoint cannot contain a query or fragment.', 400);
+
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    hostname === 'localhost' ||
+    hostname.endsWith('.localhost') ||
+    hostname.endsWith('.local') ||
+    hostname.endsWith('.internal') ||
+    hostname.endsWith('.home.arpa')
+  ) {
+    throw new ProviderError('Custom endpoint must use a public hostname.', 400);
+  }
+
+  if (isIP(hostname)) {
+    if (blockedAddress(hostname))
+      throw new ProviderError('Private or reserved endpoint addresses are blocked.', 400);
+  } else {
+    let addresses: { address: string; family: number }[];
+    try {
+      addresses = await lookup(hostname, { all: true, verbatim: true });
+    } catch {
+      throw new ProviderError('Custom endpoint hostname could not be resolved.', 400);
+    }
+    if (!addresses.length || addresses.some((entry) => blockedAddress(entry.address))) {
+      throw new ProviderError('Custom endpoint resolves to a private or reserved address.', 400);
+    }
+  }
+
+  return url.toString().replace(/\/+$/, '');
+}
+
+async function checkedConnection(connection: ProviderConnection): Promise<ProviderConnection> {
+  if (connection.provider !== 'custom') return connection;
+  return { ...connection, baseUrl: await validateCustomBaseUrl(connection.baseUrl) };
+}
+
+function endpoint(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+}
+
+function authHeaders(connection: ProviderConnection): Record<string, string> {
+  if (connection.protocol === 'anthropic') {
+    return {
+      ...(connection.apiKey ? { 'x-api-key': connection.apiKey } : {}),
+      'anthropic-version': '2023-06-01',
+    };
+  }
+  return connection.apiKey ? { Authorization: `Bearer ${connection.apiKey}` } : {};
+}
+
+async function fetchUpstream(
+  target: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  if (signal) {
+    if (signal.aborted) controller.abort(signal.reason);
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('Provider connect timeout', 'TimeoutError')),
+    CONNECT_TIMEOUT_MS,
+  );
+
+  try {
+    const response = await fetch(target, {
+      ...init,
+      cache: 'no-store',
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    if (response.status >= 300 && response.status < 400) {
+      await response.body?.cancel().catch(() => {});
+      throw new ProviderError('Provider redirects are blocked.', 502);
+    }
+    return response;
+  } catch (error) {
+    if (error instanceof ProviderError) throw error;
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new ProviderError('The provider did not respond in time.', 504);
+    }
+    throw new ProviderError(error instanceof Error ? error.message : 'Provider request failed.');
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+async function providerError(response: Response): Promise<ProviderError> {
+  const text = (await response.text().catch(() => '')).slice(0, MAX_ERROR_CHARS);
+  let message = text || response.statusText || 'Provider request failed.';
+  try {
+    const body = JSON.parse(text) as {
+      error?: string | { message?: string };
+      message?: string;
+    };
+    if (typeof body.error === 'string') message = body.error;
+    else if (body.error?.message) message = body.error.message;
+    else if (body.message) message = body.message;
+  } catch {
+    // Keep the capped plain-text response.
+  }
+  return new ProviderError(message, response.status);
+}
+
+function inferImageMediaType(base64: string): string {
+  if (base64.startsWith('/9j/')) return 'image/jpeg';
+  if (base64.startsWith('iVBOR')) return 'image/png';
+  if (base64.startsWith('R0lGOD')) return 'image/gif';
+  if (base64.startsWith('UklGR')) return 'image/webp';
+  return 'image/png';
+}
+
+function textValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((part) => {
+      if (!part || typeof part !== 'object') return '';
+      const item = part as { text?: unknown; content?: unknown };
+      return typeof item.text === 'string'
+        ? item.text
+        : typeof item.content === 'string'
+          ? item.content
+          : '';
+    })
+    .join('');
+}
+
+function openAiBody(connection: ProviderConnection, request: ChatRequest): Record<string, unknown> {
+  const messages = request.messages.map((message) => {
+    if (!message.images?.length) return { role: message.role, content: message.content };
+    return {
+      role: message.role,
+      content: [
+        { type: 'text', text: message.content },
+        ...message.images.map((image) => ({
+          type: 'image_url',
+          image_url: { url: `data:${inferImageMediaType(image)};base64,${image}` },
+        })),
+      ],
+    };
+  });
+  const maxTokens = request.options?.num_predict;
+  const body: Record<string, unknown> = {
+    model: request.model,
+    messages,
+    stream: request.stream === true,
+    temperature: request.options?.temperature,
+    top_p: request.options?.top_p,
+  };
+  if (typeof maxTokens === 'number' && maxTokens > 0) {
+    body[connection.provider === 'openai' ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
+  }
+  if (request.stream && connection.provider === 'openai') {
+    body.stream_options = { include_usage: true };
+  }
+  if (request.think && connection.provider === 'openai') {
+    const effort = request.think === true ? 'medium' : request.think;
+    body.reasoning_effort = effort === 'max' ? 'high' : effort;
+    delete body.temperature;
+    delete body.top_p;
+  }
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined));
+}
+
+type AnthropicContent =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+
+function anthropicBody(request: ChatRequest): Record<string, unknown> {
+  const system = request.messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
+    .filter(Boolean)
+    .join('\n\n');
+  const messages: { role: 'user' | 'assistant'; content: AnthropicContent[] }[] = [];
+  for (const message of request.messages) {
+    if (message.role === 'system') continue;
+    const content: AnthropicContent[] = [{ type: 'text', text: message.content }];
+    for (const image of message.images ?? []) {
+      content.push({
+        type: 'image',
+        source: { type: 'base64', media_type: inferImageMediaType(image), data: image },
+      });
+    }
+    const previous = messages.at(-1);
+    if (previous?.role === message.role) previous.content.push(...content);
+    else messages.push({ role: message.role, content });
+  }
+
+  const requestedMax = request.options?.num_predict;
+  let maxTokens = typeof requestedMax === 'number' && requestedMax > 0 ? requestedMax : 4_096;
+  const body: Record<string, unknown> = {
+    model: request.model,
+    messages,
+    stream: request.stream === true,
+    max_tokens: maxTokens,
+    ...(system ? { system } : {}),
+  };
+
+  if (request.think) {
+    const budgets = { low: 1_024, medium: 2_048, high: 4_096, max: 8_192 } as const;
+    const effort = request.think === true ? 'medium' : request.think;
+    const budget = budgets[effort];
+    maxTokens = Math.max(maxTokens, budget + 1_024);
+    body.max_tokens = maxTokens;
+    body.thinking = { type: 'enabled', budget_tokens: budget };
+  } else {
+    body.temperature = request.options?.temperature;
+    body.top_p = request.options?.top_p;
+  }
+  return Object.fromEntries(Object.entries(body).filter(([, value]) => value !== undefined));
+}
+
+export async function providerModels(
+  input: ProviderInput,
+  signal?: AbortSignal,
+): Promise<{ models: { name: string; model: string; details: { family: string } }[] }> {
+  const connection = await checkedConnection(resolveProviderConnection(input));
+  const response = await fetchUpstream(
+    endpoint(connection.baseUrl, 'models'),
+    { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(connection) } },
+    signal,
+  );
+  if (!response.ok) throw await providerError(response);
+  const body = (await response.json()) as { data?: unknown[]; models?: unknown[] } | unknown[];
+  const data = Array.isArray(body)
+    ? body
+    : Array.isArray(body.data)
+      ? body.data
+      : (body.models ?? []);
+  const seen = new Set<string>();
+  const models = data.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const raw = item as { id?: unknown; name?: unknown; model?: unknown };
+    const name = [raw.id, raw.name, raw.model].find((value) => typeof value === 'string');
+    if (typeof name !== 'string' || !name.trim() || seen.has(name)) return [];
+    seen.add(name);
+    return [{ name, model: name, details: { family: connection.provider } }];
+  });
+  return { models };
+}
+
+function normalizedNonStream(
+  protocol: ProviderProtocol,
+  body: unknown,
+  fallbackModel: string,
+): ChatStreamChunk {
+  if (!body || typeof body !== 'object') throw new ProviderError('Provider returned invalid JSON.');
+  if (protocol === 'anthropic') {
+    const data = body as {
+      model?: string;
+      content?: { type?: string; text?: string; thinking?: string }[];
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    const blocks = data.content ?? [];
+    return {
+      model: data.model ?? fallbackModel,
+      message: {
+        role: 'assistant',
+        content: blocks
+          .filter((x) => x.type === 'text')
+          .map((x) => x.text ?? '')
+          .join(''),
+        thinking: blocks
+          .filter((x) => x.type === 'thinking')
+          .map((x) => x.thinking ?? '')
+          .join(''),
+      },
+      done: true,
+      prompt_eval_count: data.usage?.input_tokens,
+      eval_count: data.usage?.output_tokens,
+    };
+  }
+
+  const data = body as {
+    model?: string;
+    choices?: {
+      message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown };
+    }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const message = data.choices?.[0]?.message;
+  return {
+    model: data.model ?? fallbackModel,
+    message: {
+      role: 'assistant',
+      content: textValue(message?.content),
+      thinking: textValue(message?.reasoning_content ?? message?.reasoning),
+    },
+    done: true,
+    prompt_eval_count: data.usage?.prompt_tokens,
+    eval_count: data.usage?.completion_tokens,
+  };
+}
+
+function ndjson(chunk: ChatStreamChunk): Uint8Array {
+  return encoder.encode(`${JSON.stringify(chunk)}\n`);
+}
+
+function providerStream(
+  response: Response,
+  protocol: ProviderProtocol,
+  fallbackModel: string,
+): ReadableStream<Uint8Array> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let model = fallbackModel;
+  let promptTokens: number | undefined;
+  let completionTokens: number | undefined;
+  let finished = false;
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = '';
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        controller.enqueue(
+          ndjson({
+            model,
+            message: { role: 'assistant', content: '' },
+            done: true,
+            prompt_eval_count: promptTokens,
+            eval_count: completionTokens,
+          }),
+        );
+      };
+      const handle = (dataText: string) => {
+        if (!dataText || dataText === '[DONE]') {
+          if (dataText === '[DONE]') finish();
+          return;
+        }
+        let event: unknown;
+        try {
+          event = JSON.parse(dataText);
+        } catch {
+          return;
+        }
+        if (!event || typeof event !== 'object') return;
+
+        if (protocol === 'anthropic') {
+          const data = event as {
+            type?: string;
+            message?: { model?: string; usage?: { input_tokens?: number } };
+            delta?: { type?: string; text?: string; thinking?: string };
+            usage?: { output_tokens?: number };
+            error?: { message?: string };
+          };
+          if (data.type === 'error') {
+            controller.enqueue(
+              ndjson({ error: data.error?.message ?? 'Anthropic stream error.', done: true }),
+            );
+            finished = true;
+            return;
+          }
+          if (data.message?.model) model = data.message.model;
+          if (data.message?.usage?.input_tokens !== undefined) {
+            promptTokens = data.message.usage.input_tokens;
+          }
+          if (data.usage?.output_tokens !== undefined) completionTokens = data.usage.output_tokens;
+          if (data.type === 'content_block_delta') {
+            const content = data.delta?.type === 'text_delta' ? (data.delta.text ?? '') : '';
+            const thinking =
+              data.delta?.type === 'thinking_delta' ? (data.delta.thinking ?? '') : '';
+            if (content || thinking) {
+              controller.enqueue(
+                ndjson({ model, message: { role: 'assistant', content, thinking }, done: false }),
+              );
+            }
+          }
+          if (data.type === 'message_stop') finish();
+          return;
+        }
+
+        const data = event as {
+          model?: string;
+          choices?: {
+            delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown };
+            finish_reason?: unknown;
+          }[];
+          usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+          error?: { message?: string };
+        };
+        if (data.error?.message) {
+          controller.enqueue(ndjson({ error: data.error.message, done: true }));
+          finished = true;
+          return;
+        }
+        if (data.model) model = data.model;
+        if (data.usage) {
+          promptTokens = data.usage.prompt_tokens;
+          completionTokens = data.usage.completion_tokens;
+        }
+        const choice = data.choices?.[0];
+        const content = textValue(choice?.delta?.content);
+        const thinking = textValue(choice?.delta?.reasoning_content ?? choice?.delta?.reasoning);
+        if (content || thinking) {
+          controller.enqueue(
+            ndjson({ model, message: { role: 'assistant', content, thinking }, done: false }),
+          );
+        }
+      };
+
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          if (buffer.includes('data:')) {
+            const events = buffer.split(/\r?\n\r?\n/);
+            buffer = events.pop() ?? '';
+            for (const block of events) {
+              const data = block
+                .split(/\r?\n/)
+                .filter((line) => line.startsWith('data:'))
+                .map((line) => line.slice(5).trimStart())
+                .join('\n');
+              handle(data);
+            }
+          } else {
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? '';
+            for (const line of lines) handle(line.trim());
+          }
+        }
+        const tail = `${buffer}${decoder.decode()}`.trim();
+        if (tail) {
+          if (tail.includes('data:')) {
+            const data = tail
+              .split(/\r?\n/)
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n');
+            handle(data);
+          } else handle(tail);
+        }
+        finish();
+        controller.close();
+      } catch (error) {
+        if (!finished) {
+          controller.enqueue(
+            ndjson({
+              error: error instanceof Error ? error.message : 'Provider stream failed.',
+              done: true,
+            }),
+          );
+        }
+        controller.close();
+      } finally {
+        reader.releaseLock();
+      }
+    },
+    cancel(reason) {
+      return reader.cancel(reason);
+    },
+  });
+}
+
+export async function providerChat(
+  input: ProviderInput,
+  request: ChatRequest,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const connection = await checkedConnection(resolveProviderConnection(input));
+  if (
+    !request ||
+    typeof request !== 'object' ||
+    !request.model ||
+    !Array.isArray(request.messages)
+  ) {
+    throw new ProviderError('Invalid chat request.', 400);
+  }
+  const protocol = connection.protocol;
+  const path = protocol === 'anthropic' ? 'messages' : 'chat/completions';
+  const body = protocol === 'anthropic' ? anthropicBody(request) : openAiBody(connection, request);
+  const response = await fetchUpstream(
+    endpoint(connection.baseUrl, path),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: request.stream ? 'text/event-stream' : 'application/json',
+        ...authHeaders(connection),
+      },
+      body: JSON.stringify(body),
+    },
+    signal,
+  );
+  if (!response.ok) throw await providerError(response);
+
+  if (request.stream) {
+    if (!response.body) throw new ProviderError('Provider returned no stream body.');
+    return new Response(providerStream(response, protocol, request.model), {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Cache-Control': 'no-store, no-transform',
+        Connection: 'keep-alive',
+      },
+    });
+  }
+
+  const normalized = normalizedNonStream(protocol, await response.json(), request.model);
+  return Response.json(normalized, { headers: { 'Cache-Control': 'no-store' } });
+}

@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ModelInfo } from '@/types';
 import { fetchModels } from '@/lib/api/client';
-import { ApiError, apiConfigured } from '@/lib/api/config';
+import {
+  API_CONFIG_CHANGED_EVENT,
+  ApiError,
+  apiConfigured,
+  getApiProvider,
+} from '@/lib/api/config';
+import { providerLabel } from '@/lib/providers/types';
 import { fetchModelLabels, fetchIsOwner, type ModelLabel } from './model-labels';
 
 interface ModelsState {
@@ -64,7 +70,12 @@ export function useModels(): ModelsState {
   const load = useCallback(async (signal?: AbortSignal) => {
     const gen = ++generation.current;
     if (!apiConfigured()) {
-      setError('Set NEXT_PUBLIC_API_URL to a reachable API (not localhost) to load models.');
+      const provider = getApiProvider();
+      setError(
+        provider === 'ollama'
+          ? 'Set a reachable Ollama URL or enable the server bridge to load models.'
+          : `Finish ${providerLabel(provider)} configuration to load models.`,
+      );
       setLoading(false);
       return;
     }
@@ -104,6 +115,16 @@ export function useModels(): ModelsState {
       });
     }
     return () => ctrl.abort();
+  }, [load]);
+
+  useEffect(() => {
+    const onConfigChanged = () => {
+      cache = null;
+      setModels([]);
+      void load();
+    };
+    window.addEventListener(API_CONFIG_CHANGED_EVENT, onConfigChanged);
+    return () => window.removeEventListener(API_CONFIG_CHANGED_EVENT, onConfigChanged);
   }, [load]);
 
   const reload = useCallback(() => {

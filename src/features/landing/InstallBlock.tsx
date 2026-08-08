@@ -6,8 +6,7 @@ import { copyText } from '@/lib/utils/clipboard';
 
 /**
  * The reference's "Install via terminal" block: a paper card with a tab row and
- * a copyable one-liner. Here the two tabs are the app's two real connection
- * modes, so the block teaches something instead of decorating.
+ * a copyable one-liner. Tabs cover both Ollama modes and cloud-provider setup.
  */
 const TABS = [
   {
@@ -21,6 +20,12 @@ const TABS = [
     label: 'Direct',
     hint: 'Let the browser talk to Ollama itself. Needs your origin allowed.',
     cmd: 'OLLAMA_ORIGINS=https://your-app.vercel.app ollama serve',
+  },
+  {
+    id: 'cloud',
+    label: 'Cloud',
+    hint: 'Pick OpenAI, Anthropic, OpenRouter, Groq, DeepSeek, or a custom HTTPS endpoint.',
+    cmd: 'Settings → Connection → Provider',
   },
 ] as const;
 

@@ -18,7 +18,7 @@ export function LandingFooter() {
         <div className="lamp-pool left-0 top-1/2 h-[130%] w-[70%] -translate-y-1/2 opacity-70" />
         <Reveal className="relative z-10 flex flex-col items-start gap-9 pb-24 sm:pb-32">
           <h2 className="type-mega max-w-[24ch] text-[clamp(2.4rem,7.6vw,5.5rem)] text-content">
-            Your machine. Your models. Your data.
+            Your models. Your provider. Your choice.
           </h2>
           <Link href="/chat" className="btn-primary btn-xl group">
             Open chat

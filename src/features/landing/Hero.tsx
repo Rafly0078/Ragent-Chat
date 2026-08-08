@@ -13,20 +13,20 @@ import { ProductPreview } from './ProductPreview';
  * A server component. The entrance is CSS (see `.enter*` in globals.css).
  */
 
-/** Models people actually run locally. Content, not decoration. */
+/** Real local and cloud model ids. Content, not decoration. */
 const RUNS = [
   'llama3.3',
   'qwen2.5-coder',
-  'gpt-oss',
+  'gpt-5',
+  'claude-sonnet-4-5',
+  'openai/gpt-5-mini',
   'deepseek-r1',
   'mistral-small',
   'phi4',
   'gemma3',
-  'codestral',
-  'nomic-embed-text',
 ];
 
-const LINES = ['The models that', 'never leave home'];
+const LINES = ['Your models.', 'One quiet workspace.'];
 
 /** One beat, so the whole hero reads as a single move rather than six. */
 const beat = (ms: number) => ({ animationDelay: `${ms}ms` });
@@ -38,7 +38,7 @@ export function Hero() {
         {/* Left: the thesis. */}
         <div className="relative z-10 min-w-0">
           <p className="type-eyebrow enter" style={beat(80)}>
-            Local models &middot; MIT licensed
+            Local + cloud &middot; MIT licensed
           </p>
 
           <h1 className="type-mega mt-7 max-w-[13ch] text-[clamp(2.5rem,7.3vw,6rem)] text-content">
@@ -55,9 +55,8 @@ export function Hero() {
             className="enter mt-7 max-w-[46ch] text-[1.05rem] leading-relaxed text-content-muted"
             style={beat(420)}
           >
-            A chat interface for the models already running on your own hardware. Streaming,
-            reasoning, documents, and a sandbox that fixes its own code &mdash; with nothing
-            travelling to anyone else&rsquo;s server.
+            Choose local Ollama or a cloud API. Streaming, reasoning, documents, and a sandbox that
+            fixes its own code &mdash; with each prompt sent only to the backend you select.
           </p>
 
           <div className="enter mt-9 flex flex-wrap items-center gap-3" style={beat(520)}>
@@ -74,7 +73,7 @@ export function Hero() {
         <div className="enter-pop relative z-10 lg:pl-6" style={beat(120)}>
           <ProductPreview />
           <p className="mt-5 text-center font-mono text-[0.68rem] uppercase tracking-[0.12em] text-content-subtle">
-            private by default / your hardware, your history
+            local by default / your provider, your choice
           </p>
         </div>
       </div>

@@ -34,6 +34,12 @@ import { cn } from '@/lib/utils/cn';
 import { APP_NAME, APP_VERSION } from '@/lib/app-meta';
 import { AccountSection } from '@/features/auth/AccountSection';
 import type { PromptPreset } from '@/types';
+import {
+  PROVIDER_PRESETS,
+  providerLabel,
+  type ApiProvider,
+  type ProviderProtocol,
+} from '@/lib/providers/types';
 
 type SectionId = 'account' | 'appearance' | 'connection' | 'prompt' | 'params' | 'app' | 'data';
 
@@ -47,10 +53,20 @@ const NAV: { id: SectionId; label: string; icon: React.ComponentType<{ className
   { id: 'data', label: 'Data & backup', icon: Download },
 ];
 
+const PROVIDERS: ApiProvider[] = [
+  'ollama',
+  'openai',
+  'anthropic',
+  'openrouter',
+  'groq',
+  'deepseek',
+  'custom',
+];
+
 export default function SettingsPage() {
   const hydrated = useHydrated();
   const s = useSettings();
-  const { models } = useModels();
+  const { models, loading: modelsLoading, error: modelsError, reload: reloadModels } = useModels();
   const { toast } = useToast();
 
   const conversations = useChatStore((st) => st.conversations);
@@ -67,6 +83,10 @@ export default function SettingsPage() {
       accent: s.accent,
       apiUrlOverride: s.apiUrlOverride,
       connectionMode: s.connectionMode,
+      apiProvider: s.apiProvider,
+      providerApiUrl: s.providerApiUrl,
+      providerModel: s.providerModel,
+      providerProtocol: s.providerProtocol,
       defaultModel: s.defaultModel,
       defaultSystemPrompt: s.defaultSystemPrompt,
       defaultParams: s.defaultParams,
@@ -252,96 +272,219 @@ export default function SettingsPage() {
             {active === 'connection' && (
               <Section icon={Server} title="Connection">
                 <Field
-                  label="Connection mode"
-                  hint={
-                    s.connectionMode === 'direct'
-                      ? 'Browser talks straight to Ollama. No duration limit, but the Ollama server needs CORS enabled (OLLAMA_ORIGINS).'
-                      : "Routed through this app's server, which forwards to Ollama. No CORS setup needed, but a single reply is capped by the host's function duration (e.g. ~300s on Vercel Hobby)."
-                  }
+                  htmlFor="settings-provider"
+                  label="Provider"
+                  hint="Choose local Ollama or a cloud API. Switching provider clears cloud credentials and model defaults."
                 >
-                  <div className="flex gap-2">
-                    {(
-                      [
-                        { value: 'direct', label: 'Direct' },
-                        { value: 'bridge', label: 'Via server' },
-                      ] as const
-                    ).map((opt) => (
-                      <button
-                        key={opt.value}
-                        onClick={() => s.setConnectionMode(opt.value)}
-                        className={cn(
-                          'btn-surface h-9 flex-1',
-                          s.connectionMode === opt.value &&
-                            'border-accent/50 bg-accent/10 text-content',
-                        )}
-                      >
-                        {opt.label}
-                      </button>
+                  <select
+                    id="settings-provider"
+                    value={s.apiProvider}
+                    onChange={(event) => s.setApiProvider(event.target.value as ApiProvider)}
+                    className="input"
+                  >
+                    {PROVIDERS.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {providerLabel(provider)}
+                      </option>
                     ))}
-                  </div>
+                  </select>
                 </Field>
 
-                {s.connectionMode === 'direct' ? (
+                {s.apiProvider === 'ollama' && (
                   <>
                     <Field
-                      htmlFor="settings-api-url"
-                      label="API URL"
-                      hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
+                      label="Connection mode"
+                      hint={
+                        s.connectionMode === 'direct'
+                          ? 'Browser talks straight to Ollama. No duration limit, but the Ollama server needs CORS enabled (OLLAMA_ORIGINS).'
+                          : "Routed through this app's server, which forwards to Ollama. No CORS setup needed, but a single reply is capped by the host's function duration (e.g. ~300s on Vercel Hobby)."
+                      }
                     >
-                      <input
-                        id="settings-api-url"
-                        value={s.apiUrlOverride}
-                        onChange={(e) => s.setApiUrlOverride(e.target.value)}
-                        placeholder={API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'}
-                        className="input font-mono text-sm"
-                        spellCheck={false}
-                      />
-                      <p className="mt-1.5 text-xs text-content-subtle">
-                        Active endpoint:{' '}
-                        <code className="text-accent-soft">{API_BASE_URL || '(unset)'}</code> — the
-                        browser connects to this directly, so make sure CORS is enabled on the
-                        Ollama server (<code className="text-accent-soft">OLLAMA_ORIGINS</code>).
-                      </p>
+                      <div className="flex gap-2">
+                        {(
+                          [
+                            { value: 'direct', label: 'Direct' },
+                            { value: 'bridge', label: 'Via server' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => s.setConnectionMode(opt.value)}
+                            className={cn(
+                              'btn-surface h-9 flex-1',
+                              s.connectionMode === opt.value &&
+                                'border-accent/50 bg-accent/10 text-content',
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
                     </Field>
 
+                    {s.connectionMode === 'direct' ? (
+                      <>
+                        <Field
+                          htmlFor="settings-api-url"
+                          label="API URL"
+                          hint="Your Ollama server's public URL (e.g. a Cloudflare Tunnel address). Overrides NEXT_PUBLIC_API_URL for this browser only."
+                        >
+                          <input
+                            id="settings-api-url"
+                            value={s.apiUrlOverride}
+                            onChange={(e) => s.setApiUrlOverride(e.target.value)}
+                            placeholder={
+                              API_BASE_URL || 'https://my-ollama-tunnel.trycloudflare.com'
+                            }
+                            className="input font-mono text-sm"
+                            spellCheck={false}
+                          />
+                          <p className="mt-1.5 text-xs text-content-subtle">
+                            Active endpoint:{' '}
+                            <code className="text-accent-soft">
+                              {s.apiUrlOverride || API_BASE_URL || '(unset)'}
+                            </code>{' '}
+                            — the browser connects to this directly, so make sure CORS is enabled on
+                            the Ollama server (
+                            <code className="text-accent-soft">OLLAMA_ORIGINS</code>).
+                          </p>
+                        </Field>
+
+                        <Field
+                          htmlFor="settings-access-token"
+                          label="Access token"
+                          hint="Bearer token, if the tunnel in front of Ollama requires one. Leave empty for a plain endpoint."
+                        >
+                          <input
+                            id="settings-access-token"
+                            type="password"
+                            value={s.apiToken}
+                            onChange={(e) => s.setApiToken(e.target.value)}
+                            placeholder="(none)"
+                            className="input font-mono text-sm"
+                            spellCheck={false}
+                            autoComplete="off"
+                          />
+                          <p className="mt-1.5 text-xs text-content-subtle">
+                            Stored in this browser only and left out of exported settings. Sending
+                            it adds a CORS preflight, so the endpoint must answer{' '}
+                            <code className="text-accent-soft">OPTIONS</code> with{' '}
+                            <code className="text-accent-soft">
+                              Access-Control-Allow-Headers: authorization
+                            </code>{' '}
+                            <em>before</em> checking the token — browsers never attach it to a
+                            preflight.
+                          </p>
+                        </Field>
+                      </>
+                    ) : (
+                      <Field label="Server endpoint">
+                        <p className="text-xs text-content-subtle">
+                          Requests go to <code className="text-accent-soft">/api/bridge/*</code> on
+                          this app&apos;s server, which forwards to the{' '}
+                          <code className="text-accent-soft">OLLAMA_API_URL</code> configured in the
+                          deployment&apos;s environment variables — nothing to set here. A
+                          token-protected endpoint also needs{' '}
+                          <code className="text-accent-soft">OLLAMA_API_TOKEN</code> there.
+                        </p>
+                      </Field>
+                    )}
+                  </>
+                )}
+
+                {s.apiProvider !== 'ollama' && (
+                  <>
+                    {s.apiProvider === 'custom' ? (
+                      <>
+                        <Field
+                          htmlFor="settings-provider-url"
+                          label="Endpoint URL"
+                          hint="Public HTTPS base URL, including version path. Local/private addresses and redirects are blocked."
+                        >
+                          <input
+                            id="settings-provider-url"
+                            type="url"
+                            value={s.providerApiUrl}
+                            onChange={(event) => s.setProviderApiUrl(event.target.value)}
+                            placeholder="https://api.example.com/v1"
+                            className="input font-mono text-sm"
+                            spellCheck={false}
+                            autoComplete="url"
+                          />
+                        </Field>
+                        <Field label="API protocol">
+                          <div className="flex gap-2">
+                            {(['openai', 'anthropic'] as ProviderProtocol[]).map((protocol) => (
+                              <button
+                                key={protocol}
+                                onClick={() => s.setProviderProtocol(protocol)}
+                                className={cn(
+                                  'btn-surface h-11 flex-1 capitalize sm:h-9',
+                                  s.providerProtocol === protocol &&
+                                    'border-accent/50 bg-accent/10 text-content',
+                                )}
+                              >
+                                {protocol}
+                              </button>
+                            ))}
+                          </div>
+                        </Field>
+                      </>
+                    ) : (
+                      <Field label="Endpoint">
+                        <code className="block break-all rounded-xl border border-border/15 bg-border/5 px-3 py-2.5 text-xs text-accent-soft">
+                          {PROVIDER_PRESETS[s.apiProvider].baseUrl}
+                        </code>
+                      </Field>
+                    )}
+
                     <Field
-                      htmlFor="settings-access-token"
-                      label="Access token"
-                      hint="Bearer token, if the tunnel in front of Ollama requires one. Leave empty for a plain endpoint."
+                      htmlFor="settings-provider-key"
+                      label="API key"
+                      hint={
+                        s.apiProvider === 'custom'
+                          ? 'Optional when the endpoint does not require authentication.'
+                          : `Required by ${providerLabel(s.apiProvider)}.`
+                      }
                     >
                       <input
-                        id="settings-access-token"
+                        id="settings-provider-key"
                         type="password"
-                        value={s.apiToken}
-                        onChange={(e) => s.setApiToken(e.target.value)}
-                        placeholder="(none)"
+                        value={s.providerApiKey}
+                        onChange={(event) => s.setProviderApiKey(event.target.value)}
+                        placeholder={s.apiProvider === 'custom' ? '(optional)' : 'sk-...'}
                         className="input font-mono text-sm"
                         spellCheck={false}
                         autoComplete="off"
                       />
                       <p className="mt-1.5 text-xs text-content-subtle">
-                        Stored in this browser only and left out of exported settings. Sending it
-                        adds a CORS preflight, so the endpoint must answer{' '}
-                        <code className="text-accent-soft">OPTIONS</code> with{' '}
-                        <code className="text-accent-soft">
-                          Access-Control-Allow-Headers: authorization
-                        </code>{' '}
-                        <em>before</em> checking the token — browsers never attach it to a
-                        preflight.
+                        Stored in localStorage. Excluded from exports. Sent through this app&apos;s
+                        same-origin proxy only to selected provider.
                       </p>
                     </Field>
+
+                    <Field
+                      htmlFor="settings-provider-model"
+                      label="Manual model ID"
+                      hint="Fallback when /models is unavailable. Also added to model picker."
+                    >
+                      <input
+                        id="settings-provider-model"
+                        value={s.providerModel}
+                        onChange={(event) => s.setProviderModel(event.target.value)}
+                        placeholder={
+                          s.apiProvider === 'anthropic'
+                            ? 'claude-sonnet-4-5'
+                            : s.apiProvider === 'openrouter'
+                              ? 'openai/gpt-5-mini'
+                              : 'model-id'
+                        }
+                        className="input font-mono text-sm"
+                        spellCheck={false}
+                        autoComplete="off"
+                      />
+                    </Field>
                   </>
-                ) : (
-                  <Field label="Server endpoint">
-                    <p className="text-xs text-content-subtle">
-                      Requests go to <code className="text-accent-soft">/api/bridge/*</code> on this
-                      app&apos;s server, which forwards to the{' '}
-                      <code className="text-accent-soft">OLLAMA_API_URL</code> configured in the
-                      deployment&apos;s environment variables — nothing to set here. A
-                      token-protected endpoint also needs{' '}
-                      <code className="text-accent-soft">OLLAMA_API_TOKEN</code> there.
-                    </p>
-                  </Field>
                 )}
 
                 <Field htmlFor="settings-default-model" label="Default model">
@@ -350,14 +493,39 @@ export default function SettingsPage() {
                     value={s.defaultModel}
                     onChange={(e) => s.setDefaultModel(e.target.value)}
                     className="input"
+                    disabled={modelsLoading && models.length === 0}
                   >
                     <option value="">Auto (first available)</option>
+                    {s.defaultModel && !models.some((model) => model.name === s.defaultModel) && (
+                      <option value={s.defaultModel}>{s.defaultModel}</option>
+                    )}
                     {models.map((m) => (
                       <option key={m.name} value={m.name}>
                         {m.label}
                       </option>
                     ))}
                   </select>
+                  {modelsLoading && (
+                    <p className="mt-1.5 text-xs text-content-subtle">Loading models…</p>
+                  )}
+                  {modelsError && !modelsLoading && (
+                    <div className="mt-1.5 flex items-start justify-between gap-3 text-xs text-warning">
+                      <span>{modelsError}</span>
+                      <button
+                        onClick={reloadModels}
+                        className="focus-ring min-h-11 shrink-0 rounded px-2 py-1 text-accent hover:bg-border/10 sm:min-h-9"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {s.apiProvider !== 'ollama' &&
+                    s.apiProvider !== 'custom' &&
+                    !s.providerApiKey && (
+                      <p className="mt-1.5 text-xs text-content-subtle">
+                        Add API key to load provider models.
+                      </p>
+                    )}
                 </Field>
               </Section>
             )}
@@ -531,7 +699,7 @@ export default function SettingsPage() {
           <div className="hw-rule flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pt-6">
             <span className="type-label inline-flex items-center gap-2 text-content-muted">
               <Sparkles className="h-3.5 w-3.5 text-accent" />
-              {APP_NAME} — private, local-first AI
+              {APP_NAME} — local and cloud AI
             </span>
             <span className="type-label text-content-subtle">{APP_VERSION}</span>
           </div>

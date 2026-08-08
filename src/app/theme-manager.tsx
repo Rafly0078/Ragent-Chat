@@ -3,7 +3,13 @@
 import { useEffect } from 'react';
 import { ACCENT_PRESETS } from '@/lib/store/defaults';
 import { useSettings } from '@/lib/store/settings-store';
-import { setApiOverride, setApiToken, setConnectionMode } from '@/lib/api/config';
+import {
+  API_CONFIG_CHANGED_EVENT,
+  setApiOverride,
+  setApiToken,
+  setConnectionMode,
+  setProviderConfig,
+} from '@/lib/api/config';
 
 /**
  * Applies the accent choice to the document root and propagates the API URL
@@ -19,18 +25,38 @@ export function ThemeManager({ children }: { children: React.ReactNode }) {
   const apiUrlOverride = useSettings((s) => s.apiUrlOverride);
   const apiToken = useSettings((s) => s.apiToken);
   const connectionMode = useSettings((s) => s.connectionMode);
+  const apiProvider = useSettings((s) => s.apiProvider);
+  const providerApiUrl = useSettings((s) => s.providerApiUrl);
+  const providerApiKey = useSettings((s) => s.providerApiKey);
+  const providerModel = useSettings((s) => s.providerModel);
+  const providerProtocol = useSettings((s) => s.providerProtocol);
 
   useEffect(() => {
     setApiOverride(apiUrlOverride);
-  }, [apiUrlOverride]);
-
-  useEffect(() => {
     setApiToken(apiToken);
-  }, [apiToken]);
-
-  useEffect(() => {
     setConnectionMode(connectionMode);
-  }, [connectionMode]);
+    setProviderConfig({
+      provider: apiProvider,
+      apiUrl: providerApiUrl,
+      apiKey: providerApiKey,
+      model: providerModel,
+      protocol: providerProtocol,
+    });
+    const timer = window.setTimeout(
+      () => window.dispatchEvent(new Event(API_CONFIG_CHANGED_EVENT)),
+      250,
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    apiUrlOverride,
+    apiToken,
+    connectionMode,
+    apiProvider,
+    providerApiUrl,
+    providerApiKey,
+    providerModel,
+    providerProtocol,
+  ]);
 
   useEffect(() => {
     const preset = ACCENT_PRESETS.find((a) => a.value === accent) ?? ACCENT_PRESETS[0]!;

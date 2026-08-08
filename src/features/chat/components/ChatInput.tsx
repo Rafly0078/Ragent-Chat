@@ -546,7 +546,7 @@ export function ChatInput({
               <Globe className="h-3 w-3" /> Web search
             </span>
           )}
-          {thinking.enabled && (
+          {thinking.enabled && !thinkingUnsupported && (
             <span className="type-label inline-flex items-center gap-1.5 text-accent">
               <Brain className="h-3 w-3" /> Thinking · {thinking.effort}
             </span>
