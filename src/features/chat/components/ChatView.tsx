@@ -18,7 +18,12 @@ import { copyText } from '@/lib/utils/clipboard';
 import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
 import type { Artifact } from '@/lib/tools/types';
 import { useSettings } from '@/lib/store/settings-store';
-import { providerSupportsThinking, providerThinkingKey } from '@/lib/api/config';
+import {
+  providerSupportsThinking,
+  providerThinkingEfforts,
+  providerThinkingKey,
+} from '@/lib/api/config';
+import { DEFAULT_THINKING } from '@/lib/store/defaults';
 
 interface Props {
   conversation: Conversation;
@@ -39,6 +44,19 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
   const providerThinkingUnsupported = !providerSupportsThinking(provider, providerProtocol);
   const thinkingKey = providerThinkingKey(conversation.model, provider, providerProtocol);
   const thinkingUnsupported = useThinkingStore((s) => s.unsupported.has(thinkingKey));
+  // OpenAI protocol only accepts low|medium|high; `max` is hidden from the
+  // picker and clamped to the highest allowed level here, so a conversation
+  // already persisted at `max` doesn't display a level it can't use. The
+  // stored value is left alone — switching back to Anthropic restores it.
+  const thinkingEfforts = useMemo(
+    () => providerThinkingEfforts(provider, providerProtocol),
+    [provider, providerProtocol],
+  );
+  const thinking = useMemo(() => {
+    const current = conversation.thinking ?? DEFAULT_THINKING;
+    if (thinkingEfforts.includes(current.effort)) return current;
+    return { ...current, effort: thinkingEfforts[thinkingEfforts.length - 1] ?? 'high' };
+  }, [conversation.thinking, thinkingEfforts]);
 
   const { send, stop, regenerate, continueGeneration, editUserMessage } = useChat(conversation.id);
 
@@ -125,8 +143,9 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
         onSlashCommand={handleSlash}
         visionCapable={visionCapable}
         conversationId={conversation.id}
-        thinking={conversation.thinking ?? { enabled: false, effort: 'medium' }}
+        thinking={thinking}
         thinkingUnsupported={thinkingUnsupported || providerThinkingUnsupported}
+        thinkingEfforts={thinkingEfforts}
         onThinkingChange={(patch) => setThinking(conversation.id, patch)}
       />
 

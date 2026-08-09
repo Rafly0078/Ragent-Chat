@@ -504,23 +504,35 @@ export default function SettingsPage() {
                 )}
 
                 <Field htmlFor="settings-default-model" label="Default model">
-                  <select
-                    id="settings-default-model"
-                    value={s.defaultModel}
-                    onChange={(e) => s.setDefaultModel(e.target.value)}
-                    className="input"
-                    disabled={modelsLoading && models.length === 0}
-                  >
-                    <option value="">Auto (first available)</option>
-                    {s.defaultModel && !models.some((model) => model.name === s.defaultModel) && (
-                      <option value={s.defaultModel}>{s.defaultModel}</option>
-                    )}
-                    {models.map((m) => (
-                      <option key={m.name} value={m.name}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
+                  {s.apiProvider === 'default' ? (
+                    // Pinned server-side. A picker here would imply a choice the
+                    // server will override on every request.
+                    <p className="text-xs text-content-subtle">
+                      Locked to{' '}
+                      <span className="font-mono text-content">
+                        {models[0]?.label ?? (modelsLoading ? 'loading…' : 'the built-in model')}
+                      </span>
+                      . Pick another provider above to choose your own model.
+                    </p>
+                  ) : (
+                    <select
+                      id="settings-default-model"
+                      value={s.defaultModel}
+                      onChange={(e) => s.setDefaultModel(e.target.value)}
+                      className="input"
+                      disabled={modelsLoading && models.length === 0}
+                    >
+                      <option value="">Auto (first available)</option>
+                      {s.defaultModel && !models.some((model) => model.name === s.defaultModel) && (
+                        <option value={s.defaultModel}>{s.defaultModel}</option>
+                      )}
+                      {models.map((m) => (
+                        <option key={m.name} value={m.name}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   {modelsLoading && (
                     <p className="mt-1.5 text-xs text-content-subtle">Loading models…</p>
                   )}

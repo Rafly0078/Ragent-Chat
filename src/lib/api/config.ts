@@ -11,6 +11,8 @@ import {
   providerNeedsApiKey,
   providerProtocol as resolveProviderProtocol,
 } from '@/lib/providers/types';
+import type { ThinkingEffort } from '@/types';
+import { THINKING_EFFORTS } from '@/lib/store/defaults';
 
 /** Build-time endpoint from the environment. Shown in the UI for reference. */
 export const API_BASE_URL: string = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
@@ -115,6 +117,23 @@ export function providerSupportsThinking(
   if (provider === 'ollama') return true;
   const protocol = resolveProviderProtocol(provider, customProtocol);
   return protocol === 'openai' || protocol === 'anthropic';
+}
+
+/**
+ * Thinking effort levels selectable for the active provider/protocol.
+ *
+ * OpenAI's `reasoning_effort` accepts only low|medium|high. `max` is an
+ * app-internal level that works for Anthropic (mapped to a token budget) but
+ * is rejected by OpenAI, so it is hidden from the picker there and clamped
+ * server-side anyway. Ollama gets the full list via the toggle's own path.
+ */
+export function providerThinkingEfforts(
+  provider: ApiProvider = apiProvider,
+  customProtocol: ProviderProtocol = customProviderProtocol,
+): ThinkingEffort[] {
+  const protocol = provider === 'ollama' ? 'ollama' : resolveProviderProtocol(provider, customProtocol);
+  if (protocol === 'openai') return THINKING_EFFORTS.filter((e) => e !== 'max');
+  return THINKING_EFFORTS;
 }
 
 /** Scope runtime capability failures to the exact provider/protocol/model tuple. */

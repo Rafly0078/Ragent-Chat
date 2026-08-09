@@ -2,15 +2,27 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
-import { Check, ChevronDown, Cpu, Eye, Info, Pencil, RefreshCw, AlertCircle } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Cpu,
+  Eye,
+  Info,
+  Lock,
+  Pencil,
+  RefreshCw,
+  AlertCircle,
+} from 'lucide-react';
 import type { ModelInfo } from '@/types';
 import { useModels } from './use-models';
 import { ModelDetailsPanel } from './ModelDetailsPanel';
 import { ModelLabelEditor } from './ModelLabelEditor';
 import { formatBytes, formatNumber } from '@/lib/utils/format';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
 import { getApiProvider } from '@/lib/api/config';
+import { useSettings } from '@/lib/store/settings-store';
 
 interface Props {
   value: string;
@@ -19,6 +31,7 @@ interface Props {
 
 export function ModelSelector({ value, onChange }: Props) {
   const { models, loading, error, isOwner, reload } = useModels();
+  const provider = useSettings((s) => s.apiProvider);
   const [open, setOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsModel, setDetailsModel] = useState<ModelInfo | null>(null);
@@ -42,6 +55,26 @@ export function ModelSelector({ value, onChange }: Props) {
 
   const active = models.find((m) => m.name === value);
   const showOllamaDetails = getApiProvider() === 'ollama';
+  // The built-in provider is pinned to one server-chosen model, so there is
+  // nothing to pick. Render a plain label instead of a dropdown that can only
+  // ever reselect what is already active. `providerChat` enforces this too —
+  // this is the visible half of a lock that does not depend on the client.
+  const locked = provider === 'default';
+
+  if (locked) {
+    return (
+      <Tooltip label="This deployment is locked to one model" side="bottom">
+        <span className="btn-surface h-9 max-w-[60vw] cursor-default gap-2 px-3 sm:max-w-xs">
+          <Cpu className="h-4 w-4 shrink-0 text-accent" />
+          <span className="truncate font-medium">
+            {active ? active.label : loading ? 'Loading…' : value || 'Default model'}
+          </span>
+          {active?.supportsVision && <Eye className="h-3.5 w-3.5 shrink-0 text-accent-soft" />}
+          <Lock className="h-3.5 w-3.5 shrink-0 text-content-subtle" />
+        </span>
+      </Tooltip>
+    );
+  }
 
   return (
     <div ref={ref} className="relative">

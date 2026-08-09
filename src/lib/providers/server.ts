@@ -89,7 +89,10 @@ export function resolveProviderConnection(raw: ProviderInput): ProviderConnectio
   // that also leaks the server key's spending to an attacker-chosen host.
   if (provider === 'default') {
     const builtIn = builtInProviderConfig();
-    if (!builtIn.baseUrl) {
+    // The model is as mandatory as the endpoint: this provider is pinned to one
+    // model, so without an id there is nothing to pin it to and every request
+    // would fall back to whatever the client asked for.
+    if (!builtIn.baseUrl || !builtIn.model) {
       throw new ProviderError('The built-in provider is not configured on this server.', 503);
     }
     return {
@@ -345,7 +348,11 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
     body.stream_options = { include_usage: true };
   }
   if (request.think) {
-    const effort = request.think === true ? 'medium' : request.think;
+    let effort = request.think === true ? 'medium' : request.think;
+    // OpenAI's `reasoning_effort` only accepts low|medium|high. `max` is an app-
+    // internal level that works for Anthropic (via token budget) but is invalid
+    // for OpenAI, so clamp it down to prevent the upstream from dropping thinking.
+    if (effort === 'max') effort = 'high';
     body.reasoning_effort = effort;
     delete body.temperature;
     delete body.top_p;
@@ -407,40 +414,21 @@ export async function providerModels(
   signal?: AbortSignal,
 ): Promise<{ models: { name: string; model: string; details: { family: string } }[] }> {
   const connection = await checkedConnection(resolveProviderConnection(input));
-  // The built-in provider's model id is a server-only env var, so the browser
-  // can't add it to the picker the way the manual-model field does for the other
-  // providers. Seed it here, and fall back to it alone when the endpoint has no
-  // usable /models route.
-  const builtInModel = connection.provider === 'default' ? builtInProviderConfig().model : '';
+  // The built-in provider is pinned to exactly one model. The upstream endpoint
+  // serves many, but the deployment only pays for this one, so the picker is
+  // never shown the rest — and `providerChat` overrides the model anyway, so a
+  // client that hardcodes another id gets nowhere.
+  if (connection.provider === 'default') {
+    const model = builtInProviderConfig().model;
+    return { models: [{ name: model, model, details: { family: connection.provider } }] };
+  }
 
-  let response: Response;
-  try {
-    response = await fetchUpstream(
-      endpoint(connection.baseUrl, 'models'),
-      { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(connection) } },
-      signal,
-    );
-  } catch (error) {
-    if (builtInModel) {
-      return {
-        models: [
-          { name: builtInModel, model: builtInModel, details: { family: connection.provider } },
-        ],
-      };
-    }
-    throw error;
-  }
-  if (!response.ok) {
-    if (builtInModel) {
-      await response.body?.cancel().catch(() => {});
-      return {
-        models: [
-          { name: builtInModel, model: builtInModel, details: { family: connection.provider } },
-        ],
-      };
-    }
-    throw await providerError(response);
-  }
+  const response = await fetchUpstream(
+    endpoint(connection.baseUrl, 'models'),
+    { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(connection) } },
+    signal,
+  );
+  if (!response.ok) throw await providerError(response);
   const body = (await response.json()) as { data?: unknown[]; models?: unknown[] } | unknown[];
   const data = Array.isArray(body)
     ? body
@@ -456,13 +444,6 @@ export async function providerModels(
     seen.add(name);
     return [{ name, model: name, details: { family: connection.provider } }];
   });
-  if (builtInModel && !seen.has(builtInModel)) {
-    models.unshift({
-      name: builtInModel,
-      model: builtInModel,
-      details: { family: connection.provider },
-    });
-  }
   return { models };
 }
 
@@ -692,10 +673,11 @@ export async function providerChat(
   if (!request || typeof request !== 'object' || !Array.isArray(request.messages)) {
     throw new ProviderError('Invalid chat request.', 400);
   }
-  // A first-time visitor on the built-in provider has no model in local state
-  // yet — the id lives in a server-only env var. Fill it in rather than
-  // rejecting the very first message they send.
-  if (!request.model && connection.provider === 'default') {
+  // The built-in provider is locked to one model. Overriding rather than
+  // validating is deliberate: the client never has a say, so stale local state
+  // or a hand-crafted request can't route the owner's key at a model they
+  // aren't paying for.
+  if (connection.provider === 'default') {
     request = { ...request, model: builtInProviderConfig().model };
   }
   if (!request.model) throw new ProviderError('Invalid chat request.', 400);

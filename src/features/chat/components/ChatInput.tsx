@@ -15,7 +15,7 @@ import {
   Check,
   Command,
 } from 'lucide-react';
-import type { Attachment, ThinkingConfig } from '@/types';
+import type { Attachment, ThinkingConfig, ThinkingEffort } from '@/types';
 import { attachmentPreview, fileToAttachment } from '@/lib/utils/files';
 import { estimateTokens } from '@/lib/utils/format';
 import { SLASH_COMMANDS, THINKING_EFFORTS } from '@/lib/store/defaults';
@@ -37,6 +37,8 @@ interface Props {
   thinking: ThinkingConfig;
   /** Whether the current model is known to not support thinking. */
   thinkingUnsupported: boolean;
+  /** Effort levels the active provider accepts. Defaults to all of them. */
+  thinkingEfforts?: ThinkingEffort[];
   /** Update the thinking config (toggle on/off, change effort). */
   onThinkingChange: (patch: Partial<ThinkingConfig>) => void;
 }
@@ -53,6 +55,7 @@ export function ChatInput({
   conversationId,
   thinking,
   thinkingUnsupported,
+  thinkingEfforts = THINKING_EFFORTS,
   onThinkingChange,
 }: Props) {
   const [docEditOpen, setDocEditOpen] = useState(false);
@@ -478,7 +481,7 @@ export function ChatInput({
                   <div className="px-3 py-1.5 text-[0.7rem] font-medium uppercase tracking-wide text-content-subtle">
                     Thinking effort
                   </div>
-                  {THINKING_EFFORTS.map((effort) => (
+                  {thinkingEfforts.map((effort) => (
                     <button
                       key={effort}
                       role="menuitemradio"
