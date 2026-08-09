@@ -35,6 +35,7 @@ import { APP_NAME, APP_VERSION } from '@/lib/app-meta';
 import { AccountSection } from '@/features/auth/AccountSection';
 import type { PromptPreset } from '@/types';
 import {
+  DEFAULT_PROVIDER_ENABLED,
   PROVIDER_PRESETS,
   providerLabel,
   type ApiProvider,
@@ -54,6 +55,7 @@ const NAV: { id: SectionId; label: string; icon: React.ComponentType<{ className
 ];
 
 const PROVIDERS: ApiProvider[] = [
+  ...(DEFAULT_PROVIDER_ENABLED ? (['default'] as ApiProvider[]) : []),
   'ollama',
   'openai',
   'anthropic',
@@ -274,7 +276,11 @@ export default function SettingsPage() {
                 <Field
                   htmlFor="settings-provider"
                   label="Provider"
-                  hint="Choose local Ollama or a cloud API. Switching provider clears cloud credentials and model defaults."
+                  hint={
+                    DEFAULT_PROVIDER_ENABLED
+                      ? 'Default works with no setup. Or pick local Ollama or your own cloud API — switching clears cloud credentials and model defaults.'
+                      : 'Choose local Ollama or a cloud API. Switching provider clears cloud credentials and model defaults.'
+                  }
                 >
                   <select
                     id="settings-provider"
@@ -289,6 +295,16 @@ export default function SettingsPage() {
                     ))}
                   </select>
                 </Field>
+
+                {s.apiProvider === 'default' && (
+                  <Field label="Endpoint">
+                    <p className="text-xs text-content-subtle">
+                      Ready to use — no endpoint, key or model to enter. Requests go through this
+                      app&apos;s server, which holds the credentials in its own environment. Pick
+                      another provider above to use your own.
+                    </p>
+                  </Field>
+                )}
 
                 {s.apiProvider === 'ollama' && (
                   <>
@@ -392,7 +408,7 @@ export default function SettingsPage() {
                   </>
                 )}
 
-                {s.apiProvider !== 'ollama' && (
+                {s.apiProvider !== 'ollama' && s.apiProvider !== 'default' && (
                   <>
                     {s.apiProvider === 'custom' ? (
                       <>
@@ -520,6 +536,7 @@ export default function SettingsPage() {
                     </div>
                   )}
                   {s.apiProvider !== 'ollama' &&
+                    s.apiProvider !== 'default' &&
                     s.apiProvider !== 'custom' &&
                     !s.providerApiKey && (
                       <p className="mt-1.5 text-xs text-content-subtle">

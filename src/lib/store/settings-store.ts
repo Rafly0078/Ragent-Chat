@@ -4,6 +4,7 @@ import type { GenerationParams, PromptPreset } from '@/types';
 import { ACCENT_PRESETS, DEFAULT_PARAMS, DEFAULT_PRESETS, DEFAULT_SYSTEM_PROMPT } from './defaults';
 import { browserStorage } from './storage';
 import type { ApiProvider, ProviderProtocol } from '@/lib/providers/types';
+import { DEFAULT_PROVIDER_ENABLED } from '@/lib/providers/types';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ConnectionMode = 'direct' | 'bridge';
@@ -76,18 +77,25 @@ const initial = {
   apiUrlOverride: '',
   apiToken: '',
   connectionMode: 'direct' as ConnectionMode,
-  apiProvider:
-    process.env.NEXT_PUBLIC_DEFAULT_AI_PROVIDER === 'custom'
+  apiProvider: DEFAULT_PROVIDER_ENABLED
+    ? ('default' as ApiProvider)
+    : process.env.NEXT_PUBLIC_DEFAULT_AI_PROVIDER === 'custom'
       ? ('custom' as ApiProvider)
       : ('ollama' as ApiProvider),
-  providerApiUrl: process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL?.trim() ?? '',
+  providerApiUrl: DEFAULT_PROVIDER_ENABLED
+    ? ''
+    : (process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL?.trim() ?? ''),
   providerApiKey: '',
-  providerModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
+  providerModel: DEFAULT_PROVIDER_ENABLED
+    ? ''
+    : (process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? ''),
   providerProtocol:
     process.env.NEXT_PUBLIC_DEFAULT_AI_PROTOCOL === 'anthropic'
       ? ('anthropic' as ProviderProtocol)
       : ('openai' as ProviderProtocol),
-  defaultModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
+  defaultModel: DEFAULT_PROVIDER_ENABLED
+    ? ''
+    : (process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? ''),
   defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultParams: DEFAULT_PARAMS,
   presets: DEFAULT_PRESETS,
@@ -105,6 +113,7 @@ const DATA_KEYS = Object.keys(initial) as (keyof SettingsData)[];
 const THEMES: ThemeMode[] = ['dark', 'light', 'system'];
 const MODES: ConnectionMode[] = ['direct', 'bridge'];
 const PROVIDERS: ApiProvider[] = [
+  'default',
   'ollama',
   'openai',
   'anthropic',
@@ -187,6 +196,8 @@ export const useSettings = create<SettingsState>()(
       setApiProvider: (apiProvider) =>
         set({
           apiProvider,
+          // 'default' keeps every credential field empty: endpoint, key and model
+          // are server-only env vars, so there is nothing to prefill here.
           providerApiUrl:
             apiProvider === 'custom'
               ? (process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL?.trim() ?? '')
@@ -232,7 +243,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(browserStorage),
-      version: 6,
+      version: 7,
       /**
        * v* -> v4: the product moved from a colored field to the monochrome system,
        * which renamed every accent preset (Acid, Paper and Peach no longer
@@ -246,6 +257,8 @@ export const useSettings = create<SettingsState>()(
           accent?: string;
           apiProvider?: ApiProvider;
           providerProtocol?: ProviderProtocol;
+          apiUrlOverride?: string;
+          providerApiKey?: string;
         };
         if (version < 4) {
           const known = new Set(ACCENT_PRESETS.map((a) => a.value));
@@ -264,6 +277,22 @@ export const useSettings = create<SettingsState>()(
             providerModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
             defaultModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
           });
+        }
+        /**
+         * v7 introduces the built-in "Default" provider. Existing visitors are
+         * moved onto it only when they never got a working setup of their own —
+         * no Ollama URL and no cloud key. Someone who pasted their own
+         * credentials keeps the provider they chose; switching them to a shared
+         * endpoint would silently redirect their traffic (and their bill).
+         */
+        if (version < 7 && DEFAULT_PROVIDER_ENABLED) {
+          const configured =
+            Boolean(state.apiUrlOverride?.trim()) || Boolean(state.providerApiKey?.trim());
+          if (!configured) {
+            state.apiProvider = 'default';
+            state.providerProtocol = 'openai';
+            Object.assign(state, { providerApiUrl: '', providerModel: '', defaultModel: '' });
+          }
         }
         return state;
       },

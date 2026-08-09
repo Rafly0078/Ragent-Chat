@@ -6,6 +6,7 @@
 
 import type { ApiProvider, ProviderConnection, ProviderProtocol } from '@/lib/providers/types';
 import {
+  DEFAULT_PROVIDER_ENABLED,
   providerBaseUrl,
   providerNeedsApiKey,
   providerProtocol as resolveProviderProtocol,
@@ -93,6 +94,12 @@ export function getProviderConnection(): ProviderConnection {
   if (apiProvider === 'ollama') {
     throw new ApiError('Cloud provider is not selected.', { kind: 'config' });
   }
+  // The built-in provider carries no client-side configuration at all: the
+  // server fills in endpoint, key and model from its own env. Sending empty
+  // strings keeps the wire shape stable for the route's validator.
+  if (apiProvider === 'default') {
+    return { provider: 'default', baseUrl: '', apiKey: '', protocol: 'openai' };
+  }
   return {
     provider: apiProvider,
     baseUrl: providerBaseUrl(apiProvider, providerApiUrl),
@@ -139,6 +146,10 @@ const BRIDGE_ROUTES: Record<string, string> = {
  *   report configured and let real errors surface at request time.
  */
 export function apiConfigured(): boolean {
+  // The built-in provider is configured entirely server-side, so there is
+  // nothing the browser can check. Report configured whenever the deployment
+  // advertises it and let real failures surface at request time.
+  if (apiProvider === 'default') return DEFAULT_PROVIDER_ENABLED;
   if (apiProvider !== 'ollama') {
     const connection = getProviderConnection();
     if (!connection.baseUrl) return false;

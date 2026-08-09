@@ -148,6 +148,11 @@ environment variables. Everything else unlocks an optional feature.
 | `SUPABASE_SERVICE_ROLE_KEY`       | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
 | `OWNER_EMAIL`                     | server     | Comma-separated emails allowed to curate model display names.                        |
 | `TAVILY_API_KEY`                  | server     | Enables web search. Unset → `/api/search` returns 501.                               |
+| `NEXT_PUBLIC_DEFAULT_PROVIDER_ENABLED` | public | `true` adds the zero-setup **Default** provider and preselects it for new visitors. |
+| `DEFAULT_OPENAI_ENDPOINT`         | **secret** | Built-in provider base URL, normally ending in `/v1`. Server-only.                   |
+| `DEFAULT_OPENAI_API_KEY`          | **secret** | Built-in provider API key. Server-only; never use `NEXT_PUBLIC_`.                    |
+| `DEFAULT_OPENAI_MODEL`            | **secret** | Built-in provider model ID. Seeded into the model picker by the server.              |
+| `DEFAULT_OPENAI_PROTOCOL`         | **secret** | `openai` (default) or `anthropic`.                                                   |
 | `NEXT_PUBLIC_DEFAULT_AI_PROVIDER` | public     | Set `custom` to make the environment-configured provider the chatbot default.        |
 | `NEXT_PUBLIC_DEFAULT_AI_API_URL`  | public     | Default custom provider base URL, normally ending in `/v1`.                          |
 | `NEXT_PUBLIC_DEFAULT_AI_MODEL`    | public     | Optional default model ID.                                                           |

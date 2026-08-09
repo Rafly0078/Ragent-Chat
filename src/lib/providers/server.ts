@@ -44,7 +44,28 @@ function defaultProviderConfig(): {
   };
 }
 
+/**
+ * The built-in "Default" provider: a third-party OpenAI-compatible endpoint the
+ * deployment owner pays for, so a brand-new visitor can chat without pasting any
+ * credentials. Endpoint, key and model are server-only env vars — the browser
+ * sends `provider: 'default'` and nothing else, and never sees any of them.
+ */
+export function builtInProviderConfig(): {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  protocol: ProviderProtocol;
+} {
+  return {
+    baseUrl: (process.env.DEFAULT_OPENAI_ENDPOINT || '').trim().replace(/\/+$/, ''),
+    apiKey: (process.env.DEFAULT_OPENAI_API_KEY || '').trim(),
+    model: (process.env.DEFAULT_OPENAI_MODEL || '').trim(),
+    protocol: process.env.DEFAULT_OPENAI_PROTOCOL === 'anthropic' ? 'anthropic' : 'openai',
+  };
+}
+
 const CLOUD_PROVIDERS = [
+  'default',
   'openai',
   'anthropic',
   'openrouter',
@@ -61,6 +82,22 @@ export function resolveProviderConnection(raw: ProviderInput): ProviderConnectio
   const provider = raw.provider;
   if (!isCloudProvider(provider)) {
     throw new ProviderError('Unknown cloud provider.', 400);
+  }
+
+  // Built-in provider: ignore every field the client sent. Taking `baseUrl` or
+  // `apiKey` from the request here would turn this branch into an open proxy
+  // that also leaks the server key's spending to an attacker-chosen host.
+  if (provider === 'default') {
+    const builtIn = builtInProviderConfig();
+    if (!builtIn.baseUrl) {
+      throw new ProviderError('The built-in provider is not configured on this server.', 503);
+    }
+    return {
+      provider,
+      baseUrl: builtIn.baseUrl,
+      apiKey: builtIn.apiKey,
+      protocol: builtIn.protocol,
+    };
   }
 
   let apiKey = typeof raw.apiKey === 'string' ? raw.apiKey.trim() : '';
@@ -370,12 +407,40 @@ export async function providerModels(
   signal?: AbortSignal,
 ): Promise<{ models: { name: string; model: string; details: { family: string } }[] }> {
   const connection = await checkedConnection(resolveProviderConnection(input));
-  const response = await fetchUpstream(
-    endpoint(connection.baseUrl, 'models'),
-    { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(connection) } },
-    signal,
-  );
-  if (!response.ok) throw await providerError(response);
+  // The built-in provider's model id is a server-only env var, so the browser
+  // can't add it to the picker the way the manual-model field does for the other
+  // providers. Seed it here, and fall back to it alone when the endpoint has no
+  // usable /models route.
+  const builtInModel = connection.provider === 'default' ? builtInProviderConfig().model : '';
+
+  let response: Response;
+  try {
+    response = await fetchUpstream(
+      endpoint(connection.baseUrl, 'models'),
+      { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(connection) } },
+      signal,
+    );
+  } catch (error) {
+    if (builtInModel) {
+      return {
+        models: [
+          { name: builtInModel, model: builtInModel, details: { family: connection.provider } },
+        ],
+      };
+    }
+    throw error;
+  }
+  if (!response.ok) {
+    if (builtInModel) {
+      await response.body?.cancel().catch(() => {});
+      return {
+        models: [
+          { name: builtInModel, model: builtInModel, details: { family: connection.provider } },
+        ],
+      };
+    }
+    throw await providerError(response);
+  }
   const body = (await response.json()) as { data?: unknown[]; models?: unknown[] } | unknown[];
   const data = Array.isArray(body)
     ? body
@@ -391,6 +456,13 @@ export async function providerModels(
     seen.add(name);
     return [{ name, model: name, details: { family: connection.provider } }];
   });
+  if (builtInModel && !seen.has(builtInModel)) {
+    models.unshift({
+      name: builtInModel,
+      model: builtInModel,
+      details: { family: connection.provider },
+    });
+  }
   return { models };
 }
 
@@ -617,14 +689,16 @@ export async function providerChat(
   signal?: AbortSignal,
 ): Promise<Response> {
   const connection = await checkedConnection(resolveProviderConnection(input));
-  if (
-    !request ||
-    typeof request !== 'object' ||
-    !request.model ||
-    !Array.isArray(request.messages)
-  ) {
+  if (!request || typeof request !== 'object' || !Array.isArray(request.messages)) {
     throw new ProviderError('Invalid chat request.', 400);
   }
+  // A first-time visitor on the built-in provider has no model in local state
+  // yet — the id lives in a server-only env var. Fill it in rather than
+  // rejecting the very first message they send.
+  if (!request.model && connection.provider === 'default') {
+    request = { ...request, model: builtInProviderConfig().model };
+  }
+  if (!request.model) throw new ProviderError('Invalid chat request.', 400);
   const protocol = connection.protocol;
   const path = protocol === 'anthropic' ? 'messages' : 'chat/completions';
   const body = protocol === 'anthropic' ? anthropicBody(request) : openAiBody(connection, request);
