@@ -84,7 +84,12 @@ function mapModel(raw: RawModel): ModelInfo {
     },
     supportsVision:
       caps.includes('vision') ||
-      /vision|llava|bakllava|moondream|llama3\.2-vision|gpt-(4o|4\.1|5)|claude-(3|sonnet-4|opus-4)|gemini|pixtral|qwen[^/]*vl/i.test(
+      // `capabilities` is an Ollama-only field, so for cloud providers this
+      // regex is the only signal. It matches families that ship a vision
+      // encoder in the base model, not just the ones that say so in the name:
+      // Qwen 3.5/3.6 are multimodal without a `-VL` suffix, which is why the
+      // older `qwen…vl` pattern alone reported them as text-only.
+      /vision|llava|bakllava|moondream|llama3\.2-vision|gpt-(4o|4\.1|5)|claude-(3|sonnet-4|opus-4|opus-5)|gemini|pixtral|qwen[^/]*vl|qwen3\.[5-9]|glm-[5-9]|minimax-m[3-9]|kimi-k[2-9]/i.test(
         name,
       ),
   };

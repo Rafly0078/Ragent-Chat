@@ -55,12 +55,20 @@ export function builtInProviderConfig(): {
   apiKey: string;
   model: string;
   protocol: ProviderProtocol;
+  vision: boolean | undefined;
 } {
+  const vision = (process.env.DEFAULT_OPENAI_VISION || '').trim().toLowerCase();
   return {
     baseUrl: (process.env.DEFAULT_OPENAI_ENDPOINT || '').trim().replace(/\/+$/, ''),
     apiKey: (process.env.DEFAULT_OPENAI_API_KEY || '').trim(),
     model: (process.env.DEFAULT_OPENAI_MODEL || '').trim(),
     protocol: process.env.DEFAULT_OPENAI_PROTOCOL === 'anthropic' ? 'anthropic' : 'openai',
+    // Tri-state on purpose. A cloud `/v1/models` response carries no capability
+    // field, so the client falls back to matching the model name — which is
+    // wrong for any multimodal model that doesn't advertise it there. Set this
+    // to declare the answer instead of guessing; leave it unset to keep the
+    // name heuristic.
+    vision: vision === '' ? undefined : vision === 'true' || vision === '1',
   };
 }
 
@@ -412,15 +420,29 @@ function anthropicBody(request: ChatRequest): Record<string, unknown> {
 export async function providerModels(
   input: ProviderInput,
   signal?: AbortSignal,
-): Promise<{ models: { name: string; model: string; details: { family: string } }[] }> {
+): Promise<{
+  models: { name: string; model: string; details: { family: string }; capabilities?: string[] }[];
+}> {
   const connection = await checkedConnection(resolveProviderConnection(input));
   // The built-in provider is pinned to exactly one model. The upstream endpoint
   // serves many, but the deployment only pays for this one, so the picker is
   // never shown the rest — and `providerChat` overrides the model anyway, so a
   // client that hardcodes another id gets nowhere.
   if (connection.provider === 'default') {
-    const model = builtInProviderConfig().model;
-    return { models: [{ name: model, model, details: { family: connection.provider } }] };
+    const { model, vision } = builtInProviderConfig();
+    return {
+      models: [
+        {
+          name: model,
+          model,
+          details: { family: connection.provider },
+          // Only sent when the deployment declared an answer. Sending `[]`
+          // unconditionally would read as "no vision" and override the client's
+          // name-based fallback with a guess the server never made.
+          ...(vision === undefined ? {} : { capabilities: vision ? ['vision'] : [] }),
+        },
+      ],
+    };
   }
 
   const response = await fetchUpstream(
