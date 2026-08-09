@@ -21,6 +21,17 @@ interface Props {
 
 const SIDEBAR_WIDTH = 288;
 
+/**
+ * How far left the closed mobile drawer parks.
+ *
+ * Not simply `-SIDEBAR_WIDTH`: `.popover` carries shadow-3, whose second layer
+ * is an 80px blur at -24px spread, so a drawer parked at exactly its own width
+ * still bleeds a soft dark band down the left edge of the screen. That was
+ * invisible while the drawer unmounted when closed; now that it stays mounted,
+ * it would be permanent.
+ */
+const DRAWER_PARKED_X = SIDEBAR_WIDTH + 96;
+
 /** The only fields the sidebar list needs. */
 interface Row {
   id: string;
@@ -219,28 +230,42 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
   // mounts once the viewport is actually known.
   if (hydrated && isMobile) {
     return (
-      <AnimatePresence>
-        {open && (
-          <>
+      <>
+        {/* The scrim still mounts on demand — it is one empty div, and fading it
+            in/out is the whole reason `AnimatePresence` is here. */}
+        <AnimatePresence>
+          {open && (
             <m.div
               className="scrim fixed inset-0 z-40"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
               onClick={onClose}
             />
-            <m.aside
-              initial={{ x: -SIDEBAR_WIDTH }}
-              animate={{ x: 0 }}
-              exit={{ x: -SIDEBAR_WIDTH }}
-              transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-              className="popover fixed inset-y-0 left-0 z-50 w-72 max-w-[88vw] rounded-none border-y-0 border-l-0"
-            >
-              {content}
-            </m.aside>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+
+        {/* The drawer, by contrast, stays mounted and slides.
+            Mounting it on open meant React built the header, the search field
+            and every conversation row in the same frame the spring started, so
+            the first frames of the animation were spent on layout instead of
+            movement — the stutter this fixes. Mounted once, an open is a pure
+            transform the compositor can carry.
+
+            `inert` (not just `pointer-events`) while closed: an off-screen
+            drawer that keeps its rows in the tab order and in the accessibility
+            tree is worse than the jank was. */}
+        <m.aside
+          inert={!open}
+          initial={false}
+          animate={{ x: open ? 0 : -DRAWER_PARKED_X }}
+          transition={{ type: 'spring', stiffness: 400, damping: 40 }}
+          className="popover fixed inset-y-0 left-0 z-50 w-72 max-w-[88vw] rounded-none border-y-0 border-l-0"
+        >
+          {content}
+        </m.aside>
+      </>
     );
   }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   Check,
@@ -39,16 +39,23 @@ export const ChatListItem = memo(function ChatListItem({
   active,
   onSelect,
 }: Props) {
-  const renameConversation = useChatStore((s) => s.renameConversation);
-  const deleteConversation = useChatStore((s) => s.deleteConversation);
-  const togglePin = useChatStore((s) => s.togglePin);
-  const duplicate = useChatStore((s) => s.duplicateConversation);
-  const { toast } = useToast();
-
+  /**
+   * Mount cost is the whole design of this component.
+   *
+   * A row is cheap on purpose: no store subscriptions, no JS animation driver,
+   * and nothing the overflow menu needs until the menu is actually opened. The
+   * mobile drawer mounts every row in the frame its open animation starts, so
+   * anything paid here is paid N times inside one frame — which is what made
+   * the drawer stutter on a phone.
+   *
+   * Actions therefore come from `getState()` at call time instead of four
+   * `useChatStore(s => s.action)` selectors: they are stable for the store's
+   * lifetime, so subscribing to them only ever cost 4×N subscriptions and
+   * bought nothing.
+   */
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -56,42 +63,33 @@ export const ChatListItem = memo(function ChatListItem({
     if (editing) inputRef.current?.select();
   }, [editing]);
 
-  // Close the menu on outside click/tap.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [menuOpen]);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
 
-  // Reset the delete-confirm state whenever the menu is dismissed.
-  useEffect(() => {
-    if (!menuOpen) setConfirming(false);
-  }, [menuOpen]);
+  const startRename = useCallback(() => {
+    setDraft(title);
+    setEditing(true);
+    setMenuOpen(false);
+  }, [title]);
 
   const commit = () => {
     setEditing(false);
-    if (draft.trim()) renameConversation(id, draft);
+    if (draft.trim()) useChatStore.getState().renameConversation(id, draft);
     else setDraft(title);
   };
 
-  const exportMarkdown = () => {
-    const convo = useChatStore.getState().conversations.find((c) => c.id === id);
-    if (!convo) return;
-    downloadText(`${slugify(convo.title)}.md`, conversationToMarkdown(convo), 'text/markdown');
-    toast('Exported as Markdown', 'success');
-    setMenuOpen(false);
-  };
-
   return (
-    <m.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.18 }}
+    // A CSS entrance, not `m.div`. The animation is identical to the eye, but a
+    // motion component per row spins up a driver per row; a keyframe is handed
+    // to the compositor and costs nothing on the main thread after the first
+    // frame.
+    <div
       className={cn(
         'group/item relative flex items-center gap-1 rounded py-1 pl-3 pr-1 text-sm transition-colors',
+        'motion-safe:animate-fade-in',
+        // Skip layout/paint for rows scrolled out of the list — but never while
+        // this row's menu is open, since the containment it implies would clip
+        // the popover hanging below the row.
+        !menuOpen && 'cv-row',
         active
           ? 'bg-accent/14 text-content'
           : 'text-content-muted hover:bg-border/[0.06] hover:text-content',
@@ -176,81 +174,119 @@ export const ChatListItem = memo(function ChatListItem({
 
           <AnimatePresence>
             {menuOpen && (
-              <m.div
-                initial={{ opacity: 0, y: -6, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                transition={{ duration: 0.14 }}
-                role="menu"
-                onClick={(e) => e.stopPropagation()}
-                className="popover absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden p-1.5"
-              >
-                {!confirming ? (
-                  <>
-                    <MenuRow
-                      icon={Pencil}
-                      label="Rename"
-                      onClick={() => {
-                        setDraft(title);
-                        setEditing(true);
-                        setMenuOpen(false);
-                      }}
-                    />
-                    <MenuRow
-                      icon={pinned ? PinOff : Pin}
-                      label={pinned ? 'Unpin' : 'Pin'}
-                      onClick={() => {
-                        togglePin(id);
-                        setMenuOpen(false);
-                      }}
-                    />
-                    <MenuRow icon={Download} label="Export Markdown" onClick={exportMarkdown} />
-                    <MenuRow
-                      icon={Copy}
-                      label="Duplicate"
-                      onClick={() => {
-                        duplicate(id);
-                        setMenuOpen(false);
-                      }}
-                    />
-                    <div className="bg-border/12 my-1 h-px" />
-                    <MenuRow
-                      icon={Trash2}
-                      label="Delete"
-                      danger
-                      onClick={() => setConfirming(true)}
-                    />
-                  </>
-                ) : (
-                  <div className="p-1.5">
-                    <p className="px-1.5 pb-2 text-xs text-content-muted">Delete this chat?</p>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => {
-                          deleteConversation(id);
-                          setMenuOpen(false);
-                        }}
-                        className="btn-destructive btn-sm flex-1"
-                      >
-                        <Check className="h-3.5 w-3.5" /> Delete
-                      </button>
-                      <button
-                        onClick={() => setConfirming(false)}
-                        className="btn-ghost btn-sm flex-1"
-                      >
-                        <X className="h-3.5 w-3.5" /> Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </m.div>
+              <RowMenu
+                id={id}
+                pinned={pinned}
+                containerRef={menuRef}
+                onClose={closeMenu}
+                onRename={startRename}
+              />
             )}
           </AnimatePresence>
         </div>
       )}
-    </m.div>
+    </div>
   );
 });
+
+/**
+ * The overflow menu, mounted only while open.
+ *
+ * Everything the menu needs lives here rather than on the row: the toast
+ * context, the delete-confirm state, and the outside-click listener. On the row
+ * those were paid by every row in the list, forever, to serve the one menu a
+ * user might open. Unmounting also resets the confirm step for free, which the
+ * row previously needed a third effect for.
+ */
+function RowMenu({
+  id,
+  pinned,
+  containerRef,
+  onClose,
+  onRename,
+}: {
+  id: string;
+  pinned: boolean;
+  containerRef: RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+  onRename: () => void;
+}) {
+  const { toast } = useToast();
+  const [confirming, setConfirming] = useState(false);
+
+  // `containerRef` wraps the trigger as well as the menu, so tapping the trigger
+  // stays a toggle instead of closing here and reopening on the click.
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [containerRef, onClose]);
+
+  const exportMarkdown = () => {
+    const convo = useChatStore.getState().conversations.find((c) => c.id === id);
+    if (!convo) return;
+    downloadText(`${slugify(convo.title)}.md`, conversationToMarkdown(convo), 'text/markdown');
+    toast('Exported as Markdown', 'success');
+    onClose();
+  };
+
+  return (
+    <m.div
+      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+      transition={{ duration: 0.14 }}
+      role="menu"
+      onClick={(e) => e.stopPropagation()}
+      className="popover absolute right-0 top-full z-50 mt-1 w-48 overflow-hidden p-1.5"
+    >
+      {!confirming ? (
+        <>
+          <MenuRow icon={Pencil} label="Rename" onClick={onRename} />
+          <MenuRow
+            icon={pinned ? PinOff : Pin}
+            label={pinned ? 'Unpin' : 'Pin'}
+            onClick={() => {
+              useChatStore.getState().togglePin(id);
+              onClose();
+            }}
+          />
+          <MenuRow icon={Download} label="Export Markdown" onClick={exportMarkdown} />
+          <MenuRow
+            icon={Copy}
+            label="Duplicate"
+            onClick={() => {
+              useChatStore.getState().duplicateConversation(id);
+              onClose();
+            }}
+          />
+          <div className="bg-border/12 my-1 h-px" />
+          <MenuRow icon={Trash2} label="Delete" danger onClick={() => setConfirming(true)} />
+        </>
+      ) : (
+        <div className="p-1.5">
+          <p className="px-1.5 pb-2 text-xs text-content-muted">Delete this chat?</p>
+          <div className="flex gap-1.5">
+            <button
+              onClick={() => {
+                useChatStore.getState().deleteConversation(id);
+                onClose();
+              }}
+              className="btn-destructive btn-sm flex-1"
+            >
+              <Check className="h-3.5 w-3.5" /> Delete
+            </button>
+            <button onClick={() => setConfirming(false)} className="btn-ghost btn-sm flex-1">
+              <X className="h-3.5 w-3.5" /> Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </m.div>
+  );
+}
 
 function MenuRow({
   icon: Icon,

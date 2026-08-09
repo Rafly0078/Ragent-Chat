@@ -634,6 +634,20 @@ h4 {
     contain-intrinsic-size: 0 320px;
   }
 
+  /* Same trick at conversation-row scale. A long sidebar list mounts all at once
+     when the mobile drawer opens, and every offscreen row still cost layout and
+     paint in that first frame. Rows are a fixed height, so the placeholder size
+     is close to exact and the scroll height barely settles as rows realize;
+     `auto` then remembers each row's real size after its first pass.
+
+     Only ever applied to a row whose overflow menu is CLOSED. `content-visibility`
+     carries paint containment even while the element is on screen, which would
+     clip the menu popover — it hangs below the row it belongs to. */
+  .cv-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 44px;
+  }
+
   .chat-container {
     @apply mx-auto w-full max-w-[860px] px-4 sm:px-6;
   }
