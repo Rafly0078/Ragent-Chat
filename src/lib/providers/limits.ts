@@ -57,6 +57,10 @@ const MODEL_CONTEXT_PATTERNS: { pattern: RegExp; context: number }[] = [
   { pattern: /qwen3?[.-]?(max|next|coder)/, context: 256_000 },
   { pattern: /minimax-m[12]/, context: 1_000_000 },
   { pattern: /grok-[34]/, context: 256_000 },
+  // v4 and later moved to a 1M window; v3/R1 stayed at 128k. Kept as two
+  // entries rather than one loose `deepseek-v\d` so a future v5 with a smaller
+  // window doesn't silently inherit the larger number.
+  { pattern: /deepseek-v[4-9]/, context: 1_000_000 },
   { pattern: /deepseek-(v3|r1|chat|reasoner)/, context: 128_000 },
   { pattern: /kimi-k[12]/, context: 200_000 },
   { pattern: /glm-[45]/, context: 200_000 },

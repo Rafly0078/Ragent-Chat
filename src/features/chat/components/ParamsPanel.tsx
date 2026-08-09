@@ -5,7 +5,7 @@ import { Modal } from '@/components/ui/modal';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { DEFAULT_PARAMS } from '@/lib/store/defaults';
-import { limitSourceLabel, resolveLimits } from '@/features/models/resolve-limits';
+import { limitSourceLabel, useResolvedLimits } from '@/features/models/resolve-limits';
 import { cn } from '@/lib/utils/cn';
 
 interface Props {
@@ -22,7 +22,7 @@ const FALLBACK_MAX = 131_072;
 
 /** Generation parameter editor: temperature, top_p, top_k, repeat penalty, ctx, max tokens. */
 export function ParamsPanel({ open, onClose, params, onChange, model }: Props) {
-  const limits = resolveLimits(params, model);
+  const limits = useResolvedLimits(params, model);
 
   // Slider ceilings track the detected limit so a 1M-token model isn't capped at
   // the old hardcoded 131072 the moment someone switches to manual.

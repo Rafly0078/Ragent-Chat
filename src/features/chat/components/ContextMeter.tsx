@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import type { Conversation, Message } from '@/types';
 import { Tooltip } from '@/components/ui/tooltip';
 import { estimateTokens } from '@/lib/utils/format';
-import { limitSourceLabel, resolveLimits } from '@/features/models/resolve-limits';
+import { limitSourceLabel, useResolvedLimits } from '@/features/models/resolve-limits';
 import { cn } from '@/lib/utils/cn';
 
 /** Small per-message overhead for role/formatting tokens in the chat template. */
@@ -54,7 +54,7 @@ function estimateContextUsage(convo: Conversation): number {
 export function ContextMeter({ conversation }: { conversation: Conversation }) {
   // The meter has to measure against the window actually being sent, which with
   // auto on is the model's own, not the stored slider number.
-  const limits = resolveLimits(conversation.params, conversation.model ?? '');
+  const limits = useResolvedLimits(conversation.params, conversation.model ?? '');
   const limit = limits.contextLength;
 
   const used = useMemo(

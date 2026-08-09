@@ -57,6 +57,8 @@ export function builtInProviderConfig(): {
   model: string;
   protocol: ProviderProtocol;
   vision: boolean | undefined;
+  contextLength: number | undefined;
+  maxOutputTokens: number | undefined;
 } {
   const vision = (process.env.DEFAULT_OPENAI_VISION || '').trim().toLowerCase();
   return {
@@ -70,7 +72,20 @@ export function builtInProviderConfig(): {
     // to declare the answer instead of guessing; leave it unset to keep the
     // name heuristic.
     vision: vision === '' ? undefined : vision === 'true' || vision === '1',
+    // The pinned model's real limits. This provider's model list is synthesised
+    // from env rather than read from upstream, so without these the client had
+    // nothing to size the context against and fell back to the slider's stored
+    // number — a 1M-window model reading as 131072. Left unset, the server
+    // probes the upstream `/models` entry instead (see providerModels).
+    contextLength: envPositiveInt(process.env.DEFAULT_OPENAI_CONTEXT_LENGTH),
+    maxOutputTokens: envPositiveInt(process.env.DEFAULT_OPENAI_MAX_OUTPUT_TOKENS),
   };
+}
+
+/** Parse a positive integer env var, treating unset/garbage as "not declared". */
+function envPositiveInt(value: string | undefined): number | undefined {
+  const n = Number((value || '').trim());
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
 }
 
 const CLOUD_PROVIDERS = [
@@ -500,7 +515,17 @@ export async function providerModels(
   // never shown the rest — and `providerChat` overrides the model anyway, so a
   // client that hardcodes another id gets nowhere.
   if (connection.provider === 'default') {
-    const { model, vision } = builtInProviderConfig();
+    const { model, vision, contextLength, maxOutputTokens } = builtInProviderConfig();
+    // Declared limits win; anything the deployment didn't declare is probed
+    // from the upstream `/models` entry for this one model. The probe is
+    // best-effort — a gateway that doesn't publish limits, or is briefly down,
+    // must not take the model picker down with it.
+    const probed =
+      contextLength != null && maxOutputTokens != null
+        ? {}
+        : await probeModelLimits(connection, model, signal);
+    const context = contextLength ?? probed.context_length;
+    const output = maxOutputTokens ?? probed.max_output_tokens;
     return {
       models: [
         {
@@ -511,6 +536,8 @@ export async function providerModels(
           // unconditionally would read as "no vision" and override the client's
           // name-based fallback with a guess the server never made.
           ...(vision === undefined ? {} : { capabilities: vision ? ['vision'] : [] }),
+          ...(context == null ? {} : { context_length: context }),
+          ...(output == null ? {} : { max_output_tokens: output }),
         },
       ],
     };
@@ -543,6 +570,41 @@ export async function providerModels(
     return [{ name, model: name, details: { family: connection.provider }, ...limits }];
   });
   return { models };
+}
+
+/**
+ * Ask an upstream `/models` for one model's limits. Best-effort by design:
+ * every failure path returns `{}` so the caller falls back to its own defaults
+ * rather than surfacing an error. Used by the built-in provider, whose model
+ * list is synthesised from env and so carries no limits of its own.
+ */
+async function probeModelLimits(
+  connection: ProviderConnection,
+  model: string,
+  signal?: AbortSignal,
+): Promise<{ context_length?: number; max_output_tokens?: number }> {
+  try {
+    const response = await fetchUpstream(
+      endpoint(connection.baseUrl, 'models'),
+      { method: 'GET', headers: { Accept: 'application/json', ...authHeaders(connection) } },
+      signal,
+    );
+    if (!response.ok) return {};
+    const body = (await response.json()) as { data?: unknown[]; models?: unknown[] } | unknown[];
+    const data = Array.isArray(body)
+      ? body
+      : Array.isArray(body.data)
+        ? body.data
+        : (body.models ?? []);
+    const entry = data.find((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const raw = item as { id?: unknown; name?: unknown; model?: unknown };
+      return [raw.id, raw.name, raw.model].some((value) => value === model);
+    });
+    return entry ? extractModelLimits(entry as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 /**

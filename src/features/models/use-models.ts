@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ModelInfo } from '@/types';
 import { fetchModels } from '@/lib/api/client';
 import {
@@ -24,6 +24,41 @@ interface ModelsState {
 // Module-level cache so switching routes doesn't refetch every mount.
 let cache: ModelInfo[] | null = null;
 let ownerCache: boolean | null = null;
+
+// Bumped on every cache write so components reading the cache synchronously can
+// re-render when it fills. Without this, anything resolved from `getCachedModel`
+// during the first render (the context meter, the params panel) stayed on its
+// fallback until an unrelated state change happened to re-render it.
+let cacheVersion = 0;
+const cacheListeners = new Set<() => void>();
+
+function setCache(next: ModelInfo[] | null): void {
+  cache = next;
+  cacheVersion++;
+  for (const listener of cacheListeners) listener();
+}
+
+function subscribeToCache(listener: () => void): () => void {
+  cacheListeners.add(listener);
+  return () => cacheListeners.delete(listener);
+}
+
+/**
+ * Re-render the caller whenever the model cache changes.
+ *
+ * Returns an opaque version number — the value is meaningless, the point is
+ * that reading it subscribes the component. Callers pair it with
+ * `getCachedModel` to read fresh metadata on each render.
+ */
+export function useModelsCacheVersion(): number {
+  return useSyncExternalStore(
+    subscribeToCache,
+    () => cacheVersion,
+    // The server render has no cache; pinning the snapshot to 0 keeps it stable
+    // and avoids a hydration mismatch if a client load already landed.
+    () => 0,
+  );
+}
 
 /**
  * Synchronous read of an already-loaded model's metadata.
@@ -101,7 +136,7 @@ export function useModels(): ModelsState {
       const [list, labels] = await Promise.all([fetchModels(signal), fetchModelLabels(signal)]);
       if (gen !== generation.current) return;
       const merged = applyLabels(list, labels);
-      cache = merged;
+      setCache(merged);
       setModels(merged);
     } catch (err) {
       if (err instanceof ApiError && err.kind === 'aborted') return;
@@ -133,7 +168,7 @@ export function useModels(): ModelsState {
 
   useEffect(() => {
     const onConfigChanged = () => {
-      cache = null;
+      setCache(null);
       setModels([]);
       void load();
     };
@@ -142,7 +177,7 @@ export function useModels(): ModelsState {
   }, [load]);
 
   const reload = useCallback(() => {
-    cache = null;
+    setCache(null);
     ownerCache = null;
     void load();
     void fetchIsOwner().then((v) => {
