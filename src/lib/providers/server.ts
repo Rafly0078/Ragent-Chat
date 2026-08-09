@@ -26,6 +26,24 @@ export interface ProviderInput {
   protocol?: unknown;
 }
 
+function defaultProviderConfig(): {
+  baseUrl: string;
+  apiKey: string;
+  protocol: ProviderProtocol;
+} {
+  return {
+    baseUrl: (process.env.DEFAULT_AI_API_URL || process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL || '')
+      .trim()
+      .replace(/\/+$/, ''),
+    apiKey: (process.env.DEFAULT_AI_API_KEY || '').trim(),
+    protocol:
+      process.env.DEFAULT_AI_API_PROTOCOL === 'anthropic' ||
+      process.env.NEXT_PUBLIC_DEFAULT_AI_PROTOCOL === 'anthropic'
+        ? 'anthropic'
+        : 'openai',
+  };
+}
+
 const CLOUD_PROVIDERS = [
   'openai',
   'anthropic',
@@ -45,7 +63,7 @@ export function resolveProviderConnection(raw: ProviderInput): ProviderConnectio
     throw new ProviderError('Unknown cloud provider.', 400);
   }
 
-  const apiKey = typeof raw.apiKey === 'string' ? raw.apiKey.trim() : '';
+  let apiKey = typeof raw.apiKey === 'string' ? raw.apiKey.trim() : '';
   if (provider !== 'custom') {
     if (!apiKey) throw new ProviderError('API key is required for this provider.', 400);
     const preset = PROVIDER_PRESETS[provider];
@@ -57,11 +75,16 @@ export function resolveProviderConnection(raw: ProviderInput): ProviderConnectio
     };
   }
 
-  const protocol = raw.protocol;
+  const defaults = defaultProviderConfig();
+  const rawBaseUrl = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim() : '';
+  const baseUrl = (rawBaseUrl || defaults.baseUrl).replace(/\/+$/, '');
+  const usesDefaultEndpoint = Boolean(defaults.baseUrl) && baseUrl === defaults.baseUrl;
+  if (!apiKey && usesDefaultEndpoint) apiKey = defaults.apiKey;
+
+  const protocol = raw.protocol || (usesDefaultEndpoint ? defaults.protocol : undefined);
   if (protocol !== 'openai' && protocol !== 'anthropic') {
     throw new ProviderError('Custom endpoint protocol must be OpenAI or Anthropic.', 400);
   }
-  const baseUrl = typeof raw.baseUrl === 'string' ? raw.baseUrl.trim() : '';
   return { provider, baseUrl, apiKey, protocol: protocol as ProviderProtocol };
 }
 

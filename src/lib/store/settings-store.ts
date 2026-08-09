@@ -76,12 +76,18 @@ const initial = {
   apiUrlOverride: '',
   apiToken: '',
   connectionMode: 'direct' as ConnectionMode,
-  apiProvider: 'ollama' as ApiProvider,
-  providerApiUrl: '',
+  apiProvider:
+    process.env.NEXT_PUBLIC_DEFAULT_AI_PROVIDER === 'custom'
+      ? ('custom' as ApiProvider)
+      : ('ollama' as ApiProvider),
+  providerApiUrl: process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL?.trim() ?? '',
   providerApiKey: '',
-  providerModel: '',
-  providerProtocol: 'openai' as ProviderProtocol,
-  defaultModel: '',
+  providerModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
+  providerProtocol:
+    process.env.NEXT_PUBLIC_DEFAULT_AI_PROTOCOL === 'anthropic'
+      ? ('anthropic' as ProviderProtocol)
+      : ('openai' as ProviderProtocol),
+  defaultModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
   defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultParams: DEFAULT_PARAMS,
   presets: DEFAULT_PRESETS,
@@ -181,10 +187,23 @@ export const useSettings = create<SettingsState>()(
       setApiProvider: (apiProvider) =>
         set({
           apiProvider,
-          providerApiUrl: '',
+          providerApiUrl:
+            apiProvider === 'custom'
+              ? (process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL?.trim() ?? '')
+              : '',
           providerApiKey: '',
-          providerModel: '',
-          defaultModel: '',
+          providerModel:
+            apiProvider === 'custom'
+              ? (process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '')
+              : '',
+          defaultModel:
+            apiProvider === 'custom'
+              ? (process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '')
+              : '',
+          providerProtocol:
+            apiProvider === 'custom' && process.env.NEXT_PUBLIC_DEFAULT_AI_PROTOCOL === 'anthropic'
+              ? 'anthropic'
+              : 'openai',
         }),
       setProviderApiUrl: (providerApiUrl) => set({ providerApiUrl }),
       setProviderApiKey: (providerApiKey) => set({ providerApiKey }),
@@ -213,7 +232,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(browserStorage),
-      version: 5,
+      version: 6,
       /**
        * v* -> v4: the product moved from a colored field to the monochrome system,
        * which renamed every accent preset (Acid, Paper and Peach no longer
@@ -235,6 +254,16 @@ export const useSettings = create<SettingsState>()(
         if (version < 5) {
           state.apiProvider = 'ollama';
           state.providerProtocol = 'openai';
+        }
+        if (version < 6 && process.env.NEXT_PUBLIC_DEFAULT_AI_PROVIDER === 'custom') {
+          state.apiProvider = 'custom';
+          state.providerProtocol =
+            process.env.NEXT_PUBLIC_DEFAULT_AI_PROTOCOL === 'anthropic' ? 'anthropic' : 'openai';
+          Object.assign(state, {
+            providerApiUrl: process.env.NEXT_PUBLIC_DEFAULT_AI_API_URL?.trim() ?? '',
+            providerModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
+            defaultModel: process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? '',
+          });
         }
         return state;
       },

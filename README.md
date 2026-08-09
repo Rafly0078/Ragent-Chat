@@ -138,36 +138,23 @@ npm run typecheck  # tsc --noEmit
 Ollama needs one reachable endpoint. Cloud providers are configured per browser in Settings and need no provider
 environment variables. Everything else unlocks an optional feature.
 
-| Variable                        | Scope      | Purpose                                                                              |
-| ------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
-| `OLLAMA_API_URL`                | server     | Upstream Ollama endpoint for bridge mode. **Preferred** — never reaches the browser. |
-| `NEXT_PUBLIC_API_URL`           | public     | Legacy/direct-mode endpoint. Ships in the client bundle.                             |
-| `NEXT_PUBLIC_DISABLE_BRIDGE`    | public     | `true` hides chat (static/demo deploy with no model backend).                        |
-| `NEXT_PUBLIC_SUPABASE_URL`      | public     | Supabase project URL. Leave blank for guest-only mode.                               |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public     | Anon key — safe in the browser under RLS.                                            |
-| `SUPABASE_SERVICE_ROLE_KEY`     | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
-| `OWNER_EMAIL`                   | server     | Comma-separated emails allowed to curate model display names.                        |
-| `TAVILY_API_KEY`                | server     | Enables web search. Unset → `/api/search` returns 501.                               |
-| `RAGENT_API_KEY`                | server     | Protects public OpenAI-compatible API routes. Never expose in `NEXT_PUBLIC_*`.      |
+| Variable                          | Scope      | Purpose                                                                              |
+| --------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| `OLLAMA_API_URL`                  | server     | Upstream Ollama endpoint for bridge mode. **Preferred** — never reaches the browser. |
+| `NEXT_PUBLIC_API_URL`             | public     | Legacy/direct-mode endpoint. Ships in the client bundle.                             |
+| `NEXT_PUBLIC_DISABLE_BRIDGE`      | public     | `true` hides chat (static/demo deploy with no model backend).                        |
+| `NEXT_PUBLIC_SUPABASE_URL`        | public     | Supabase project URL. Leave blank for guest-only mode.                               |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`   | public     | Anon key — safe in the browser under RLS.                                            |
+| `SUPABASE_SERVICE_ROLE_KEY`       | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
+| `OWNER_EMAIL`                     | server     | Comma-separated emails allowed to curate model display names.                        |
+| `TAVILY_API_KEY`                  | server     | Enables web search. Unset → `/api/search` returns 501.                               |
+| `NEXT_PUBLIC_DEFAULT_AI_PROVIDER` | public     | Set `custom` to make the environment-configured provider the chatbot default.        |
+| `NEXT_PUBLIC_DEFAULT_AI_API_URL`  | public     | Default custom provider base URL, normally ending in `/v1`.                          |
+| `NEXT_PUBLIC_DEFAULT_AI_MODEL`    | public     | Optional default model ID.                                                           |
+| `NEXT_PUBLIC_DEFAULT_AI_PROTOCOL` | public     | `openai` (default) or `anthropic`.                                                   |
+| `DEFAULT_AI_API_KEY`              | **secret** | Default custom provider API key. Server-only; never use `NEXT_PUBLIC_`.              |
 
 `.env.local` is gitignored. Never commit it.
-
-### Public API
-
-Set `RAGENT_API_KEY` in Vercel Project Settings → Environment Variables. Keep it
-server-only. After deploy, use these OpenAI-compatible routes:
-
-- `POST https://<your-domain>/api/v1/chat/completions`
-- `GET https://<your-domain>/api/v1/models`
-
-Send key as `Authorization: Bearer <RAGENT_API_KEY>` (or `x-api-key`). Example:
-
-```bash
-curl https://<your-domain>/api/v1/chat/completions \
-  -H "Authorization: Bearer $RAGENT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Halo"}]}'
-```
 
 ### Database
 
