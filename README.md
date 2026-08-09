@@ -148,8 +148,26 @@ environment variables. Everything else unlocks an optional feature.
 | `SUPABASE_SERVICE_ROLE_KEY`     | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
 | `OWNER_EMAIL`                   | server     | Comma-separated emails allowed to curate model display names.                        |
 | `TAVILY_API_KEY`                | server     | Enables web search. Unset → `/api/search` returns 501.                               |
+| `RAGENT_API_KEY`                | server     | Protects public OpenAI-compatible API routes. Never expose in `NEXT_PUBLIC_*`.      |
 
 `.env.local` is gitignored. Never commit it.
+
+### Public API
+
+Set `RAGENT_API_KEY` in Vercel Project Settings → Environment Variables. Keep it
+server-only. After deploy, use these OpenAI-compatible routes:
+
+- `POST https://<your-domain>/api/v1/chat/completions`
+- `GET https://<your-domain>/api/v1/models`
+
+Send key as `Authorization: Bearer <RAGENT_API_KEY>` (or `x-api-key`). Example:
+
+```bash
+curl https://<your-domain>/api/v1/chat/completions \
+  -H "Authorization: Bearer $RAGENT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"llama3.2","messages":[{"role":"user","content":"Halo"}]}'
+```
 
 ### Database
 
