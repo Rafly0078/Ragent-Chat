@@ -12,6 +12,7 @@ export function Slider({
   onChange,
   hint,
   format = (v) => String(v),
+  hideLabel = false,
 }: {
   label: string;
   value: number;
@@ -21,12 +22,15 @@ export function Slider({
   onChange: (v: number) => void;
   hint?: string;
   format?: (v: number) => string;
+  /** Drop the visible label when the caller already renders one above the
+   *  slider; `label` is still used for the accessible names. */
+  hideLabel?: boolean;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <label className="text-sm font-medium text-content">{label}</label>
+      <div className={cn('flex items-center', hideLabel ? 'justify-end' : 'justify-between')}>
+        {!hideLabel && <label className="text-sm font-medium text-content">{label}</label>}
         <input
           type="number"
           value={value}

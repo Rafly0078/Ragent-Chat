@@ -208,7 +208,16 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
   // The drawer takes `.popover`, the same elevated surface every menu and dialog
   // uses: overlay fill, functional border, shadow-3. That is what makes it read
   // as lifted above a dimmed page rather than as the page having slid sideways.
-  if (isMobile) {
+  //
+  // The branch is gated on `hydrated`, and the desktop panel carries `md:block`
+  // rather than trusting the branch alone. `useIsMobile()` reports false on the
+  // server and on the client's first render (see use-media-query), so a purely
+  // JS-driven split painted the full-width desktop panel on a phone for a frame
+  // before the effect flipped it — a visible sideways lurch on every load. With
+  // the media query in CSS, first paint is already right at any width, and the
+  // drawer (which animates, so it must not be present until it is wanted) only
+  // mounts once the viewport is actually known.
+  if (hydrated && isMobile) {
     return (
       <AnimatePresence>
         {open && (
@@ -241,7 +250,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
   if (!open) return null;
   return (
     <aside
-      className="glass relative z-20 h-full shrink-0 overflow-hidden border-0 motion-safe:animate-fade-in"
+      className="glass relative z-20 hidden h-full shrink-0 overflow-hidden border-0 motion-safe:animate-fade-in md:block"
       style={{ width: SIDEBAR_WIDTH }}
     >
       {content}

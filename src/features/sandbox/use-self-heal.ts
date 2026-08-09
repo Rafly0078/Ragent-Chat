@@ -51,7 +51,7 @@ export function useSelfHeal(conversationId: string, initialSource: WebSource) {
   const [state, setState] = useState<HealState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
   /**
-   * Latest known-good source, so pressing "Audit & perbaiki" a second time
+   * Latest known-good source, so pressing "Audit & fix" a second time
    * continues from the last fix instead of re-healing the original from scratch
    * and re-spending the whole iteration budget.
    */
@@ -156,7 +156,8 @@ export function useSelfHeal(conversationId: string, initialSource: WebSource) {
           setState((s) => ({
             ...s,
             phase: 'error',
-            error: err instanceof Error ? err.message : 'Gagal memanggil model untuk perbaikan.',
+            error:
+              err instanceof Error ? err.message : 'The model could not be reached for the fix.',
           }));
           abortRef.current = null;
           return;

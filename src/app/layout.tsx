@@ -5,8 +5,15 @@ import { Providers } from './providers';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SITE_URL } from '@/lib/app-meta';
 
+// Three families, but only Inter earns a full variable axis — it sets nearly
+// every string in the app. The other two are pinned to the weights actually
+// referenced, which makes next/font ship those static instances instead of the
+// whole axis: `--font-display` is only ever used at 600 (`.type-brand`,
+// `.type-mega`, `.ghost-word`, `.numeral`) and mono at 400/600. On a phone that
+// is the difference between three variable files blocking first text and one.
 const display = Unbounded({
   subsets: ['latin'],
+  weight: ['600'],
   variable: '--font-display',
   display: 'swap',
 });
@@ -17,10 +24,15 @@ const sans = Inter({
   display: 'swap',
 });
 
+// Not preloaded: mono appears in code blocks, model chips and the install
+// snippet — none of which are on the critical path for first paint, and a
+// preload for each competes with the two faces that are.
 const mono = JetBrains_Mono({
   subsets: ['latin'],
+  weight: ['400', '600'],
   variable: '--font-mono',
   display: 'swap',
+  preload: false,
 });
 
 export const metadata: Metadata = {

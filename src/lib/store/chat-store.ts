@@ -5,13 +5,20 @@ import type {
   ConversationSummary,
   GenerationParams,
   Message,
+  SearchMode,
   ThinkingConfig,
   ThinkingEffort,
 } from '@/types';
+import { SEARCH_MODES } from '@/types';
 import { uid } from '@/lib/utils/id';
 import { notify } from '@/components/ui/toast';
 import { browserStorage } from './storage';
-import { DEFAULT_PARAMS, DEFAULT_SYSTEM_PROMPT, DEFAULT_THINKING } from './defaults';
+import {
+  DEFAULT_PARAMS,
+  DEFAULT_SEARCH_MODE,
+  DEFAULT_SYSTEM_PROMPT,
+  DEFAULT_THINKING,
+} from './defaults';
 
 interface ChatState {
   conversations: Conversation[];
@@ -23,7 +30,7 @@ interface ChatState {
 
   // selectors are derived in components; these are the mutations
   createConversation: (
-    opts?: Partial<Pick<Conversation, 'model' | 'systemPrompt' | 'params'>>,
+    opts?: Partial<Pick<Conversation, 'model' | 'systemPrompt' | 'params' | 'searchMode'>>,
   ) => string;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, title: string) => void;
@@ -36,6 +43,7 @@ interface ChatState {
   setConversationSystemPrompt: (id: string, prompt: string) => void;
   setConversationParams: (id: string, patch: Partial<GenerationParams>) => void;
   setConversationThinking: (id: string, patch: Partial<ThinkingConfig>) => void;
+  setConversationSearchMode: (id: string, mode: SearchMode) => void;
   /** Store/replace the running context summary (compaction). Pass null to clear. */
   setConversationSummary: (id: string, summary: ConversationSummary | null) => void;
 
@@ -209,7 +217,7 @@ function throttledStorage(delayMs: number) {
 }
 
 export function makeConversation(
-  opts?: Partial<Pick<Conversation, 'model' | 'systemPrompt' | 'params'>>,
+  opts?: Partial<Pick<Conversation, 'model' | 'systemPrompt' | 'params' | 'searchMode'>>,
 ): Conversation {
   const now = Date.now();
   return {
@@ -220,6 +228,7 @@ export function makeConversation(
     systemPrompt: opts?.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     params: opts?.params ?? { ...DEFAULT_PARAMS },
     thinking: { ...DEFAULT_THINKING },
+    searchMode: opts?.searchMode ?? DEFAULT_SEARCH_MODE,
     pinned: false,
     createdAt: now,
     updatedAt: now,
@@ -283,6 +292,9 @@ export function sanitizeConversations(raw: unknown): Conversation[] {
         ...DEFAULT_THINKING,
         ...(typeof c.thinking === 'object' && c.thinking ? c.thinking : {}),
       },
+      searchMode: SEARCH_MODES.includes(c.searchMode as SearchMode)
+        ? (c.searchMode as SearchMode)
+        : DEFAULT_SEARCH_MODE,
       summary:
         c.summary && typeof c.summary === 'object' && typeof c.summary.text === 'string'
           ? c.summary
@@ -386,6 +398,13 @@ export const useChatStore = create<ChatState>()(
           ),
         })),
 
+      setConversationSearchMode: (id, searchMode) =>
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === id ? touch({ ...c, searchMode }) : c,
+          ),
+        })),
+
       setConversationSummary: (id, summary) =>
         set((s) => ({
           conversations: s.conversations.map((c) =>
@@ -484,7 +503,7 @@ export const useChatStore = create<ChatState>()(
     {
       name: 'ollama-webui:chats',
       storage: createJSONStorage(() => throttledStorage(1000)),
-      version: 4,
+      version: 5,
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as { conversations?: Conversation[] };
@@ -521,6 +540,25 @@ export const useChatStore = create<ChatState>()(
               ? { ...c, params: { ...c.params, contextLength: 131072 } }
               : c,
           );
+        }
+        // v4 → v5: context/max-tokens can now follow the model's own limits, and
+        // search gained an `auto` mode. Auto is turned on only where the value is
+        // still the default one — a window someone deliberately typed keeps
+        // winning, exactly as `resolveLimits` treats an explicit `false`.
+        if (version < 5 && state.conversations) {
+          state.conversations = state.conversations.map((c) => ({
+            ...c,
+            params: {
+              ...c.params,
+              ...(c.params?.contextLength === 131072 || c.params?.contextLength == null
+                ? { contextAuto: true }
+                : { contextAuto: false }),
+              ...(c.params?.maxTokens === -1 || c.params?.maxTokens == null
+                ? { maxTokensAuto: true }
+                : { maxTokensAuto: false }),
+            },
+            searchMode: c.searchMode ?? DEFAULT_SEARCH_MODE,
+          }));
         }
         return state;
       },

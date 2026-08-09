@@ -11,7 +11,8 @@ type Status = 'checking' | 'online' | 'offline' | 'unconfigured';
 
 /**
  * Live API health dot. Polls the API periodically and auto-reconnects with
- * backoff when it goes down; pauses polling while the browser is offline.
+ * backoff when it goes down; pauses polling while the browser is offline or the
+ * tab is hidden.
  */
 export function ConnectionStatus() {
   const [status, setStatus] = useState<Status>('checking');
@@ -43,6 +44,10 @@ export function ConnectionStatus() {
       setStatus('offline');
       return;
     }
+    // Nothing is looking at the dot in a background tab, and a request every
+    // 20s from a page left open on a phone is a radio wake-up each time. Stop
+    // the chain; the `visibilitychange` listener restarts it on return.
+    if (document.visibilityState === 'hidden') return;
     setStatus((s) => (s === 'online' ? s : 'checking'));
     const ok = await ping();
     // Superseded or unmounted while the ping was in flight.
@@ -90,6 +95,19 @@ export function ConnectionStatus() {
     };
     window.addEventListener(API_CONFIG_CHANGED_EVENT, onConfigChanged);
     return () => window.removeEventListener(API_CONFIG_CHANGED_EVENT, onConfigChanged);
+  }, [check]);
+
+  // Resume the moment the tab is looked at again, and re-check straight away —
+  // whatever the dot was showing when the tab was backgrounded is stale.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        attempts.current = 0;
+        void check();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [check]);
 
   const config = {

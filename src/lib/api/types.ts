@@ -62,6 +62,8 @@ export interface RawModel {
   // /api/show style fields sometimes merged in:
   context_length?: number;
   capabilities?: string[];
+  /** Output ceiling when the endpoint reports one (see extractModelLimits). */
+  max_output_tokens?: number;
 }
 
 export interface ModelsResponse {

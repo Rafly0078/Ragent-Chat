@@ -76,6 +76,7 @@ function mapModel(raw: RawModel): ModelInfo {
     label: name.replace(/:latest$/, ''),
     size: raw.size,
     contextLength: raw.context_length,
+    maxOutputTokens: raw.max_output_tokens,
     details: {
       family: d.family ?? d.families?.[0],
       parameterSize: d.parameter_size,

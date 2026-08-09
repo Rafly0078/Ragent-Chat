@@ -112,8 +112,12 @@ export const MessageBubble = memo(function MessageBubble({
   // multi-step status indicator so the user sees the model plan, then search,
   // then reason over results instead of one opaque "Searching…".
   const searchPhase = message.metadata?.searchPhase as
-    'planning' | 'searching' | 'analyzing' | undefined;
+    'deciding' | 'planning' | 'searching' | 'analyzing' | undefined;
   const plannedQueries = (message.metadata?.plannedQueries as string[] | undefined) ?? [];
+  // Auto mode only: the planner decided the web wasn't needed. Worth saying
+  // once, so the absence of sources reads as a decision rather than a failure.
+  const searchSkipped = message.metadata?.searchSkipped === true;
+  const searchSkipReason = message.metadata?.searchSkipReason as string | undefined;
 
   // Only the newest message plays the entrance animation. Animating every
   // bubble on mount means a 50-message conversation fires 50 simultaneous
@@ -213,13 +217,28 @@ export const MessageBubble = memo(function MessageBubble({
           <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-md border border-border/15 bg-border/5 px-2.5 py-1.5 text-xs text-content-muted">
             <Globe className="h-3.5 w-3.5 shrink-0 animate-pulse text-accent" />
             <span className="min-w-0">
-              {searchPhase === 'planning'
-                ? 'Merencanakan pencarian…'
-                : searchPhase === 'analyzing'
-                  ? 'Menganalisis hasil…'
-                  : plannedQueries.length > 0
-                    ? `Mencari: ${plannedQueries.join(', ')}`
-                    : 'Mencari di web…'}
+              {searchPhase === 'deciding'
+                ? 'Checking whether this needs a search…'
+                : searchPhase === 'planning'
+                  ? 'Planning the search…'
+                  : searchPhase === 'analyzing'
+                    ? 'Reading results…'
+                    : plannedQueries.length > 0
+                      ? `Searching: ${plannedQueries.join(', ')}`
+                      : 'Searching the web…'}
+            </span>
+          </div>
+        )}
+
+        {/* Auto mode declined to search. Stated once, quietly — the point is
+            that no sources is a choice here, not a broken search. */}
+        {!isUser && !searching && searchSkipped && (
+          <div className="mb-2 inline-flex max-w-full items-center gap-2 rounded-md border border-border/15 px-2.5 py-1.5 text-xs text-content-subtle">
+            <Globe className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0">
+              {searchSkipReason
+                ? `Answered without searching — ${searchSkipReason}`
+                : 'Answered without searching'}
             </span>
           </div>
         )}
@@ -313,7 +332,7 @@ export const MessageBubble = memo(function MessageBubble({
         {/* Sources: citations from a web-search-augmented turn. Numbered to
             match the inline [1], [2] the model is prompted to use. */}
         {!isUser && !message.streaming && sources.length > 0 && (
-          <div className="mt-3 border-t border-border/60 pt-2">
+          <div className="mt-3 border-t border-border/15 pt-2">
             <div className="mb-1.5 flex items-center gap-1.5 text-[0.68rem] font-bold uppercase tracking-[0.08em] text-content-subtle">
               <Globe className="h-3 w-3" /> Sources
             </div>
@@ -340,7 +359,7 @@ export const MessageBubble = memo(function MessageBubble({
             only pointers that genuinely support hover (mouse/trackpad) get
             the idle-hidden, hover-to-reveal treatment. */}
         {showActions && (
-          <div className="mt-2 flex items-center gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-within:opacity-100 [@media(hover:hover)]:group-hover/msg:opacity-100">
+          <div className="-ml-1 mt-1 flex items-center gap-0.5 opacity-100 transition-opacity [@media(hover:hover)]:ml-0 [@media(hover:hover)]:mt-2 [@media(hover:hover)]:gap-1 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:focus-within:opacity-100 [@media(hover:hover)]:group-hover/msg:opacity-100">
             <ActionBtn label={copied ? 'Copied' : 'Copy'} onClick={copy}>
               {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
             </ActionBtn>
@@ -407,7 +426,7 @@ function ReasoningPanel({
   return (
     <div
       className={cn(
-        'reasoning-panel mb-2 overflow-hidden rounded-xl border border-border/60 bg-border/5',
+        'reasoning-panel mb-2 overflow-hidden rounded-xl border border-border/15 bg-border/5',
         maxThinking && 'reasoning-panel-max',
       )}
     >
@@ -440,7 +459,7 @@ function ReasoningPanel({
           >
             <div
               className={cn(
-                'whitespace-pre-wrap break-words border-t border-border/60 px-3 py-2 text-[0.82rem] leading-6 text-content-subtle',
+                'whitespace-pre-wrap break-words border-t border-border/15 px-3 py-2 text-[0.82rem] leading-6 text-content-subtle',
                 // While thinking is live, cap the height so a long reasoning
                 // stream stays contained instead of shoving the answer offscreen.
                 liveThinking && 'max-h-64 overflow-y-auto',
@@ -470,7 +489,10 @@ function ActionBtn({
       <button
         onClick={onClick}
         aria-label={label}
-        className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-content-subtle transition-colors hover:bg-border/5 hover:text-content active:bg-border/10"
+        // 44px on touch, the minimum comfortable tap target; 36px back on
+        // pointer devices, where the row is hover-revealed and wants to stay
+        // dense. The icon is the same size either way — only the box grows.
+        className="focus-ring flex h-11 w-11 items-center justify-center rounded-lg text-content-subtle transition-colors hover:bg-border/5 hover:text-content active:bg-border/10 [@media(hover:hover)]:h-9 [@media(hover:hover)]:w-9"
       >
         {children}
       </button>

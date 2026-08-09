@@ -15,7 +15,7 @@ import {
   Check,
   Command,
 } from 'lucide-react';
-import type { Attachment, ThinkingConfig, ThinkingEffort } from '@/types';
+import type { Attachment, SearchMode, ThinkingConfig, ThinkingEffort } from '@/types';
 import { attachmentPreview, fileToAttachment } from '@/lib/utils/files';
 import { estimateTokens } from '@/lib/utils/format';
 import { SLASH_COMMANDS, THINKING_EFFORTS } from '@/lib/store/defaults';
@@ -28,7 +28,7 @@ import { DocumentEditDialog } from '@/features/documents/DocumentEditDialog';
 interface Props {
   disabled?: boolean;
   generating: boolean;
-  onSend: (text: string, attachments: Attachment[], webSearch: boolean) => void;
+  onSend: (text: string, attachments: Attachment[], searchMode: SearchMode) => void;
   onStop: () => void;
   onSlashCommand: (command: string) => void;
   visionCapable?: boolean;
@@ -41,9 +41,20 @@ interface Props {
   thinkingEfforts?: ThinkingEffort[];
   /** Update the thinking config (toggle on/off, change effort). */
   onThinkingChange: (patch: Partial<ThinkingConfig>) => void;
+  /** Web-search mode for this conversation. */
+  searchMode: SearchMode;
+  /** Persist a new web-search mode on the conversation. */
+  onSearchModeChange: (mode: SearchMode) => void;
 }
 
 const MAX_TEXTAREA_PX = 220;
+
+/** Copy for the tri-state search control. Order matches SEARCH_MODES. */
+const SEARCH_MODE_COPY: { mode: SearchMode; label: string; hint: string }[] = [
+  { mode: 'off', label: 'Off', hint: 'Answer from the model alone' },
+  { mode: 'auto', label: 'Auto', hint: 'Search only when the answer needs it' },
+  { mode: 'always', label: 'Always', hint: 'Search before every message' },
+];
 
 export function ChatInput({
   disabled,
@@ -57,13 +68,14 @@ export function ChatInput({
   thinkingUnsupported,
   thinkingEfforts = THINKING_EFFORTS,
   onThinkingChange,
+  searchMode,
+  onSearchModeChange,
 }: Props) {
   const [docEditOpen, setDocEditOpen] = useState(false);
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [webSearch, setWebSearch] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -139,7 +151,9 @@ export function ChatInput({
       const cmd = SLASH_COMMANDS.find((c) => c.command === trimmed);
       if (cmd) {
         if (cmd.template) {
-          onSend(cmd.template, [], false);
+          // Templates like /summarize are about this conversation, never the
+          // web — send them with search off regardless of the current mode.
+          onSend(cmd.template, [], 'off');
         } else {
           onSlashCommand(cmd.command);
         }
@@ -149,15 +163,15 @@ export function ChatInput({
     }
 
     if (!trimmed && attachments.length === 0) return;
-    onSend(trimmed, attachments, webSearch);
+    onSend(trimmed, attachments, searchMode);
     setValue('');
     setAttachments([]);
-  }, [disabled, generating, value, slashOpen, attachments, onSend, onSlashCommand, webSearch]);
+  }, [disabled, generating, value, slashOpen, attachments, onSend, onSlashCommand, searchMode]);
 
   const runCommand = useCallback(
     (cmd: (typeof SLASH_COMMANDS)[number]) => {
       if (cmd.template) {
-        onSend(cmd.template, [], false);
+        onSend(cmd.template, [], 'off');
       } else {
         onSlashCommand(cmd.command);
       }
@@ -321,7 +335,7 @@ export function ChatInput({
                 )}
               >
                 <Plus className={cn('h-5 w-5 transition-transform', menuOpen && 'rotate-45')} />
-                {webSearch && !menuOpen && (
+                {searchMode !== 'off' && !menuOpen && (
                   <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent ring-2 ring-surface-raised" />
                 )}
               </button>
@@ -379,28 +393,40 @@ export function ChatInput({
                     </span>
                   </button>
 
-                  <button
-                    role="menuitemcheckbox"
-                    aria-checked={webSearch}
-                    onClick={() => setWebSearch((v) => !v)}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-content transition-colors hover:bg-border/10"
-                  >
+                  {/* Web search is tri-state, not a checkbox: `auto` is the
+                      default and the whole point — a boolean toggle could only
+                      express "never" or "every turn". */}
+                  <div className="my-1 h-px bg-border/10" />
+                  <div className="flex items-center gap-3 px-3 py-2">
                     <span
                       className={cn(
                         'flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
-                        webSearch ? 'bg-accent text-accent-fg' : 'bg-border/15 text-content-muted',
+                        searchMode === 'off'
+                          ? 'bg-border/15 text-content-muted'
+                          : 'bg-accent text-accent-fg',
                       )}
                     >
                       <Globe className="h-4 w-4" />
                     </span>
-                    <span className="flex-1">
-                      <span className="block font-medium">Web search</span>
-                      <span className="block text-xs text-content-subtle">
-                        Search before answering
-                      </span>
-                    </span>
-                    {webSearch && <Check className="h-4 w-4 text-accent" />}
-                  </button>
+                    <span className="flex-1 text-sm font-medium text-content">Web search</span>
+                  </div>
+                  <div role="group" aria-label="Web search mode" className="px-1.5 pb-1">
+                    {SEARCH_MODE_COPY.map(({ mode, label, hint }) => (
+                      <button
+                        key={mode}
+                        role="menuitemradio"
+                        aria-checked={searchMode === mode}
+                        onClick={() => onSearchModeChange(mode)}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm text-content transition-colors hover:bg-border/10"
+                      >
+                        <span className="flex-1">
+                          <span className="block">{label}</span>
+                          <span className="block text-xs text-content-subtle">{hint}</span>
+                        </span>
+                        {searchMode === mode && <Check className="h-4 w-4 shrink-0 text-accent" />}
+                      </button>
+                    ))}
+                  </div>
                 </m.div>
               )}
             </AnimatePresence>
@@ -427,7 +453,13 @@ export function ChatInput({
             rows={1}
             placeholder={disabled ? 'Select model to start' : 'Message...'}
             aria-label="Message input"
-            className="scrollbar-thin max-h-[220px] flex-1 resize-none bg-transparent px-1 py-2.5 text-[0.95rem] leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
+            // The cap lives in one place. The autosize effect clamps
+            // `scrollHeight` to MAX_TEXTAREA_PX, and the element needs the same
+            // ceiling in CSS so the box scrolls instead of growing — a literal
+            // `max-h-[220px]` here meant editing the constant silently left the
+            // two disagreeing.
+            style={{ maxHeight: MAX_TEXTAREA_PX }}
+            className="scrollbar-thin flex-1 resize-none bg-transparent px-1 py-2.5 text-[0.95rem] leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
           />
 
           {/* Thinking toggle + effort selector */}
@@ -544,9 +576,9 @@ export function ChatInput({
           as a sentence in body type, "Text model" read as a stray caption. */}
       <div className="mt-2 flex items-center justify-between gap-3 px-1">
         <span className="flex min-w-0 items-center gap-2">
-          {webSearch && (
+          {searchMode !== 'off' && (
             <span className="type-label inline-flex items-center gap-1.5 text-accent">
-              <Globe className="h-3 w-3" /> Web search
+              <Globe className="h-3 w-3" /> Web · {searchMode}
             </span>
           )}
           {thinking.enabled && !thinkingUnsupported && (

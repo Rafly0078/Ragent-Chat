@@ -92,7 +92,7 @@ function ArtifactCard({
 
   /**
    * The `download` attribute is ignored for cross-origin URLs, and Supabase
-   * serves signed URLs with `Content-Disposition: inline` — so clicking "Unduh"
+   * serves signed URLs with `Content-Disposition: inline` — so clicking "Download"
    * used to *navigate the tab* to the file (tearing down the SPA) instead of
    * saving it. Fetch to a blob and download that.
    */
@@ -112,7 +112,7 @@ function ArtifactCard({
       // Revoke on the next tick so Safari has time to start the download.
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     } catch {
-      toast('Gagal mengunduh — tautan mungkin sudah kedaluwarsa. Muat ulang halaman.', 'error');
+      toast('Download failed — the link may have expired. Reload the page.', 'error');
     } finally {
       setDownloading(false);
     }
@@ -123,10 +123,10 @@ function ArtifactCard({
   // including each animation frame. Memoized and capped.
   const textPreview = useMemo(() => {
     if (!previewOpen || artifact.kind === 'html') return '';
-    if (!artifact.url?.startsWith('data:')) return 'Pratinjau tidak tersedia untuk format ini.';
+    if (!artifact.url?.startsWith('data:')) return 'No preview available for this format.';
     const decoded = decodePreview(artifact.url);
     return decoded.length > MAX_PREVIEW_CHARS
-      ? `${decoded.slice(0, MAX_PREVIEW_CHARS)}\n\n… (pratinjau dipotong — unduh untuk melihat semuanya)`
+      ? `${decoded.slice(0, MAX_PREVIEW_CHARS)}\n\n… (preview truncated — download to see all of it)`
       : decoded;
   }, [previewOpen, artifact.kind, artifact.url]);
 
@@ -155,22 +155,22 @@ function ArtifactCard({
             {artifact.ephemeral && (
               <Tooltip
                 side="top"
-                label="Belum tersimpan ke cloud. Unduh sekarang — file hilang setelah halaman ditutup."
+                label="Not saved to the cloud yet. Download it now — it is gone once the page closes."
               >
                 <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
                   <AlertTriangle className="h-3 w-3" />
-                  Sementara
+                  Temporary
                 </span>
               </Tooltip>
             )}
             {stale && (
               <Tooltip
                 side="top"
-                label="Tautan file gagal diperbarui. Muat ulang halaman untuk mencoba lagi."
+                label="The file link could not be refreshed. Reload the page to try again."
               >
                 <span className="inline-flex items-center gap-1 rounded-md bg-error/15 px-1.5 py-0.5 font-medium text-error">
                   <AlertTriangle className="h-3 w-3" />
-                  Kedaluwarsa
+                  Expired
                 </span>
               </Tooltip>
             )}
@@ -180,22 +180,22 @@ function ArtifactCard({
         {/* Actions — always visible so they work on touch and never hide */}
         <div className="flex shrink-0 items-center gap-1">
           {isPreviewable && artifact.url && (
-            <Tooltip side="top" label="Pratinjau">
+            <Tooltip side="top" label="Preview">
               <button
                 onClick={() => setPreviewOpen(true)}
                 className="focus-ring flex h-9 w-9 items-center justify-center rounded-xl text-content-muted transition-colors hover:bg-border/15 hover:text-content"
-                aria-label="Pratinjau"
+                aria-label="Preview"
               >
                 <Eye className="h-[18px] w-[18px]" />
               </button>
             </Tooltip>
           )}
           {onDelete && (
-            <Tooltip side="top" label="Hapus">
+            <Tooltip side="top" label="Delete">
               <button
                 onClick={() => onDelete(artifact.id)}
                 className="focus-ring flex h-9 w-9 items-center justify-center rounded-xl text-content-muted transition-colors hover:bg-error/10 hover:text-error"
-                aria-label="Hapus"
+                aria-label="Delete"
               >
                 <Trash2 className="h-[18px] w-[18px]" />
               </button>
@@ -205,10 +205,10 @@ function ArtifactCard({
             onClick={() => void handleDownload()}
             disabled={!artifact.url || downloading}
             className="btn-primary ml-1 flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium disabled:opacity-40"
-            aria-label={`Unduh ${artifact.name}`}
+            aria-label={`Download ${artifact.name}`}
           >
             <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Unduh</span>
+            <span className="hidden sm:inline">Download</span>
           </button>
         </div>
       </m.div>
@@ -247,14 +247,14 @@ function ArtifactCard({
                     onClick={() => void handleDownload()}
                     disabled={downloading}
                     className="btn-ghost flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium disabled:opacity-40"
-                    aria-label="Unduh"
+                    aria-label="Download"
                   >
-                    <Download className="h-3.5 w-3.5" /> Unduh
+                    <Download className="h-3.5 w-3.5" /> Download
                   </button>
                   <button
                     onClick={() => setPreviewOpen(false)}
                     className="btn-ghost h-8 w-8 rounded-lg"
-                    aria-label="Tutup pratinjau"
+                    aria-label="Close preview"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -301,7 +301,7 @@ function decodePreview(url: string): string {
       ? new TextDecoder().decode(Uint8Array.from(raw, (c) => c.charCodeAt(0)))
       : raw;
   } catch {
-    return 'Pratinjau tidak tersedia untuk format ini.';
+    return 'No preview available for this format.';
   }
 }
 

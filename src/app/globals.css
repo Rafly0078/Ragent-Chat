@@ -26,7 +26,13 @@
   --night-deep: 15 15 14;
   --slate: 248 247 243;
   --slate-lift: 252 251 248;
-  --lamp: 24 24 22;
+  /* The lamp used to be an amber on a near-black field. The field is warm white
+     now and the accent is the ink itself, so this held a second copy of
+     `--night`'s channels — an alias states that outright, and the two can no
+     longer drift apart on a one-sided edit. Kept as a name because the accent
+     reads as "the lamp" everywhere it is spent (.lamp-field, .lamp-pool, the
+     avatar glow in MessageBubble). */
+  --lamp: var(--night);
   --ember: 82 82 76;
   --linen: 241 240 236;
   --paper: 250 249 246;
@@ -54,20 +60,20 @@
 /* ---------------------------------------------------------------------------
    SEMANTIC TOKENS — the field.
 
-   Measured on #0B1020 (relative luminance 0.0055):
+   Measured on the actual field, #F1F0EC (relative luminance 0.871):
 
-     linen   #F2EFE8 .. 16.8:1     lamp   #FFB65C .. 11.1:1
-     muted   #929CB6 ..  7.0:1     subtle #717B96 ..  4.6:1
+     content #181816 .. 15.6:1     accent #181816 .. 15.6:1
+     muted   #484843 ..  8.1:1     subtle #676760 ..  5.0:1
 
-   All four pass AA for body text; subtle passes it too, so there is no tier in
+   Every tier passes AA for body text, subtle included, so there is no rank in
    this product that you are allowed to read and cannot.
 
-   The honest part: surface-to-surface contrast. #131A30 over #0B1020 is 1.10:1
-   and no amount of lifting fixes that without turning the field grey — near
-   black compresses every ratio above it. So a FILL never carries a boundary
-   here. Boundaries are borders (--border-strong is 3.25:1, which clears WCAG
-   1.4.11 for interactive components) and shadows. The fill only says "warmer"
-   or "cooler than its neighbour".
+   The honest part: surface-to-surface contrast. #F8F7F3 over #F1F0EC is 1.06:1,
+   and no amount of lifting fixes that without dirtying the field — warm white
+   compresses every ratio under it exactly as near-black compressed everything
+   above it in the palette this replaced. So a FILL never carries a boundary
+   here. Boundaries are borders and shadows; the fill only says "warmer" or
+   "cooler than its neighbour".
 --------------------------------------------------------------------------- */
 :root {
   --surface: var(--linen);
@@ -85,9 +91,10 @@
   --content-muted: 72 72 67;
   --content-subtle: 103 103 96;
 
-  /* The lamp is both the text accent and the fill, because unlike the palette
-     this replaces it is light enough to carry dark ink (11.1:1) AND dark enough
-     to read as a colour on the field. One accent, no split. */
+  /* One accent, no split: the lamp is both the text accent and the fill. It is
+     the ink itself, so it reads at 15.6:1 as type on the field AND carries
+     `--accent-fg` (paper) as a filled button without a second, lighter variant
+     to keep in sync. */
   --accent: var(--lamp);
   --accent-soft: 72 72 67;
   --accent-solid: var(--lamp);
@@ -408,8 +415,9 @@ h4 {
      destructive  outlined in the error colour, filled only on hover
 
    Height, padding, radius and type scale together from `.btn-sm/md/lg/xl` so
-   no caller invents its own. `md` and up clear the 44px touch floor at `lg`,
-   which is what every primary action on a mobile layout uses.
+   no caller invents its own. `lg` clears the 44px touch floor, which is what
+   every primary action on a mobile layout uses; `.btn-icon` is floored to 44px
+   on touch pointers regardless of the height step it was paired with.
 --------------------------------------------------------------------------- */
 @layer components {
   .btn {
@@ -454,6 +462,18 @@ h4 {
   .btn-icon {
     padding-inline: 0;
     aspect-ratio: 1;
+  }
+  /* Touch pointers get the 44px floor whichever height step the caller picked.
+     `.btn-md .btn-icon` is 38px, and it is the default for icon buttons in the
+     top bar and the sidebar — i.e. most of the reachable controls on a phone
+     sat under the floor. Fixing it here rather than at each call site means the
+     scale stays the single source of truth, and pointer devices keep the denser
+     38px because `min-height` only applies where hover is absent. */
+  @media (hover: none) {
+    .btn-icon {
+      min-height: 2.75rem;
+      min-width: 2.75rem;
+    }
   }
   .btn:active:not(:disabled) {
     transform: translateY(1px) scale(0.985);
@@ -646,17 +666,28 @@ h4 {
   z-index: 0;
 }
 
-/* Tiled grain over the field. Above the flat colour, below content. */
-.grain::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: var(--grain);
-  background-size: var(--grain-tile) var(--grain-tile);
-  opacity: 0.055;
-  mix-blend-mode: multiply;
-  pointer-events: none;
-  z-index: 0;
+/* Tiled grain over the field. Above the flat colour, below content.
+
+   Desktop only, for the same reason `.glass` gates its blur. Two costs stack
+   here and both scale with viewport area: the browser has to run a 4-octave
+   `feTurbulence` through the SVG filter pipeline to rasterize the tile, and
+   `mix-blend-mode: multiply` then pulls the whole field into a separate
+   compositing pass so it has something to blend against. On a phone that is
+   paid on a small screen where a 5.5%-opacity texture is close to invisible
+   anyway. The field keeps its colour and its lamp pools; it just loses a
+   texture nobody can see at arm's length. */
+@media (min-width: 768px) {
+  .grain::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--grain);
+    background-size: var(--grain-tile) var(--grain-tile);
+    opacity: 0.055;
+    mix-blend-mode: multiply;
+    pointer-events: none;
+    z-index: 0;
+  }
 }
 
 /* Section divider. Brightest at the left, where the eye enters the section. */
@@ -1113,6 +1144,16 @@ h4 {
   }
 }
 
+/* The global reduced-motion block near the top already collapses every
+   animation to 0.001ms with one iteration, which lands each of the loops above
+   on its end frame — so `animation: none` here for `.reasoning-panel-max`,
+   `.reasoning-brain-max` and `.marquee-track` restated a rule that had already
+   won on `!important`. What survives is only what duration alone cannot fix:
+   `.reasoning-shimmer` paints its text in `transparent` and relies on a moving
+   gradient through `background-clip: text`, so freezing the animation leaves
+   the label legible only by accident — it needs the fill put back. And
+   `.lift:hover` is a transition end state, not an animation; collapsing the
+   duration just makes the lift instant instead of absent. */
 @media (prefers-reduced-motion: reduce) {
   .reasoning-shimmer {
     animation: none;
@@ -1120,11 +1161,6 @@ h4 {
     -webkit-background-clip: border-box;
     background-clip: border-box;
     color: rgb(var(--accent));
-  }
-  .reasoning-panel-max,
-  .reasoning-brain-max,
-  .marquee-track {
-    animation: none;
   }
   .lift:hover {
     transform: none;

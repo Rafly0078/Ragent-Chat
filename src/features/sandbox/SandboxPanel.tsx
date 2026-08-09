@@ -106,13 +106,13 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
                   onClick={() => {
                     // Actually re-run: `reset` alone only cleared the report and
                     // repainted the original code, so the control labelled
-                    // "Jalankan ulang" never ran anything.
+                    // "Run again" never ran anything.
                     reset();
                     autoStarted.current = false;
                     void run(iframeRef.current);
                   }}
                   className="btn-ghost flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium"
-                  aria-label="Jalankan ulang"
+                  aria-label="Run again"
                 >
                   <RotateCcw className="h-3.5 w-3.5" /> Ulang
                 </button>
@@ -122,7 +122,7 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
                 disabled={streaming}
                 className="btn-primary flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium disabled:opacity-40"
               >
-                <Wand2 className="h-3.5 w-3.5" /> Audit &amp; perbaiki
+                <Wand2 className="h-3.5 w-3.5" /> Audit &amp; fix
               </button>
             </>
           )}
@@ -172,7 +172,7 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
                 )}
                 {state.clean && (
                   <p className="flex items-center gap-1.5 text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Kode berjalan bersih tanpa error.
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Ran clean, no errors.
                   </p>
                 )}
               </div>
@@ -209,7 +209,7 @@ function StatusBadge({
   if (state.phase === 'running') {
     return (
       <span className={cn(base, 'text-accent')}>
-        <span className="status-dot status-running" aria-hidden /> Menjalankan… {state.iteration}/
+        <span className="status-dot status-running" aria-hidden /> Running… {state.iteration}/
         {state.maxIterations}
       </span>
     );
@@ -217,7 +217,7 @@ function StatusBadge({
   if (state.phase === 'healing') {
     return (
       <span className={cn(base, 'text-accent')}>
-        <span className="status-dot status-running" aria-hidden /> Memperbaiki… {state.iteration}/
+        <span className="status-dot status-running" aria-hidden /> Fixing… {state.iteration}/
         {state.maxIterations}
       </span>
     );
@@ -225,7 +225,7 @@ function StatusBadge({
   if (state.phase === 'done') {
     return state.clean ? (
       <span className={cn(base, 'text-success')}>
-        <CheckCircle2 className="h-3 w-3" /> Bersih
+        <CheckCircle2 className="h-3 w-3" /> Clean
       </span>
     ) : (
       <span className={cn(base, 'text-warning')}>
@@ -243,7 +243,7 @@ function StatusBadge({
   if (state.phase === 'error') {
     return (
       <span className={cn(base, 'text-error')}>
-        <XCircle className="h-3 w-3" /> Gagal
+        <XCircle className="h-3 w-3" /> Failed
       </span>
     );
   }

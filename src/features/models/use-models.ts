@@ -26,6 +26,20 @@ let cache: ModelInfo[] | null = null;
 let ownerCache: boolean | null = null;
 
 /**
+ * Synchronous read of an already-loaded model's metadata.
+ *
+ * The send path and the params panel both need the model's reported context
+ * window, and neither can await a fetch: the first runs inside a keystroke
+ * handler, the second inside render. They read this cache instead — it is
+ * populated by `load()` below, and returns undefined until the picker has
+ * loaded once, which every caller treats as "no reported limit".
+ */
+export function getCachedModel(name: string): ModelInfo | undefined {
+  if (!name) return undefined;
+  return cache?.find((model) => model.name === name);
+}
+
+/**
  * Overlay owner-curated labels onto the raw model list: rename via
  * `display_name`, drop entries flagged `hidden`, and re-sort so curated models
  * lead (by sort_order, then label). Models without a label keep their raw name.

@@ -1,6 +1,7 @@
 import type {
   GenerationParams,
   PromptPreset,
+  SearchMode,
   SlashCommand,
   ThinkingConfig,
   ThinkingEffort,
@@ -12,9 +13,21 @@ export const DEFAULT_PARAMS: GenerationParams = {
   topP: 0.9,
   topK: 40,
   repeatPenalty: 1.1,
+  // Auto is on, so these two are only the fallback for an endpoint that reports
+  // no window and matches no known provider (an unlabeled custom URL).
   contextLength: 131072,
   maxTokens: -1,
+  contextAuto: true,
+  maxTokensAuto: true,
 };
+
+/**
+ * Web search defaults to `auto`: the planner decides per turn whether the web
+ * is actually needed, so the model stops answering from stale knowledge without
+ * paying for a search on every "rename this variable". `off` and `always` stay
+ * one click away in the composer.
+ */
+export const DEFAULT_SEARCH_MODE: SearchMode = 'auto';
 
 /**
  * Thinking is on at `medium` for every new conversation. The send path gates on

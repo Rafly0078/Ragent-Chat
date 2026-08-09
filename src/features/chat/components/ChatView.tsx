@@ -23,7 +23,7 @@ import {
   providerThinkingEfforts,
   providerThinkingKey,
 } from '@/lib/api/config';
-import { DEFAULT_THINKING } from '@/lib/store/defaults';
+import { DEFAULT_SEARCH_MODE, DEFAULT_THINKING } from '@/lib/store/defaults';
 
 interface Props {
   conversation: Conversation;
@@ -36,11 +36,16 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
   const setSystemPrompt = useChatStore((s) => s.setConversationSystemPrompt);
   const setParams = useChatStore((s) => s.setConversationParams);
   const setThinking = useChatStore((s) => s.setConversationThinking);
+  const setSearchMode = useChatStore((s) => s.setConversationSearchMode);
   const clearMessages = useChatStore((s) => s.clearMessages);
   const { models } = useModels();
   const { toast } = useToast();
   const provider = useSettings((s) => s.apiProvider);
   const providerProtocol = useSettings((s) => s.providerProtocol);
+  const defaultSearchMode = useSettings((s) => s.defaultSearchMode);
+  // Conversations predating the search modes have no value of their own; they
+  // follow the global default rather than silently reading as "off".
+  const searchMode = conversation.searchMode ?? defaultSearchMode ?? DEFAULT_SEARCH_MODE;
   const providerThinkingUnsupported = !providerSupportsThinking(provider, providerProtocol);
   const thinkingKey = providerThinkingKey(conversation.model, provider, providerProtocol);
   const thinkingUnsupported = useThinkingStore((s) => s.unsupported.has(thinkingKey));
@@ -138,7 +143,7 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
       <ChatInput
         disabled={!conversation.model}
         generating={generating}
-        onSend={(text, atts, webSearch) => void send(text, atts, webSearch)}
+        onSend={(text, atts, mode) => void send(text, atts, mode)}
         onStop={stop}
         onSlashCommand={handleSlash}
         visionCapable={visionCapable}
@@ -147,6 +152,8 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
         thinkingUnsupported={thinkingUnsupported || providerThinkingUnsupported}
         thinkingEfforts={thinkingEfforts}
         onThinkingChange={(patch) => setThinking(conversation.id, patch)}
+        searchMode={searchMode}
+        onSearchModeChange={(mode) => setSearchMode(conversation.id, mode)}
       />
 
       <ParamsPanel
@@ -154,6 +161,7 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
         onClose={() => setParamsOpen(false)}
         params={conversation.params}
         onChange={(patch) => setParams(conversation.id, patch)}
+        model={conversation.model ?? ''}
       />
       <SystemPromptEditor
         open={systemOpen}

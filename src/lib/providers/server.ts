@@ -485,7 +485,14 @@ export async function providerModels(
   input: ProviderInput,
   signal?: AbortSignal,
 ): Promise<{
-  models: { name: string; model: string; details: { family: string }; capabilities?: string[] }[];
+  models: {
+    name: string;
+    model: string;
+    details: { family: string };
+    capabilities?: string[];
+    context_length?: number;
+    max_output_tokens?: number;
+  }[];
 }> {
   const connection = await checkedConnection(resolveProviderConnection(input));
   // The built-in provider is pinned to exactly one model. The upstream endpoint
@@ -528,9 +535,60 @@ export async function providerModels(
     const name = [raw.id, raw.name, raw.model].find((value) => typeof value === 'string');
     if (typeof name !== 'string' || !name.trim() || seen.has(name)) return [];
     seen.add(name);
-    return [{ name, model: name, details: { family: connection.provider } }];
+    // Most OpenAI-compatible /models responses say nothing about the window,
+    // but some do (OpenRouter, vLLM, LM Studio, llama.cpp). Pass through what
+    // is there so the client can size the context against the real limit
+    // instead of a guess; absent fields are simply omitted.
+    const limits = extractModelLimits(item as Record<string, unknown>);
+    return [{ name, model: name, details: { family: connection.provider }, ...limits }];
   });
   return { models };
+}
+
+/**
+ * Pull a context window / output ceiling out of one `/models` entry.
+ *
+ * There is no standard for this, so we probe the field names actually seen in
+ * the wild: OpenRouter (`context_length`, `top_provider.context_length`,
+ * `top_provider.max_completion_tokens`), vLLM and llama.cpp
+ * (`max_model_len` / `n_ctx`), LM Studio (`max_context_length`), and the
+ * OpenAI-documented `context_window`. Anything non-numeric is ignored.
+ */
+function extractModelLimits(raw: Record<string, unknown>): {
+  context_length?: number;
+  max_output_tokens?: number;
+} {
+  const top =
+    raw.top_provider && typeof raw.top_provider === 'object'
+      ? (raw.top_provider as Record<string, unknown>)
+      : {};
+
+  const context = firstPositiveInt([
+    raw.context_length,
+    raw.context_window,
+    raw.max_context_length,
+    raw.max_model_len,
+    raw.n_ctx,
+    top.context_length,
+  ]);
+  const output = firstPositiveInt([
+    raw.max_output_tokens,
+    raw.max_completion_tokens,
+    top.max_completion_tokens,
+  ]);
+
+  return {
+    ...(context == null ? {} : { context_length: context }),
+    ...(output == null ? {} : { max_output_tokens: output }),
+  };
+}
+
+function firstPositiveInt(values: unknown[]): number | null {
+  for (const value of values) {
+    const n = typeof value === 'string' ? Number(value) : value;
+    if (typeof n === 'number' && Number.isFinite(n) && n > 0) return Math.floor(n);
+  }
+  return null;
 }
 
 function normalizedNonStream(

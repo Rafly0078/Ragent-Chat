@@ -8,8 +8,7 @@ export type ProviderProtocol = 'openai' | 'anthropic';
  * model live in server-only env vars (DEFAULT_OPENAI_*), so the browser only
  * learns that the option exists — never the credentials behind it.
  */
-export const DEFAULT_PROVIDER_ENABLED =
-  process.env.NEXT_PUBLIC_DEFAULT_PROVIDER_ENABLED === 'true';
+export const DEFAULT_PROVIDER_ENABLED = process.env.NEXT_PUBLIC_DEFAULT_PROVIDER_ENABLED === 'true';
 
 export interface ProviderPreset {
   label: string;

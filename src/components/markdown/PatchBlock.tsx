@@ -144,8 +144,8 @@ export function PatchBlock({ raw, streaming }: { raw: string; streaming: boolean
         <div className="flex items-start gap-2 border-t border-white/[0.08] px-4 py-2 text-xs text-amber-400/90">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Perubahan ini tidak bisa diterapkan otomatis ke kode sebelumnya (potongan aslinya tidak
-            ketemu). Terapkan manual sesuai diff di atas.
+            This change could not be applied to the earlier code automatically — the original
+            snippet was not found. Apply it by hand from the diff above.
           </span>
         </div>
       )}

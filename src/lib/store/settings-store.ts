@@ -1,7 +1,14 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { GenerationParams, PromptPreset } from '@/types';
-import { ACCENT_PRESETS, DEFAULT_PARAMS, DEFAULT_PRESETS, DEFAULT_SYSTEM_PROMPT } from './defaults';
+import type { GenerationParams, PromptPreset, SearchMode } from '@/types';
+import { SEARCH_MODES } from '@/types';
+import {
+  ACCENT_PRESETS,
+  DEFAULT_PARAMS,
+  DEFAULT_PRESETS,
+  DEFAULT_SEARCH_MODE,
+  DEFAULT_SYSTEM_PROMPT,
+} from './defaults';
 import { browserStorage } from './storage';
 import type { ApiProvider, ProviderProtocol } from '@/lib/providers/types';
 import { DEFAULT_PROVIDER_ENABLED } from '@/lib/providers/types';
@@ -34,6 +41,8 @@ export interface SettingsState {
   defaultModel: string;
   defaultSystemPrompt: string;
   defaultParams: GenerationParams;
+  /** Web-search mode applied to new conversations. */
+  defaultSearchMode: SearchMode;
   presets: PromptPreset[];
   animatedBackground: boolean;
   sendOnEnter: boolean; // Enter sends; Shift+Enter newline. If false, Ctrl+Enter sends.
@@ -57,6 +66,7 @@ export interface SettingsState {
   setDefaultModel: (m: string) => void;
   setDefaultSystemPrompt: (s: string) => void;
   setDefaultParams: (p: Partial<GenerationParams>) => void;
+  setDefaultSearchMode: (m: SearchMode) => void;
   addPreset: (p: PromptPreset) => void;
   updatePreset: (id: string, patch: Partial<PromptPreset>) => void;
   removePreset: (id: string) => void;
@@ -98,6 +108,8 @@ const initial = {
     : (process.env.NEXT_PUBLIC_DEFAULT_AI_MODEL?.trim() ?? ''),
   defaultSystemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultParams: DEFAULT_PARAMS,
+  /** Web-search mode new conversations start in. */
+  defaultSearchMode: DEFAULT_SEARCH_MODE as SearchMode,
   presets: DEFAULT_PRESETS,
   animatedBackground: true,
   sendOnEnter: true,
@@ -166,12 +178,21 @@ function sanitizeSettings(raw: unknown): Partial<SettingsData> {
       }
     } else if (key === 'defaultParams') {
       if (value && typeof value === 'object') {
-        const merged = { ...DEFAULT_PARAMS } as Record<string, number>;
+        // `contextAuto`/`maxTokensAuto` are booleans, so a number-only check
+        // would silently drop them from every imported file and reset auto.
+        const merged = { ...DEFAULT_PARAMS } as Record<string, number | boolean>;
         for (const [pk, pv] of Object.entries(value as Record<string, unknown>)) {
-          if (pk in merged && typeof pv === 'number' && Number.isFinite(pv)) merged[pk] = pv;
+          if (!(pk in merged)) continue;
+          if (typeof merged[pk] === 'boolean') {
+            if (typeof pv === 'boolean') merged[pk] = pv;
+          } else if (typeof pv === 'number' && Number.isFinite(pv)) {
+            merged[pk] = pv;
+          }
         }
         patch[key] = merged as unknown as GenerationParams;
       }
+    } else if (key === 'defaultSearchMode') {
+      if (SEARCH_MODES.includes(value as SearchMode)) patch[key] = value;
     } else if (key === 'sandboxMaxIterations') {
       if (typeof value === 'number' && Number.isFinite(value)) {
         patch[key] = Math.max(1, Math.min(8, Math.round(value)));
@@ -228,6 +249,7 @@ export const useSettings = create<SettingsState>()(
       setDefaultModel: (defaultModel) => set({ defaultModel }),
       setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
       setDefaultParams: (p) => set((s) => ({ defaultParams: { ...s.defaultParams, ...p } })),
+      setDefaultSearchMode: (defaultSearchMode) => set({ defaultSearchMode }),
       addPreset: (p) => set((s) => ({ presets: [...s.presets, p] })),
       updatePreset: (id, patch) =>
         set((s) => ({
@@ -243,7 +265,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(browserStorage),
-      version: 8,
+      version: 9,
       /**
        * v* -> v4: the product moved from a colored field to the monochrome system,
        * which renamed every accent preset (Acid, Paper and Peach no longer
@@ -260,6 +282,7 @@ export const useSettings = create<SettingsState>()(
           apiUrlOverride?: string;
           providerApiKey?: string;
           defaultParams?: GenerationParams;
+          defaultSearchMode?: SearchMode;
         };
         if (version < 4) {
           const known = new Set(ACCENT_PRESETS.map((a) => a.value));
@@ -304,6 +327,22 @@ export const useSettings = create<SettingsState>()(
          */
         if (version < 8 && state.defaultParams?.contextLength === 8192) {
           state.defaultParams = { ...state.defaultParams, contextLength: 131072 };
+        }
+        /**
+         * v9 makes the window follow the model. Existing users get auto turned on
+         * only where their number is still the shipped default — anyone who typed
+         * their own window (a small self-hosted model, say) keeps it, because
+         * `contextAuto: false` is what "the user decided" means everywhere else.
+         */
+        if (version < 9 && state.defaultParams) {
+          state.defaultParams = {
+            ...state.defaultParams,
+            contextAuto: state.defaultParams.contextLength === 131072,
+            maxTokensAuto: state.defaultParams.maxTokens === -1,
+          };
+        }
+        if (version < 9 && state.defaultSearchMode == null) {
+          state.defaultSearchMode = DEFAULT_SEARCH_MODE;
         }
         return state;
       },

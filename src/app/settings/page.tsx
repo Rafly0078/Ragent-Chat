@@ -23,7 +23,8 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { useSettings } from '@/lib/store/settings-store';
 import { useChatStore } from '@/lib/store/chat-store';
-import { ACCENT_PRESETS } from '@/lib/store/defaults';
+import { ACCENT_PRESETS, DEFAULT_SEARCH_MODE } from '@/lib/store/defaults';
+import type { SearchMode } from '@/types';
 import { useModels } from '@/features/models/use-models';
 import { useHydrated } from '@/lib/hooks/use-hydrated';
 import { API_BASE_URL } from '@/lib/api/config';
@@ -52,6 +53,26 @@ const NAV: { id: SectionId; label: string; icon: React.ComponentType<{ className
   { id: 'params', label: 'Generation', icon: Sliders },
   { id: 'app', label: 'Install app', icon: Smartphone },
   { id: 'data', label: 'Data & backup', icon: Download },
+];
+
+const SEARCH_MODE_OPTIONS: { mode: SearchMode; label: string; description: string }[] = [
+  {
+    mode: 'off',
+    label: 'Off',
+    description: 'Never search. The model answers from its own knowledge only.',
+  },
+  {
+    mode: 'auto',
+    label: `Auto${DEFAULT_SEARCH_MODE === 'auto' ? ' (recommended)' : ''}`,
+    description:
+      'The model decides per message whether the web is needed — current events, prices, versions and anything past its training cutoff get searched; explanations, code and follow-ups do not.',
+  },
+  {
+    mode: 'always',
+    label: 'Always',
+    description:
+      'Search before every message. Slower, and spends a search on questions that do not need one.',
+  },
 ];
 
 const PROVIDERS: ApiProvider[] = [
@@ -92,6 +113,7 @@ export default function SettingsPage() {
       defaultModel: s.defaultModel,
       defaultSystemPrompt: s.defaultSystemPrompt,
       defaultParams: s.defaultParams,
+      defaultSearchMode: s.defaultSearchMode,
       presets: s.presets,
       animatedBackground: s.animatedBackground,
       sendOnEnter: s.sendOnEnter,
@@ -267,6 +289,29 @@ export default function SettingsPage() {
                   checked={s.showTokenCounter}
                   onChange={() => s.toggle('showTokenCounter')}
                 />
+
+                <Field label="Web search in new chats">
+                  <div className="flex flex-wrap gap-2">
+                    {SEARCH_MODE_OPTIONS.map((o) => (
+                      <button
+                        key={o.mode}
+                        onClick={() => s.setDefaultSearchMode(o.mode)}
+                        aria-pressed={s.defaultSearchMode === o.mode}
+                        className={cn(
+                          'flex h-9 items-center rounded-xl border px-3 text-sm transition-colors',
+                          s.defaultSearchMode === o.mode
+                            ? 'bg-accent/12 border-accent/50 text-content'
+                            : 'border-border/15 text-content-muted hover:text-content',
+                        )}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-content-muted">
+                    {SEARCH_MODE_OPTIONS.find((o) => o.mode === s.defaultSearchMode)?.description}
+                  </p>
+                </Field>
               </Section>
             )}
 
@@ -612,28 +657,51 @@ export default function SettingsPage() {
                     onChange={(v) => s.setDefaultParams({ repeatPenalty: v })}
                     format={(v) => v.toFixed(2)}
                   />
-                  <Slider
-                    label="Context length"
-                    value={s.defaultParams.contextLength}
-                    min={512}
-                    max={131072}
-                    step={512}
-                    onChange={(v) => s.setDefaultParams({ contextLength: v })}
+                  {/* Both limits default to following the active model. The
+                      sliders below are only the fallback for an endpoint that
+                      reports no window and matches no known provider. */}
+                  <ToggleRow
+                    label="Context length follows the model"
+                    description="Use the window the provider or endpoint reports for the selected model instead of a fixed number."
+                    checked={s.defaultParams.contextAuto !== false}
+                    onChange={() =>
+                      s.setDefaultParams({ contextAuto: s.defaultParams.contextAuto === false })
+                    }
                   />
-                  <Slider
-                    label="Max tokens"
-                    value={s.defaultParams.maxTokens}
-                    min={-1}
-                    max={131072}
-                    step={1}
-                    onChange={(v) => s.setDefaultParams({ maxTokens: v })}
+                  {s.defaultParams.contextAuto === false && (
+                    <Slider
+                      label="Context length"
+                      value={s.defaultParams.contextLength}
+                      min={512}
+                      max={131072}
+                      step={512}
+                      onChange={(v) => s.setDefaultParams({ contextLength: v })}
+                    />
+                  )}
+                  <ToggleRow
+                    label="Max tokens follows the model"
+                    description="Use the provider's output-token ceiling for the selected model."
+                    checked={s.defaultParams.maxTokensAuto !== false}
+                    onChange={() =>
+                      s.setDefaultParams({ maxTokensAuto: s.defaultParams.maxTokensAuto === false })
+                    }
                   />
+                  {s.defaultParams.maxTokensAuto === false && (
+                    <Slider
+                      label="Max tokens"
+                      value={s.defaultParams.maxTokens}
+                      min={-1}
+                      max={131072}
+                      step={1}
+                      onChange={(v) => s.setDefaultParams({ maxTokens: v })}
+                    />
+                  )}
                 </div>
 
-                <div className="mt-6 space-y-4 border-t border-border/60 pt-5">
+                <div className="mt-6 space-y-4 border-t border-border/15 pt-5">
                   <ToggleRow
-                    label="Auto-audit & perbaiki kode"
-                    description="Setelah kode web (HTML/CSS/JS) selesai dibuat, jalankan di sandbox, deteksi error, lalu minta model memperbaikinya otomatis sampai bersih. Membuat panggilan model tambahan."
+                    label="Auto-audit & fix code"
+                    description="Once web code (HTML/CSS/JS) finishes generating, run it in the sandbox, detect errors, then have the model fix them until it is clean. Costs extra model calls."
                     checked={s.sandboxAutoHeal}
                     onChange={() => s.toggle('sandboxAutoHeal')}
                   />

@@ -17,6 +17,14 @@ export interface SearchPlan {
   goal: string;
   /** Concrete queries to run against the search provider, in priority order. */
   queries: string[];
+  /**
+   * Auto mode only: the model's own verdict on whether the web is needed at
+   * all. `false` means answer from the model's own knowledge — the caller skips
+   * the search entirely. Undefined when the caller forced a search.
+   */
+  needsSearch?: boolean;
+  /** One line explaining the verdict, shown in the search indicator. */
+  reason?: string;
 }
 
 /** Cap on planned queries — more than this wastes provider calls + context. */
@@ -26,21 +34,45 @@ const MAX_QUERIES = 3;
  * Build the message list for the planning turn. We ask for a strict JSON
  * object; recent conversation turns are included as light context so the plan
  * can resolve pronouns / follow-ups ("and the second one?").
+ *
+ * In `auto` mode the same turn also decides IF the web is needed, so deciding
+ * and planning cost one round-trip rather than two.
  */
-export function buildPlanMessages(userText: string, history: Message[]): ApiChatMessage[] {
+export function buildPlanMessages(
+  userText: string,
+  history: Message[],
+  mode: 'auto' | 'always' = 'always',
+): ApiChatMessage[] {
   // A few recent turns for context — enough to disambiguate, not the whole log.
   const recent = history
     .filter((m) => m.role !== 'system' && !m.error && m.content.trim())
     .slice(-4)
     .map<ApiChatMessage>((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
+  const shape =
+    mode === 'auto'
+      ? `{"needs_search": <true|false>, "reason": "<one short sentence>", "goal": "<one sentence: what we're trying to find out>", "queries": ["<search query 1>", "<search query 2>"]}`
+      : `{"goal": "<one sentence: what we're trying to find out>", "queries": ["<search query 1>", "<search query 2>"]}`;
+
+  const decisionRules =
+    mode === 'auto'
+      ? `\nDeciding "needs_search":\n` +
+        `- true when the answer depends on information that changes or that you cannot know: current events, prices, release versions, schedules, weather, live status, anything dated after your training cutoff, or specific facts about a named person, product, company or repository you are not confident about.\n` +
+        `- true when the user explicitly asks you to look something up, cite sources, or check what is current.\n` +
+        `- false for things you can answer from your own knowledge: explanations of stable concepts, math, translation, summarizing or rewriting text the user supplied, writing or debugging code, and reasoning about the conversation itself.\n` +
+        `- false for greetings, small talk, and follow-ups that only refer back to what was already said.\n` +
+        `- When it is genuinely borderline, prefer true — a wasted search costs less than a confidently outdated answer.\n` +
+        `- When "needs_search" is false, return an empty "queries" array.\n`
+      : '';
+
   const system: ApiChatMessage = {
     role: 'system',
     content:
       `You are a search-planning assistant. Given the user's request, decide what to look up on the web to answer it well.\n\n` +
       `Respond with ONLY a JSON object, no prose, no code fence:\n` +
-      `{"goal": "<one sentence: what we're trying to find out>", "queries": ["<search query 1>", "<search query 2>"]}\n\n` +
-      `Rules:\n` +
+      `${shape}\n` +
+      decisionRules +
+      `\nRules:\n` +
       `- "queries" are the actual keyword strings to type into a search engine — concise, specific, no full sentences.\n` +
       `- Give 1 to ${MAX_QUERIES} queries. Use more than one only when the request has distinct parts worth searching separately.\n` +
       `- Prefer recent, specific terms. Add a year only when recency matters.\n` +
@@ -54,6 +86,10 @@ export function buildPlanMessages(userText: string, history: Message[]): ApiChat
  * Parse the model's planning output into a SearchPlan. Tolerant of the ways
  * weaker local models wrap JSON: leading prose, ```json fences, trailing text.
  * Returns null when nothing usable is found so the caller can fall back.
+ *
+ * A plan that says `needs_search: false` is valid and returned with zero
+ * queries — that is a decision, not a parse failure, and the caller must be
+ * able to tell the two apart (one skips the search, the other falls back).
  */
 export function parsePlan(raw: string): SearchPlan | null {
   const obj = extractJsonObject(raw);
@@ -78,10 +114,32 @@ export function parsePlan(raw: string): SearchPlan | null {
     })
     .slice(0, MAX_QUERIES);
 
+  const goal = typeof obj.goal === 'string' ? obj.goal.trim() : '';
+  const reason = typeof obj.reason === 'string' ? obj.reason.trim() : '';
+  const needsSearch = parseBool(obj.needs_search);
+
+  // An explicit "no" is a complete answer even with no queries.
+  if (needsSearch === false) return { goal, queries: [], needsSearch: false, reason };
+  // A "yes" with no queries is a half-parse; the caller searches the raw text.
   if (queries.length === 0) return null;
 
-  const goal = typeof obj.goal === 'string' ? obj.goal.trim() : '';
-  return { goal, queries };
+  return {
+    goal,
+    queries,
+    ...(needsSearch === undefined ? {} : { needsSearch }),
+    ...(reason ? { reason } : {}),
+  };
+}
+
+/** Accept the several ways a model spells a boolean in loosely-typed JSON. */
+function parseBool(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    if (v === 'true' || v === 'yes') return true;
+    if (v === 'false' || v === 'no') return false;
+  }
+  return undefined;
 }
 
 /**

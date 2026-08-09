@@ -59,10 +59,10 @@ function ArtifactDirectiveNotice({ raw, streaming }: { raw: string; streaming: b
     <div className="my-2 flex items-start gap-2 rounded-xl border border-error/30 bg-error/5 p-3 text-sm text-error">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
       <div>
-        <p className="font-medium">Gagal membuat file</p>
+        <p className="font-medium">File wasn&apos;t created</p>
         <p className="text-error/80">
-          Respons AI untuk permintaan file ini tidak lengkap atau formatnya tidak valid, jadi
-          filenya tidak jadi dibuat. Coba klik Regenerate, atau minta dokumen yang lebih singkat.
+          The model&apos;s response for this file was cut short or malformed, so nothing was
+          generated. Try Regenerate, or ask for a shorter document.
         </p>
       </div>
     </div>

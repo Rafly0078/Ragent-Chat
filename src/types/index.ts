@@ -17,6 +17,18 @@ export interface ThinkingConfig {
   effort: ThinkingEffort;
 }
 
+/**
+ * How web search is applied to a turn.
+ *
+ *   off     never search
+ *   auto    ask the planner first; it may decide no search is needed
+ *   always  search every turn (the old on/off toggle's "on")
+ */
+export type SearchMode = 'off' | 'auto' | 'always';
+
+/** Ordered for the tri-state control in the composer. */
+export const SEARCH_MODES: SearchMode[] = ['off', 'auto', 'always'];
+
 export interface Attachment {
   id: string;
   /** Original filename. */
@@ -75,6 +87,14 @@ export interface GenerationParams {
   contextLength: number;
   /** Ollama `num_predict` — max tokens to generate. -1 = unlimited. */
   maxTokens: number;
+  /**
+   * Follow the active model/provider's own context window instead of
+   * `contextLength`. Stays true until the user drags the slider, at which point
+   * their number wins for good (see `resolveLimits`).
+   */
+  contextAuto?: boolean;
+  /** Same deal for `maxTokens` — track the model's output ceiling. */
+  maxTokensAuto?: boolean;
 }
 
 /**
@@ -99,6 +119,12 @@ export interface Conversation {
   params: GenerationParams;
   /** Extended thinking configuration (Ollama `think` parameter). */
   thinking: ThinkingConfig;
+  /**
+   * Web-search mode for this conversation. Optional so conversations created
+   * before this existed keep working; the reader defaults them to the global
+   * setting rather than silently turning search off.
+   */
+  searchMode?: SearchMode;
   /**
    * Running summary of the messages that have been compacted out of the live
    * context to keep long conversations within the model's window. Injected as a
@@ -129,8 +155,10 @@ export interface ModelInfo {
   description?: string;
   /** Size on disk in bytes. */
   size?: number;
-  /** Context length in tokens if known (from /api/show). */
+  /** Context length in tokens if known (from /api/show or a `/models` entry). */
   contextLength?: number;
+  /** Output-token ceiling when the endpoint reports one. */
+  maxOutputTokens?: number;
   details: OllamaModelDetails;
   /** Whether the model accepts images (vision). */
   supportsVision?: boolean;

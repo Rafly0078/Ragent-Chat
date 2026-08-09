@@ -120,6 +120,22 @@ export function providerSupportsThinking(
 }
 
 /**
+ * Wire protocol for a provider, with Ollama pinned.
+ *
+ * `resolveProviderProtocol` answers "which request shape does this provider
+ * speak", and for the `ollama` provider that answer is `ollama` by definition
+ * rather than by lookup. Both callers below need the pinned form, and both had
+ * inlined the same ternary — one of them wrapped differently, which is exactly
+ * how two copies of a rule start to drift.
+ */
+function thinkingProtocol(
+  provider: ApiProvider,
+  customProtocol: ProviderProtocol,
+): ProviderProtocol | 'ollama' {
+  return provider === 'ollama' ? 'ollama' : resolveProviderProtocol(provider, customProtocol);
+}
+
+/**
  * Thinking effort levels selectable for the active provider/protocol.
  *
  * OpenAI's `reasoning_effort` accepts only low|medium|high. `max` is an
@@ -131,8 +147,9 @@ export function providerThinkingEfforts(
   provider: ApiProvider = apiProvider,
   customProtocol: ProviderProtocol = customProviderProtocol,
 ): ThinkingEffort[] {
-  const protocol = provider === 'ollama' ? 'ollama' : resolveProviderProtocol(provider, customProtocol);
-  if (protocol === 'openai') return THINKING_EFFORTS.filter((e) => e !== 'max');
+  if (thinkingProtocol(provider, customProtocol) === 'openai') {
+    return THINKING_EFFORTS.filter((e) => e !== 'max');
+  }
   return THINKING_EFFORTS;
 }
 
@@ -142,9 +159,7 @@ export function providerThinkingKey(
   provider: ApiProvider = apiProvider,
   customProtocol: ProviderProtocol = customProviderProtocol,
 ): string {
-  const protocol =
-    provider === 'ollama' ? 'ollama' : resolveProviderProtocol(provider, customProtocol);
-  return `${provider}:${protocol}:${model}`;
+  return `${provider}:${thinkingProtocol(provider, customProtocol)}:${model}`;
 }
 
 /** Real Ollama endpoint path -> same-origin bridge route that proxies it server-side. */

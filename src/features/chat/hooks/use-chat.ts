@@ -1,9 +1,12 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import type { Attachment, Message } from '@/types';
+import type { Attachment, Message, SearchMode } from '@/types';
 import { useChatStore } from '@/lib/store/chat-store';
+import { useSettings } from '@/lib/store/settings-store';
+import { DEFAULT_SEARCH_MODE } from '@/lib/store/defaults';
 import { useThinkingStore } from '@/lib/store/thinking-store';
+import { resolveLimits, limitSourceLabel } from '@/features/models/resolve-limits';
 import { ApiError, providerSupportsThinking, providerThinkingKey } from '@/lib/api/config';
 import { streamChat, chat } from '@/lib/api/client';
 import { toApiMessages, toApiOptions, type ChatStreamChunk } from '@/lib/api/types';
@@ -220,18 +223,23 @@ export function useChat(conversationId: string | null) {
       const searchContext =
         opts?.searchContext ?? (assistantMsg?.metadata?.searchContext as string | undefined);
 
+      // Context window / output ceiling. With auto on (the default) these follow
+      // the active model instead of the stored slider values, so compaction
+      // budgets against the window we are actually going to send.
+      const limits = resolveLimits(convo.params, convo.model);
+      const params = {
+        ...convo.params,
+        contextLength: limits.contextLength,
+        maxTokens: limits.maxTokens,
+      };
+
       // Context compaction — before sending, if the estimated prompt exceeds a
       // fraction of the model's window, condense older turns into a running
       // summary so the model keeps the memory at a fraction of the token cost.
       // Failures here are non-fatal: we just send the full history as before.
       let summary = convo.summary;
       try {
-        const plan = planCompaction(
-          history,
-          convo.systemPrompt,
-          convo.params.contextLength,
-          summary,
-        );
+        const plan = planCompaction(history, convo.systemPrompt, params.contextLength, summary);
         if (plan) {
           const text = await chat(
             {
@@ -263,11 +271,11 @@ export function useChat(conversationId: string | null) {
         // larger than the window. No summary can fix that, so warn the user
         // rather than let Ollama silently truncate. Fire at most once per
         // conversation until the situation clears, so it doesn't nag each turn.
-        if (stillOverBudget(history, convo.systemPrompt, convo.params.contextLength, summary)) {
+        if (stillOverBudget(history, convo.systemPrompt, params.contextLength, summary)) {
           if (overBudgetWarned.current !== convoId) {
             overBudgetWarned.current = convoId;
             toast(
-              'This conversation is larger than the model’s context window. Raise Context Length in params, or split long code into smaller messages — older content may be dropped.',
+              `This conversation is larger than the ${limits.contextLength.toLocaleString()}-token context window (${limitSourceLabel(limits.contextSource)}). Split long code into smaller messages, or set Context Length manually in params — older content may be dropped.`,
               'error',
             );
           }
@@ -289,7 +297,7 @@ export function useChat(conversationId: string | null) {
 
       // Build request — the effort level is sent verbatim as Ollama's `think`
       // parameter ("low" | "medium" | "high" | "max") when thinking is enabled.
-      const options = toApiOptions(convo.params);
+      const options = toApiOptions(params);
       const thinkingEnabled = convo.thinking?.enabled === true && providerSupportsThinking();
 
       // Stamp the effort level onto the message so the reasoning panel can react
@@ -441,8 +449,17 @@ export function useChat(conversationId: string | null) {
    * undefined when nothing usable came back. Updates `metadata.searchPhase` as
    * it moves through phases so the UI can show a multi-step indicator.
    *
-   * When `thinkingEnabled` is false we skip the planning round-trip entirely and
-   * search the raw user text — exactly the old behavior, so no regression.
+   * `mode` decides how much authority the planner has:
+   *
+   *   always  search no matter what; a planner failure falls back to searching
+   *           the raw user text, which is the pre-planner behavior.
+   *   auto    the planner ALSO decides whether the web is needed at all. A
+   *           failure here means no search — guessing "yes" would spend a search
+   *           quota (and add latency) on every turn a flaky model can't answer.
+   *
+   * The planning call itself runs with `think: false` regardless of the
+   * conversation's thinking setting, so it works on models without a reasoning
+   * parameter too.
    */
   const runAgenticSearch = useCallback(
     async (
@@ -451,7 +468,7 @@ export function useChat(conversationId: string | null) {
       userText: string,
       history: Message[],
       model: string,
-      thinkingEnabled: boolean,
+      mode: 'auto' | 'always',
     ): Promise<string | undefined> => {
       const setMeta = (patch: Record<string, unknown>) => {
         const msg = store
@@ -463,26 +480,44 @@ export function useChat(conversationId: string | null) {
           .updateMessage(convoId, messageId, { metadata: { ...msg?.metadata, ...patch } });
       };
 
-      // Phase 1 — plan the search. Only when thinking is on; otherwise fall back
-      // to the raw query so weaker/non-thinking models keep working as before.
-      let plan: SearchPlan;
-      if (thinkingEnabled) {
-        setMeta({ searching: true, searchPhase: 'planning' });
-        try {
-          const raw = await chat(
-            {
-              model,
-              messages: buildPlanMessages(userText, history),
-              think: false, // plan JSON must be clean — no reasoning tokens in the body
-            },
-            undefined,
-            PLAN_TIMEOUT_MS,
-          );
-          plan = parsePlan(raw) ?? fallbackPlan(userText);
-        } catch {
-          plan = fallbackPlan(userText);
+      // Phase 1 — plan the search. In auto mode this same call decides IF we
+      // search, so deciding and planning cost one round-trip, not two.
+      let plan: SearchPlan | null = null;
+      setMeta({ searching: true, searchPhase: mode === 'auto' ? 'deciding' : 'planning' });
+      try {
+        const raw = await chat(
+          {
+            model,
+            messages: buildPlanMessages(userText, history, mode),
+            think: false, // plan JSON must be clean — no reasoning tokens in the body
+          },
+          undefined,
+          PLAN_TIMEOUT_MS,
+        );
+        plan = parsePlan(raw);
+      } catch {
+        plan = null;
+      }
+
+      // The planner declined: answer from the model's own knowledge. Keep the
+      // reason so the UI can say why no sources are attached.
+      if (plan?.needsSearch === false) {
+        setMeta({
+          searching: false,
+          searchPhase: undefined,
+          searchSkipped: true,
+          searchSkipReason: plan.reason || undefined,
+        });
+        return undefined;
+      }
+
+      if (!plan) {
+        // No usable plan. In `always` the user asked for a search, so search the
+        // raw text; in `auto` an unparseable plan is not consent to search.
+        if (mode === 'auto') {
+          setMeta({ searching: false, searchPhase: undefined, searchSkipped: true });
+          return undefined;
         }
-      } else {
         plan = fallbackPlan(userText);
       }
 
@@ -529,7 +564,7 @@ export function useChat(conversationId: string | null) {
   );
 
   const send = useCallback(
-    async (text: string, attachments: Attachment[] = [], webSearch = false) => {
+    async (text: string, attachments: Attachment[] = [], searchMode?: SearchMode) => {
       if (!conversationId) return;
       const trimmed = text.trim();
       if (!trimmed && attachments.length === 0) return;
@@ -565,14 +600,19 @@ export function useChat(conversationId: string | null) {
       s.addMessage(conversationId, assistantMsg);
       if (convo.model) s.pushRecentModel(convo.model);
 
-      // Optional web search. When thinking is available, this is agentic: the
-      // model first plans WHAT to search (keywords + goal), we run those
-      // queries, then the streaming turn reasons over the results. A search
-      // failure is non-fatal — we toast and let the model answer without it.
+      // Web search. `off` skips it entirely; `always` searches every turn;
+      // `auto` lets the planner decide per turn whether the web is needed. The
+      // caller's mode wins so the composer control is authoritative for this
+      // send; otherwise fall back to the conversation's, then the global default.
+      // A search failure is non-fatal — we toast and answer without it.
+      const mode: SearchMode =
+        searchMode ??
+        convo.searchMode ??
+        useSettings.getState().defaultSearchMode ??
+        DEFAULT_SEARCH_MODE;
+
       let searchContext: string | undefined;
-      if (webSearch && trimmed) {
-        const thinkingEnabled =
-          convo.thinking?.enabled === true && !!convo.model && providerSupportsThinking();
+      if (mode !== 'off' && trimmed && convo.model) {
         try {
           searchContext = await runAgenticSearch(
             conversationId,
@@ -580,7 +620,7 @@ export function useChat(conversationId: string | null) {
             trimmed,
             convo.messages,
             convo.model,
-            thinkingEnabled,
+            mode,
           );
         } catch (err) {
           toast(err instanceof Error ? err.message : 'Web search failed', 'error');

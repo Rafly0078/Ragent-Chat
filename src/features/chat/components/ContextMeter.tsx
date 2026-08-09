@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import type { Conversation, Message } from '@/types';
 import { Tooltip } from '@/components/ui/tooltip';
 import { estimateTokens } from '@/lib/utils/format';
+import { limitSourceLabel, resolveLimits } from '@/features/models/resolve-limits';
 import { cn } from '@/lib/utils/cn';
 
 /** Small per-message overhead for role/formatting tokens in the chat template. */
@@ -51,7 +52,10 @@ function estimateContextUsage(convo: Conversation): number {
 }
 
 export function ContextMeter({ conversation }: { conversation: Conversation }) {
-  const limit = conversation.params.contextLength;
+  // The meter has to measure against the window actually being sent, which with
+  // auto on is the model's own, not the stored slider number.
+  const limits = resolveLimits(conversation.params, conversation.model ?? '');
+  const limit = limits.contextLength;
 
   const used = useMemo(
     () => estimateContextUsage(conversation),
@@ -68,9 +72,9 @@ export function ContextMeter({ conversation }: { conversation: Conversation }) {
 
   return (
     <Tooltip
-      label={`~${used.toLocaleString()} / ${limit.toLocaleString()} tokens in context${
-        pct >= 70 ? ' — getting close to the limit' : ''
-      }`}
+      label={`~${used.toLocaleString()} / ${limit.toLocaleString()} tokens in context (${limitSourceLabel(
+        limits.contextSource,
+      )})${pct >= 70 ? ' — getting close to the limit' : ''}`}
       side="bottom"
     >
       <div className="hidden items-center gap-1.5 rounded-xl border border-border/15 px-2 py-1.5 md:flex">

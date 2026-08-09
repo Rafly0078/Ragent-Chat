@@ -44,13 +44,18 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Only listen while the menu is actually open. Unconditionally, this was a
+  // document-level `mousedown` handler running for every click anywhere in the
+  // app, for the whole session, to close a menu that is shut almost all of that
+  // time. Same shape as the gated listener in ChatInput.
   useEffect(() => {
+    if (!menuOpen) return;
     const onClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
-  }, []);
+  }, [menuOpen]);
 
   const exportMd = () => {
     downloadText(
