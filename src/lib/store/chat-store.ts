@@ -484,7 +484,7 @@ export const useChatStore = create<ChatState>()(
     {
       name: 'ollama-webui:chats',
       storage: createJSONStorage(() => throttledStorage(1000)),
-      version: 3,
+      version: 4,
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as { conversations?: Conversation[] };
@@ -510,6 +510,17 @@ export const useChatStore = create<ChatState>()(
             }
             return c;
           });
+        }
+        // v3 → v4: the default context window moved from 8192 to 131072. Each
+        // conversation snapshots its own params at creation, so without this an
+        // old chat stays capped at the old default and keeps getting compacted
+        // early. A window the user chose themselves is left alone.
+        if (version < 4 && state.conversations) {
+          state.conversations = state.conversations.map((c) =>
+            c.params?.contextLength === 8192
+              ? { ...c, params: { ...c.params, contextLength: 131072 } }
+              : c,
+          );
         }
         return state;
       },

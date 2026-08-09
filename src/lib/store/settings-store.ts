@@ -243,7 +243,7 @@ export const useSettings = create<SettingsState>()(
     {
       name: 'ollama-webui:settings',
       storage: createJSONStorage(browserStorage),
-      version: 7,
+      version: 8,
       /**
        * v* -> v4: the product moved from a colored field to the monochrome system,
        * which renamed every accent preset (Acid, Paper and Peach no longer
@@ -259,6 +259,7 @@ export const useSettings = create<SettingsState>()(
           providerProtocol?: ProviderProtocol;
           apiUrlOverride?: string;
           providerApiKey?: string;
+          defaultParams?: GenerationParams;
         };
         if (version < 4) {
           const known = new Set(ACCENT_PRESETS.map((a) => a.value));
@@ -293,6 +294,16 @@ export const useSettings = create<SettingsState>()(
             state.providerProtocol = 'openai';
             Object.assign(state, { providerApiUrl: '', providerModel: '', defaultModel: '' });
           }
+        }
+        /**
+         * v8 raises the default context window to 131072. The old default of
+         * 8192 predates the models this app now points at and silently truncated
+         * long chats through the compaction path. Only the untouched old default
+         * is rewritten — someone who deliberately picked a smaller window keeps
+         * it, since a larger `num_ctx` costs memory on a self-hosted Ollama.
+         */
+        if (version < 8 && state.defaultParams?.contextLength === 8192) {
+          state.defaultParams = { ...state.defaultParams, contextLength: 131072 };
         }
         return state;
       },

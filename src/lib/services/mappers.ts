@@ -82,9 +82,22 @@ function safeMetadata(raw: unknown): Record<string, unknown> | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * The pre-v4 default context window. A row still holding it was written before
+ * the store migration ran, so it is the old default rather than a choice, and is
+ * raised to the current one — otherwise a second device (or any device that
+ * hydrates before its own migration) pulls `8192` straight back down. Any other
+ * value is left alone: the user picked it, and a large `num_ctx` costs memory on
+ * a self-hosted Ollama.
+ */
+const LEGACY_CONTEXT_LENGTH = 8192;
+
 export function rowToConversation(row: ConversationRow, messages: Message[]): Conversation {
   const rawParams = row.params && typeof row.params === 'object' ? row.params : {};
   const params = { ...DEFAULT_PARAMS, ...(rawParams as Partial<GenerationParams>) };
+  if (params.contextLength === LEGACY_CONTEXT_LENGTH) {
+    params.contextLength = DEFAULT_PARAMS.contextLength;
+  }
   return {
     id: row.id,
     title: row.title,

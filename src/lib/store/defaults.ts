@@ -12,7 +12,7 @@ export const DEFAULT_PARAMS: GenerationParams = {
   topP: 0.9,
   topK: 40,
   repeatPenalty: 1.1,
-  contextLength: 8192,
+  contextLength: 131072,
   maxTokens: -1,
 };
 
