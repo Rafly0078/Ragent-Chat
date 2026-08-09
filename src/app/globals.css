@@ -651,12 +651,21 @@ h4 {
    element into its own texture and run a separable convolution over it, and
    these pools are sized 76vh × 110vw. Extra gradient stops buy the same
    softness for the price of a gradient. */
+/* `ellipse farthest-side`, not `circle`. These pools are wide and short (110vw ×
+   76vh), and a `circle` sizes itself to the farthest *corner* — roughly 3× the
+   box's half-height on a desktop viewport. The ramp's `transparent` stop then
+   landed far outside the box and the gradient was clipped flat at its own edge,
+   still around 0.05 alpha. Because the ellipse is much wider than it is tall,
+   that clip is nearly horizontal right where it crosses the screen: a hard grey
+   line across the middle of the page with a washed-out band above it.
+   `farthest-side` pins 100% to the box's own half-width and half-height, so the
+   ramp reaches full transparency inside the element on both axes. */
 .lamp-pool {
   position: absolute;
   pointer-events: none;
   border-radius: 9999px;
   background: radial-gradient(
-    circle at center,
+    ellipse farthest-side at center,
     rgb(var(--content) / 0.075) 0%,
     rgb(var(--content) / 0.055) 26%,
     rgb(var(--content) / 0.028) 48%,
