@@ -16,9 +16,15 @@ export const DEFAULT_PARAMS: GenerationParams = {
   maxTokens: -1,
 };
 
+/**
+ * Thinking is on at `medium` for every new conversation. The send path gates on
+ * `providerSupportsThinking()` (see use-chat.ts), so a provider without a
+ * reasoning parameter simply never receives one — turning this on cannot produce
+ * a bad request. Existing conversations keep whatever they were created with.
+ */
 export const DEFAULT_THINKING: ThinkingConfig = {
-  enabled: false,
-  effort: 'medium',
+  enabled: true,
+  effort: 'high',
 };
 
 /** Ordered thinking effort levels — used to render the selector. */
