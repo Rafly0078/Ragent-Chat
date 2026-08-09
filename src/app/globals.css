@@ -33,7 +33,6 @@
 
   /* Fluid unit. Needs a container-query context (see .lamp-field); the anchor
      keeps it sane before containment resolves. */
-  --vsq: calc(0.5vw + 0.5vh);
   --u-anchor: 0.58px;
   --u: max(calc(100cqw / 2360), var(--u-anchor));
 
@@ -94,7 +93,6 @@
   --accent-solid: var(--lamp);
   --accent-hover: 48 48 44;
   --accent-fg: var(--paper);
-  --acid: var(--lamp); /* legacy alias — text-acid call sites still resolve */
 
   --success: 44 121 83;
   --warning: 150 104 39;
@@ -324,12 +322,22 @@ h4 {
   }
 
   /* Persistent chrome: sidebar, top bar, input dock. One step off the field,
-     one hairline where it meets the reading column, no blur — blur over a
-     near-black field costs a compositing layer and buys nothing visible. */
+     one hairline where it meets the reading column.
+     `backdrop-filter` is the single most expensive thing the chrome can ask
+     for: it re-samples and blurs everything painted behind it, every frame the
+     page scrolls, on surfaces that are on screen the entire session. Desktop
+     absorbs that; phones drop frames for it. So the blur is a large-viewport
+     enhancement, and small viewports get a nearly-opaque fill instead — same
+     separation between chrome and field, no per-frame convolution. */
   .glass {
-    background-color: rgb(var(--surface-mid) / 0.82);
+    background-color: rgb(var(--surface-mid) / 0.97);
     border: 1px solid rgb(var(--border) / var(--border-alpha));
-    backdrop-filter: blur(18px);
+  }
+  @media (min-width: 768px) {
+    .glass {
+      background-color: rgb(var(--surface-mid) / 0.82);
+      backdrop-filter: blur(18px);
+    }
   }
   header.glass {
     border: 0;
@@ -372,9 +380,18 @@ h4 {
     border-radius: var(--radius-md);
   }
 
+  /* Same reasoning as `.glass`: the 3px blur is a desktop nicety. A modal scrim
+     covers the whole viewport, so on a phone it is the most expensive possible
+     surface to blur — and it animates its own opacity in and out on top of
+     that. Small viewports get a slightly heavier tint instead. */
   .scrim {
-    background-color: rgb(var(--scrim) / var(--scrim-alpha));
-    backdrop-filter: blur(3px);
+    background-color: rgb(var(--scrim) / calc(var(--scrim-alpha) + 0.08));
+  }
+  @media (min-width: 768px) {
+    .scrim {
+      background-color: rgb(var(--scrim) / var(--scrim-alpha));
+      backdrop-filter: blur(3px);
+    }
   }
 
   .focus-ring {
@@ -609,17 +626,23 @@ h4 {
    the field. It is the signature: everything else in the system is cold, and
    the warmth in the page always traces back to one of these.
 --------------------------------------------------------------------------- */
+/* No `filter: blur()`. A radial gradient is already a smooth ramp, so blurring
+   one is visually almost a no-op — but it forces the browser to rasterize the
+   element into its own texture and run a separable convolution over it, and
+   these pools are sized 76vh × 110vw. Extra gradient stops buy the same
+   softness for the price of a gradient. */
 .lamp-pool {
   position: absolute;
   pointer-events: none;
   border-radius: 9999px;
   background: radial-gradient(
     circle at center,
-    rgb(var(--content) / 0.08) 0%,
-    rgb(var(--content) / 0.025) 42%,
-    transparent 72%
+    rgb(var(--content) / 0.075) 0%,
+    rgb(var(--content) / 0.055) 26%,
+    rgb(var(--content) / 0.028) 48%,
+    rgb(var(--content) / 0.01) 66%,
+    transparent 80%
   );
-  filter: blur(34px);
   z-index: 0;
 }
 
@@ -1031,21 +1054,6 @@ h4 {
 .streaming-caret::after {
   content: '';
   @apply ml-1 inline-block h-[1.05em] w-[0.5em] translate-y-[0.12em] animate-caret-blink rounded-[1px] bg-accent align-baseline;
-}
-
-/* ---------------------------------------------------------------------------
-   PROMPT SUGGESTION CARDS (chat empty state). One uniform surface for all four:
-   four different tints read as four unrelated blocks, and the lit numeral is
-   the only accent each card needs. Kept as four class names so the component's
-   tone-cycling logic keeps working.
---------------------------------------------------------------------------- */
-@layer components {
-  .prompt-card-paper,
-  .prompt-card-coral,
-  .prompt-card-sun,
-  .prompt-card-sky {
-    background-color: rgb(var(--surface-raised));
-  }
 }
 
 /* ---------------------------------------------------------------------------

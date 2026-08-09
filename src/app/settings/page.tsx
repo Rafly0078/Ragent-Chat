@@ -624,7 +624,7 @@ export default function SettingsPage() {
                     label="Max tokens"
                     value={s.defaultParams.maxTokens}
                     min={-1}
-                    max={8192}
+                    max={131072}
                     step={1}
                     onChange={(v) => s.setDefaultParams({ maxTokens: v })}
                   />

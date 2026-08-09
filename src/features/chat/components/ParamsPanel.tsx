@@ -83,10 +83,10 @@ export function ParamsPanel({ open, onClose, params, onChange }: Props) {
         />
         <Slider
           label="Max tokens"
-          hint="num_predict (-1 = ∞)"
+          hint="num_predict (-1 = auto)"
           value={params.maxTokens}
           min={-1}
-          max={8192}
+          max={131072}
           step={1}
           onChange={(v) => onChange({ maxTokens: v })}
         />

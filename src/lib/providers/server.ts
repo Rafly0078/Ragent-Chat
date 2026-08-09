@@ -3,6 +3,7 @@ import 'server-only';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import type { ChatRequest, ChatStreamChunk } from '@/lib/api/types';
+import { estimateTokens } from '@/lib/utils/format';
 import { PROVIDER_PRESETS, type ProviderConnection, type ProviderProtocol } from './types';
 
 const CONNECT_TIMEOUT_MS = 20_000;
@@ -327,6 +328,72 @@ function textValue(value: unknown): string {
     .join('');
 }
 
+/** Never ask for less than this, however little context headroom is left. */
+const OUTPUT_FLOOR = 4_096;
+/** Anthropic rejects a `max_tokens` above the model's own output ceiling. */
+const ANTHROPIC_OUTPUT_CEILING = 32_000;
+/** Used when the client sent no `num_ctx` to size the budget against. */
+const ASSUMED_CONTEXT = 32_768;
+/** `estimateTokens` is a chars/4 heuristic and undercounts code and CJK text. */
+const PROMPT_SAFETY = 1.2;
+/** Flat per-image allowance, matching estimateMessageTokens on the client. */
+const IMAGE_TOKENS = 768;
+/** Role/template tokens the chat format adds around each message. */
+const MESSAGE_OVERHEAD = 4;
+
+function estimatePromptTokens(request: ChatRequest): number {
+  let total = 0;
+  for (const message of request.messages) {
+    total += estimateTokens(message.content) + MESSAGE_OVERHEAD;
+    total += (message.images?.length ?? 0) * IMAGE_TOKENS;
+  }
+  return Math.ceil(total * PROMPT_SAFETY);
+}
+
+const MAX_TOKEN_FIELDS = ['max_tokens', 'max_completion_tokens'] as const;
+
+/** Does this upstream error read as "your max_tokens is out of range"? */
+function rejectsMaxTokens(error: ProviderError): boolean {
+  if (error.status !== 400 && error.status !== 422) return false;
+  return /max_(?:tokens|completion_tokens|output_tokens)/i.test(error.message);
+}
+
+/**
+ * Providers that reject an oversized cap almost always name the real ceiling in
+ * the message ("supports at most 16384 completion tokens", "must be less than or
+ * equal to 8192", "100000 > 64000"). Pull the largest number below what we asked
+ * for and reuse it, so the retry still gets a long answer instead of falling
+ * back to the provider's much smaller default. Model ids carry digits too, but
+ * those are either tiny (`gpt-4o`) or larger than the request (`20250929`), so
+ * the window filters them out. Returns null when nothing usable is in there.
+ */
+function suggestedMaxTokens(message: string, requested: number): number | null {
+  const candidates = (message.match(/\d{2,}/g) ?? [])
+    .map(Number)
+    .filter((value) => Number.isSafeInteger(value) && value >= 256 && value < requested);
+  return candidates.length ? Math.max(...candidates) : null;
+}
+
+/**
+ * Ollama spells "generate until the model decides to stop" as `num_predict: -1`,
+ * and neither the OpenAI nor the Anthropic protocol has a field for that.
+ * Omitting `max_tokens` is NOT the same thing — it hands the ceiling to the
+ * upstream, whose default is usually far below what the model can actually
+ * produce (the gateway this app talks to defaults to exactly 8192). So
+ * "unlimited" is resolved into an explicit budget: whatever is left of the
+ * context window once the prompt is paid for.
+ */
+function resolveMaxTokens(request: ChatRequest, ceiling: number): number {
+  const requested = request.options?.num_predict;
+  // A positive value is the user's explicit choice — pass it through untouched.
+  if (typeof requested === 'number' && requested > 0) return Math.min(requested, ceiling);
+
+  const context = request.options?.num_ctx;
+  const window = typeof context === 'number' && context > 0 ? context : ASSUMED_CONTEXT;
+  const headroom = window - estimatePromptTokens(request);
+  return Math.max(OUTPUT_FLOOR, Math.min(ceiling, headroom));
+}
+
 function openAiBody(connection: ProviderConnection, request: ChatRequest): Record<string, unknown> {
   const messages = request.messages.map((message) => {
     if (!message.images?.length) return { role: message.role, content: message.content };
@@ -341,7 +408,7 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
       ],
     };
   });
-  const maxTokens = request.options?.num_predict;
+  const maxTokens = resolveMaxTokens(request, Number.MAX_SAFE_INTEGER);
   const body: Record<string, unknown> = {
     model: request.model,
     messages,
@@ -349,9 +416,7 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
     temperature: request.options?.temperature,
     top_p: request.options?.top_p,
   };
-  if (typeof maxTokens === 'number' && maxTokens > 0) {
-    body[connection.provider === 'openai' ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
-  }
+  body[connection.provider === 'openai' ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
   if (request.stream && connection.provider === 'openai') {
     body.stream_options = { include_usage: true };
   }
@@ -393,8 +458,7 @@ function anthropicBody(request: ChatRequest): Record<string, unknown> {
     else messages.push({ role: message.role, content });
   }
 
-  const requestedMax = request.options?.num_predict;
-  let maxTokens = typeof requestedMax === 'number' && requestedMax > 0 ? requestedMax : 4_096;
+  let maxTokens = resolveMaxTokens(request, ANTHROPIC_OUTPUT_CEILING);
   const body: Record<string, unknown> = {
     model: request.model,
     messages,
@@ -706,20 +770,38 @@ export async function providerChat(
   const protocol = connection.protocol;
   const path = protocol === 'anthropic' ? 'messages' : 'chat/completions';
   const body = protocol === 'anthropic' ? anthropicBody(request) : openAiBody(connection, request);
-  const response = await fetchUpstream(
-    endpoint(connection.baseUrl, path),
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: request.stream ? 'text/event-stream' : 'application/json',
-        ...authHeaders(connection),
+  const post = (payload: Record<string, unknown>) =>
+    fetchUpstream(
+      endpoint(connection.baseUrl, path),
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: request.stream ? 'text/event-stream' : 'application/json',
+          ...authHeaders(connection),
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(body),
-    },
-    signal,
-  );
-  if (!response.ok) throw await providerError(response);
+      signal,
+    );
+
+  let response = await post(body);
+  if (!response.ok) {
+    const error = await providerError(response);
+    // `resolveMaxTokens` sizes the budget against the context window, which is
+    // larger than some models will emit in one reply — those providers reject the
+    // request outright instead of clamping. Retry at the ceiling they named, or
+    // uncapped if they named none: a shorter answer beats a failed turn.
+    if (!rejectsMaxTokens(error)) throw error;
+    const field = MAX_TOKEN_FIELDS.find((name) => typeof body[name] === 'number');
+    const requested = field ? (body[field] as number) : 0;
+    const suggested = field ? suggestedMaxTokens(error.message, requested) : null;
+    const relaxed = { ...body };
+    if (suggested !== null && field) relaxed[field] = suggested;
+    else for (const name of MAX_TOKEN_FIELDS) delete relaxed[name];
+    response = await post(relaxed);
+    if (!response.ok) throw await providerError(response);
+  }
 
   if (request.stream) {
     if (!response.body) throw new ProviderError('Provider returned no stream body.');
