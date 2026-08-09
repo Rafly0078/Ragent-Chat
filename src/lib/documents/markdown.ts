@@ -13,6 +13,12 @@ import 'server-only';
  * italic, inline code and links survive into the generated file.
  */
 
+/**
+ * Severity/tone of a callout box. The renderers map these to a colour and an
+ * icon; anything the model invents outside this set is normalized to 'note'.
+ */
+export type CalloutVariant = 'note' | 'info' | 'tip' | 'success' | 'warning' | 'danger';
+
 export type Block =
   | { type: 'heading'; level: number; text: string }
   | { type: 'paragraph'; text: string }
@@ -20,6 +26,8 @@ export type Block =
   | { type: 'quote'; text: string }
   | { type: 'code'; lang?: string; text: string }
   | { type: 'hr' }
+  | { type: 'pagebreak' }
+  | { type: 'callout'; variant: CalloutVariant; title?: string; blocks: Block[] }
   | {
       type: 'table';
       header: string[];
@@ -34,6 +42,8 @@ export interface Span {
   italic?: boolean;
   code?: boolean;
   strike?: boolean;
+  /** Marker-pen background (`==text==`). */
+  highlight?: boolean;
   /** Destination URL when the run is (part of) a link. */
   href?: string;
 }
@@ -56,7 +66,7 @@ type Style = Omit<Span, 'text'>;
 interface Token {
   index: number;
   length: number;
-  kind: 'code' | 'link' | 'image' | 'bold' | 'italic' | 'strike';
+  kind: 'code' | 'link' | 'image' | 'bold' | 'italic' | 'strike' | 'highlight';
   inner: string;
   href?: string;
 }
@@ -73,6 +83,9 @@ const INLINE_PATTERNS: Array<{ kind: Token['kind']; re: RegExp; underscore?: boo
   { kind: 'bold', re: /\*\*(\S(?:.*?\S)?)\*\*/ },
   { kind: 'bold', re: /__(\S(?:.*?\S)?)__/, underscore: true },
   { kind: 'strike', re: /~~(\S(?:.*?\S)?)~~/ },
+  // The `(?!=)` keeps a run of three-or-more `=` (a setext-style rule someone
+  // typed by hand) from being read as a highlight around a lone `=`.
+  { kind: 'highlight', re: /==(?!=)(\S(?:.*?\S)?)==/ },
   { kind: 'italic', re: /\*(\S(?:.*?\S)?)\*/ },
   { kind: 'italic', re: /_(\S(?:.*?\S)?)_/, underscore: true },
 ];
@@ -119,6 +132,7 @@ function emit(out: Span[], text: string, style: Style): void {
     !!last.italic === !!style.italic &&
     !!last.code === !!style.code &&
     !!last.strike === !!style.strike &&
+    !!last.highlight === !!style.highlight &&
     last.href === style.href
   ) {
     last.text += text;
@@ -158,6 +172,9 @@ function walk(input: string, style: Style, out: Span[]): void {
       case 'strike':
         walk(tok.inner, { ...style, strike: true }, out);
         break;
+      case 'highlight':
+        walk(tok.inner, { ...style, highlight: true }, out);
+        break;
     }
     rest = rest.slice(tok.index + tok.length);
   }
@@ -189,8 +206,72 @@ function parseAlignRow(line: string): Array<'left' | 'center' | 'right'> {
   });
 }
 
+const CALLOUT_ALIASES: Record<string, CalloutVariant> = {
+  note: 'note',
+  callout: 'note',
+  info: 'info',
+  information: 'info',
+  abstract: 'info',
+  summary: 'info',
+  tip: 'tip',
+  hint: 'tip',
+  idea: 'tip',
+  important: 'tip',
+  success: 'success',
+  check: 'success',
+  done: 'success',
+  ok: 'success',
+  warning: 'warning',
+  warn: 'warning',
+  caution: 'warning',
+  attention: 'warning',
+  danger: 'danger',
+  error: 'danger',
+  critical: 'danger',
+  bug: 'danger',
+  fail: 'danger',
+};
+
+/**
+ * Read a `:::warning Optional title` opener.
+ *
+ * Both `:::warning` and `:::callout warning` are accepted, because models
+ * produce each about equally often, and an unknown word is kept as the *title*
+ * rather than dropped — `:::budget Q3 numbers` renders as a plain note titled
+ * "budget Q3 numbers" instead of silently losing the label.
+ */
+function parseCalloutOpen(line: string): { variant: CalloutVariant; title?: string } | null {
+  const m = line.match(/^\s*:{3,}\s*(.*)$/);
+  if (!m) return null;
+  const words = m[1]!.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null; // a bare ":::" is the closer, not an opener
+  let variant: CalloutVariant = 'note';
+  let rest = words;
+  const first = words[0]!.toLowerCase();
+  if (first === 'callout' && words.length > 1) {
+    const second = words[1]!.toLowerCase();
+    if (CALLOUT_ALIASES[second]) {
+      variant = CALLOUT_ALIASES[second]!;
+      rest = words.slice(2);
+    } else {
+      rest = words.slice(1);
+    }
+  } else if (CALLOUT_ALIASES[first]) {
+    variant = CALLOUT_ALIASES[first]!;
+    rest = words.slice(1);
+  }
+  const title = rest.join(' ').trim();
+  return { variant, title: title || undefined };
+}
+
+const CLOSE_RE = /^\s*:{3,}\s*$/;
+const PAGEBREAK_RE = /^\s*(?:<!--\s*pagebreak\s*-->|\\pagebreak|\[pagebreak\])\s*$/i;
+
 export function parseMarkdown(md: string): Block[] {
-  const lines = (md ?? '').replace(/\r\n/g, '\n').split('\n');
+  return parseBlocks((md ?? '').replace(/\r\n/g, '\n').split('\n'));
+}
+
+function parseBlocks(lines: string[]): Block[] {
   const blocks: Block[] = [];
   let i = 0;
 
@@ -215,6 +296,56 @@ export function parseMarkdown(md: string): Block[] {
       }
       i++; // closing fence
       blocks.push({ type: 'code', lang, text: buf.join('\n') });
+      continue;
+    }
+
+    // Explicit page break
+    if (PAGEBREAK_RE.test(line)) {
+      blocks.push({ type: 'pagebreak' });
+      i++;
+      continue;
+    }
+
+    // Callout — ":::warning Title" … ":::". Nesting is tracked so a callout
+    // containing another callout closes at the right line.
+    const open = parseCalloutOpen(line);
+    if (open) {
+      const buf: string[] = [];
+      let depth = 0;
+      i++;
+      let closed = false;
+      while (i < lines.length) {
+        const l = lines[i] ?? '';
+        if (CLOSE_RE.test(l)) {
+          if (depth === 0) {
+            i++;
+            closed = true;
+            break;
+          }
+          depth--;
+        } else if (parseCalloutOpen(l)) {
+          depth++;
+        }
+        buf.push(l);
+        i++;
+      }
+      // An unterminated callout still renders — the model ran out of tokens or
+      // forgot the closer, and dropping the box would drop its content with it.
+      void closed;
+      blocks.push({
+        type: 'callout',
+        variant: open.variant,
+        title: open.title,
+        blocks: parseBlocks(buf),
+      });
+      continue;
+    }
+
+    // A stray closing ":::" with no opener. Skipped rather than left to the
+    // paragraph branch: that branch breaks on ":::" without consuming the line,
+    // which would spin the outer loop forever.
+    if (CLOSE_RE.test(line)) {
+      i++;
       continue;
     }
 
@@ -261,6 +392,20 @@ export function parseMarkdown(md: string): Block[] {
         buf.push((lines[i] ?? '').replace(/^>\s?/, ''));
         i++;
       }
+      // GitHub alert syntax ("> [!WARNING]") is the other spelling models reach
+      // for, and it means exactly the same thing as a ":::warning" block.
+      const alert = buf[0]?.match(/^\s*\[!(\w+)\]\s*(.*)$/);
+      const variant = alert ? CALLOUT_ALIASES[alert[1]!.toLowerCase()] : undefined;
+      if (alert && variant) {
+        const title = alert[2]!.trim();
+        blocks.push({
+          type: 'callout',
+          variant,
+          title: title || undefined,
+          blocks: parseBlocks(buf.slice(1)),
+        });
+        continue;
+      }
       blocks.push({ type: 'quote', text: buf.join(' ') });
       continue;
     }
@@ -298,7 +443,9 @@ export function parseMarkdown(md: string): Block[] {
         /^>\s?/.test(line) ||
         /^\s*[-*+]\s+/.test(line) ||
         /^\s*\d+[.)]\s+/.test(line) ||
-        /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)
+        /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line) ||
+        /^\s*:{3,}/.test(line) ||
+        PAGEBREAK_RE.test(line)
       ) {
         break;
       }

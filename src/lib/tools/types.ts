@@ -59,6 +59,29 @@ export interface FileSpec {
 }
 
 /**
+ * Design hints supplied by the model alongside the content.
+ *
+ * Everything here is untrusted and optional — `accent` may be a colour word, a
+ * malformed hex, or absent. `src/lib/documents/theme.ts` normalizes it into a
+ * full contrast-checked palette on the server; nothing downstream should read
+ * these raw strings directly.
+ */
+export interface ThemeSpec {
+  /** Brand colour: `#0B5FFF`, `0b5fff`, or a word like `teal`. */
+  accent?: string;
+  /** Body-text colour. Rarely worth overriding. */
+  ink?: string;
+  /** `sans` | `serif` | `mono` | `editorial`, or a family name. */
+  font?: string;
+  /** Emit a cover page. Undefined lets the renderer decide from length. */
+  cover?: boolean;
+  /** Deck/report subtitle, shown under the title on the cover. */
+  subtitle?: string;
+  /** Byline on the cover. */
+  author?: string;
+}
+
+/**
  * Normalized generation request. A superset of every generator's inputs; each
  * executor reads only the fields it needs. Produced by the directive parser or
  * by UI actions, then POSTed to /api/tools/execute.
@@ -80,6 +103,8 @@ export interface GenerateRequest {
   files?: FileSpec[];
   /** Arbitrary payload (json / xml). */
   data?: unknown;
+  /** Model-chosen colours, font and cover flag (pdf / docx / pptx). */
+  theme?: ThemeSpec;
   /** Linking metadata — filled by the client, not the model. */
   conversationId?: string;
   messageId?: string;

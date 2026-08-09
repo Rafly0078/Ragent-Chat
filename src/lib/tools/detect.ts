@@ -27,7 +27,7 @@
  * notice for it instead of silently pretending nothing happened.
  */
 
-import type { GenerateRequest, SheetSpec, SlideSpec, FileSpec } from './types';
+import type { GenerateRequest, SheetSpec, SlideSpec, FileSpec, ThemeSpec } from './types';
 import { getTool, isToolName } from './registry';
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -62,6 +62,89 @@ function isFileSpecArray(v: unknown): v is FileSpec[] {
     v.length > 0 &&
     v.every((f) => isRecord(f) && typeof f.path === 'string' && f.path.trim() !== '')
   );
+}
+
+/** Header keys that feed the theme rather than the request itself. */
+const THEME_KEYS = ['accent', 'ink', 'font', 'cover', 'subtitle', 'author'] as const;
+
+/**
+ * Read a truthy flag out of a header value.
+ *
+ * `cover: true`, `cover: yes` and a bare `cover:` all mean "yes" — the last one
+ * because a model that writes the key at all is asking for the feature, and
+ * treating an empty value as `false` would silently ignore the request.
+ */
+function flag(v: string | undefined): boolean | undefined {
+  if (v === undefined) return undefined;
+  const s = v.trim().toLowerCase();
+  if (s === '' || s === 'true' || s === 'yes' || s === 'on' || s === '1') return true;
+  if (s === 'false' || s === 'no' || s === 'off' || s === '0' || s === 'none') return false;
+  return undefined;
+}
+
+/**
+ * Length caps per theme field. `accent`/`ink`/`font` end up in a stylesheet and
+ * a `font-family`, and `subtitle`/`author` in a cover heading — none has any
+ * business being long, and a cap keeps a runaway model from stuffing a
+ * paragraph into a CSS declaration.
+ */
+const FIELD_MAX: Record<string, number> = {
+  accent: 32,
+  ink: 32,
+  font: 48,
+  subtitle: 200,
+  author: 120,
+};
+
+function capped(key: string, raw: string): string {
+  return raw.trim().slice(0, FIELD_MAX[key] ?? 120);
+}
+
+/** Pull the theme fields out of parsed header lines, or undefined if none. */
+function themeFromFields(fields: Record<string, string>): ThemeSpec | undefined {
+  const theme: ThemeSpec = {};
+  let any = false;
+  for (const key of THEME_KEYS) {
+    const raw = fields[key];
+    if (raw === undefined) continue;
+    if (key === 'cover') {
+      const on = flag(raw);
+      if (on === undefined) continue;
+      theme.cover = on;
+    } else {
+      const value = capped(key, raw);
+      if (!value) continue;
+      theme[key] = value;
+    }
+    any = true;
+  }
+  return any ? theme : undefined;
+}
+
+/** Validate a `theme` object arriving through the legacy JSON shape. */
+function sanitizeTheme(v: unknown): ThemeSpec | undefined {
+  if (!isRecord(v)) return undefined;
+  const out: ThemeSpec = {};
+  let any = false;
+  for (const key of THEME_KEYS) {
+    const raw = v[key];
+    if (key === 'cover') {
+      if (typeof raw === 'boolean') {
+        out.cover = raw;
+        any = true;
+      } else if (typeof raw === 'string') {
+        const on = flag(raw);
+        if (on !== undefined) {
+          out.cover = on;
+          any = true;
+        }
+      }
+    } else if (typeof raw === 'string' && raw.trim()) {
+      out[key] = capped(key, raw);
+      any = true;
+    }
+  }
+  return any ? out : undefined;
 }
 
 /**
@@ -187,6 +270,12 @@ function parseDirective(rawBody: string): GenerateRequest | null {
         isToolName(parsed.tool) &&
         !getTool(parsed.tool)?.future
       ) {
+        // Re-validate the theme rather than passing the model's object through:
+        // these values reach a stylesheet, so an unchecked string here would be
+        // the one place raw model output lands in CSS.
+        const theme = sanitizeTheme(parsed.theme);
+        if (theme) parsed.theme = theme;
+        else delete parsed.theme;
         return parsed;
       }
     } catch {
@@ -229,6 +318,8 @@ function parseDirective(rawBody: string): GenerateRequest | null {
   const req: GenerateRequest = { tool };
   if (fields.name) req.name = fields.name;
   if (fields.title) req.title = fields.title;
+  const theme = themeFromFields(fields);
+  if (theme) req.theme = theme;
 
   if (tool === 'create_csv') {
     req.rows = parseCsvBody(content);

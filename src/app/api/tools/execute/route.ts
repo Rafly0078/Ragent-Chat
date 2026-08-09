@@ -9,6 +9,14 @@ import { bodyErrorResponse, readJson } from '@/lib/server/body';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+/**
+ * create_pdf launches headless Chromium, and a cold Lambda has to unpack the
+ * brotli-packed binary before the first page even loads — comfortably past the
+ * 10s default on Vercel's Hobby plan. 60s is the ceiling there; the render
+ * itself aborts at 45s (see `PDF_TIMEOUT_MS` in `src/lib/documents/pdf-render.ts`)
+ * so a stuck browser surfaces as a real error rather than a platform timeout.
+ */
+export const maxDuration = 60;
 
 /** Generation payloads are text; 8MB is far beyond any realistic document. */
 const MAX_BODY_BYTES = 8 * 1024 * 1024;

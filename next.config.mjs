@@ -13,7 +13,18 @@ const nextConfig = {
   // the Route Handler. Marking them external makes Next.js load them via
   // plain Node `require` at runtime instead, which avoids the
   // "Cannot access 'os' before initialization" TDZ error during build.
-  serverExternalPackages: ['exceljs', 'pptxgenjs', 'docx', 'pdf-lib', 'jszip'],
+  // puppeteer-core resolves its browser at runtime and @sparticuz/chromium ships
+  // a brotli-packed binary next to its own JS — bundling either rewrites those
+  // paths and the launch fails with an unhelpful ENOENT deep inside the lambda.
+  serverExternalPackages: [
+    'exceljs',
+    'pptxgenjs',
+    'docx',
+    'pdf-lib',
+    'jszip',
+    'puppeteer-core',
+    '@sparticuz/chromium',
+  ],
 
   async headers() {
     return [

@@ -15,6 +15,12 @@
  * "finished-looking" code block instead of ever calling the tool. A plain
  * "key: value" header followed by a raw body avoids escaping entirely,
  * which is far more robust for weaker local models.
+ *
+ * The design headers (`accent`, `font`, `cover`, …) follow the same rule: they
+ * are flat scalar values on their own lines, never a nested object, so a model
+ * that fumbles one of them loses only that line and still produces a document.
+ * `src/lib/documents/theme.ts` contrast-clamps whatever colour arrives, so a
+ * bad pick is a mediocre document rather than unreadable text on paper.
  */
 export const TOOL_INSTRUCTIONS = `You can generate downloadable files for the user: PDF, Word (docx), PowerPoint (pptx), Excel (xlsx), CSV, Markdown, HTML, JSON, XML, or plain text.
 
@@ -24,6 +30,11 @@ To generate a file, emit exactly one block in this exact shape — a few "key: v
 tool: create_pdf
 name: report.pdf
 title: Report Title
+subtitle: Q3 2025 performance review
+author: Acme Analytics
+accent: #0B5FFF
+font: editorial
+cover: true
 ---
 Write the full document content here as plain Markdown.
 Use as many lines and paragraphs as the document actually needs.
@@ -37,4 +48,23 @@ Rules:
 - Emit exactly one block per file, and nothing else inside it — no commentary.
 - If the document you are writing itself contains code fences, open and close the artifact block with FOUR backticks (\`\`\`\`artifact … \`\`\`\`) so the inner \`\`\` fences don't end it early.
 - Always write the complete document before closing the block. Never stop partway through a sentence, even for long documents.
-- For "create_csv", write plain comma-separated rows (one row per line) as the body instead of Markdown.`;
+- For "create_csv", write plain comma-separated rows (one row per line) as the body instead of Markdown.
+
+Design headers (optional, for create_pdf, create_docx and create_pptx only). These make the file look professionally designed instead of plain:
+- "accent": the brand/theme colour, as hex ("#0B5FFF") or a colour word ("teal"). It colours the cover, headings, table headers, links and rules. Pick one that fits the subject — corporate blue for a business report, deep green for sustainability, and the company's real brand colour whenever the user names a company.
+- "ink": body-text colour. Almost always leave this out.
+- "font": one of "sans" (default), "serif", "mono", or "editorial" (serif headings over a sans body — good for reports and whitepapers).
+- "cover": "true" to force a full-page coloured cover, "false" to suppress it. Leave it out and a cover appears automatically for longer documents.
+- "subtitle" and "author": one line each, shown on the cover under the title.
+Choose the colour and font yourself from the document's subject; do not ask the user.
+
+Rich Markdown available in the body (create_pdf, create_docx, create_pptx):
+- ==highlighted text== renders as a marker-pen highlight. Use it for the one or two facts that matter most, not for whole paragraphs.
+- Callout boxes, each a coloured panel with an icon:
+  :::warning Optional title
+  Body text, which may span several paragraphs and contain lists.
+  :::
+  Variants: note, info, tip, success, warning, danger.
+- A line containing only <!-- pagebreak --> forces a new page (a new slide in create_pptx).
+- Tables, bullet and numbered lists, blockquotes, code fences, bold/italic and links all render with the theme applied.
+For create_pptx, each "#", "##" or "###" heading starts a new slide and the text under it becomes that slide's content.`;
