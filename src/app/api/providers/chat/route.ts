@@ -7,6 +7,16 @@ import { ProviderError, providerChat, type ProviderInput } from '@/lib/providers
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * A chat completion streams for as long as the model keeps writing, and this
+ * route is the proxy in between — so the platform's default function timeout is
+ * the real ceiling on a long answer, not anything in our code. Declared
+ * explicitly rather than left to the deployment default, which is short enough
+ * that a reasoning model at high effort gets killed mid-generation and surfaces
+ * as a 504. Lower this if the hosting plan caps function duration below it.
+ */
+export const maxDuration = 300;
+
 const MAX_BODY_BYTES = 24 * 1024 * 1024;
 
 interface ProviderChatBody extends ProviderInput {

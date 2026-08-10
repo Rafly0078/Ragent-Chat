@@ -7,6 +7,14 @@ import { bodyErrorResponse, readJson } from '@/lib/server/body';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * Bridge mode proxies the whole generation through this function, so the
+ * platform's function timeout caps a single long answer. Direct mode has no such
+ * ceiling (the browser talks to Ollama itself), which is why this only matters
+ * here. Lower it if the hosting plan caps function duration below this.
+ */
+export const maxDuration = 300;
+
 /** Chat payloads carry base64 images for vision models, so the cap is generous. */
 const MAX_BODY_BYTES = 24 * 1024 * 1024;
 

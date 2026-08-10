@@ -7,7 +7,28 @@ import { estimateTokens } from '@/lib/utils/format';
 import { resolveMaxOutputTokens } from './limits';
 import { PROVIDER_PRESETS, type ProviderConnection, type ProviderProtocol } from './types';
 
+/**
+ * How long to wait for an upstream to answer with *headers*. Deliberately not a
+ * whole-request deadline: a streamed generation runs for minutes and must not be
+ * cut off, so the clock stops as soon as headers arrive (see `fetchUpstream`).
+ *
+ * A `/models` probe answers from a table, so the short budget fits it. A chat
+ * completion is a different shape of request: plenty of OpenAI-compatible
+ * gateways buffer the entire upstream reply before emitting a single header, and
+ * with reasoning at high effort that first header can be minutes out. Holding a
+ * completion to the probe's budget is what turned a slow-but-healthy generation
+ * into `The provider did not respond in time.` on every send. The Ollama path
+ * never showed it because in direct mode the browser talks to the model itself,
+ * with no proxy deadline in between.
+ */
 const CONNECT_TIMEOUT_MS = 20_000;
+/**
+ * Kept just under the client's `STREAM_IDLE_TIMEOUT_MS` (120s) so that when an
+ * upstream really is dead, this side names the culprit ("the provider did not
+ * respond in time") before the browser gives up with the vaguer "the connection
+ * stalled". Equal values would race.
+ */
+const CHAT_CONNECT_TIMEOUT_MS = 110_000;
 const MAX_ERROR_CHARS = 4_000;
 const encoder = new TextEncoder();
 
@@ -267,6 +288,7 @@ async function fetchUpstream(
   target: string,
   init: RequestInit,
   signal?: AbortSignal,
+  timeoutMs: number = CONNECT_TIMEOUT_MS,
 ): Promise<Response> {
   const controller = new AbortController();
   const onAbort = () => controller.abort(signal?.reason);
@@ -276,7 +298,7 @@ async function fetchUpstream(
   }
   const timer = setTimeout(
     () => controller.abort(new DOMException('Provider connect timeout', 'TimeoutError')),
-    CONNECT_TIMEOUT_MS,
+    timeoutMs,
   );
 
   try {
@@ -930,6 +952,7 @@ export async function providerChat(
         body: JSON.stringify(payload),
       },
       signal,
+      CHAT_CONNECT_TIMEOUT_MS,
     );
 
   let response = await post(body);
