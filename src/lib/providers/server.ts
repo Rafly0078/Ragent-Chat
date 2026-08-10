@@ -4,6 +4,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import type { ChatRequest, ChatStreamChunk } from '@/lib/api/types';
 import { estimateTokens } from '@/lib/utils/format';
+import { resolveMaxOutputTokens } from './limits';
 import { PROVIDER_PRESETS, type ProviderConnection, type ProviderProtocol } from './types';
 
 const CONNECT_TIMEOUT_MS = 20_000;
@@ -347,6 +348,12 @@ function textValue(value: unknown): string {
 const OUTPUT_FLOOR = 4_096;
 /** Anthropic rejects a `max_tokens` above the model's own output ceiling. */
 const ANTHROPIC_OUTPUT_CEILING = 32_000;
+/**
+ * Output ceiling for a provider that publishes none. Generous enough that no
+ * real answer is cut short, small enough that no gateway treats the request as
+ * a reservation it has to queue for.
+ */
+const DEFAULT_OUTPUT_CEILING = 32_768;
 /** Used when the client sent no `num_ctx` to size the budget against. */
 const ASSUMED_CONTEXT = 32_768;
 /** `estimateTokens` is a chars/4 heuristic and undercounts code and CJK text. */
@@ -396,7 +403,13 @@ function suggestedMaxTokens(message: string, requested: number): number | null {
  * upstream, whose default is usually far below what the model can actually
  * produce (the gateway this app talks to defaults to exactly 8192). So
  * "unlimited" is resolved into an explicit budget: whatever is left of the
- * context window once the prompt is paid for.
+ * context window once the prompt is paid for, capped at what the model can
+ * actually emit.
+ *
+ * That cap is the whole point. Context headroom is not an output ceiling: a 1M
+ * window model still only writes ~8k-32k tokens, and asking a gateway to
+ * reserve ~1M output tokens makes it stall long past our connect timeout, which
+ * surfaced as a 504 on every send.
  */
 function resolveMaxTokens(request: ChatRequest, ceiling: number): number {
   const requested = request.options?.num_predict;
@@ -407,6 +420,20 @@ function resolveMaxTokens(request: ChatRequest, ceiling: number): number {
   const window = typeof context === 'number' && context > 0 ? context : ASSUMED_CONTEXT;
   const headroom = window - estimatePromptTokens(request);
   return Math.max(OUTPUT_FLOOR, Math.min(ceiling, headroom));
+}
+
+/**
+ * The largest output this model plausibly supports, for use as the ceiling on
+ * an "unlimited" request. Prefers what the deployment declared, then what the
+ * provider publishes, then a flat figure — never the context window, which for
+ * a 1M-window model is not an output ceiling at all.
+ */
+function outputCeiling(connection: ProviderConnection, request: ChatRequest): number {
+  if (connection.provider === 'default') {
+    const declared = builtInProviderConfig().maxOutputTokens;
+    if (declared) return declared;
+  }
+  return resolveMaxOutputTokens(connection.provider, request.model) ?? DEFAULT_OUTPUT_CEILING;
 }
 
 function openAiBody(connection: ProviderConnection, request: ChatRequest): Record<string, unknown> {
@@ -423,7 +450,7 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
       ],
     };
   });
-  const maxTokens = resolveMaxTokens(request, Number.MAX_SAFE_INTEGER);
+  const maxTokens = resolveMaxTokens(request, outputCeiling(connection, request));
   const body: Record<string, unknown> = {
     model: request.model,
     messages,
@@ -908,8 +935,8 @@ export async function providerChat(
   let response = await post(body);
   if (!response.ok) {
     const error = await providerError(response);
-    // `resolveMaxTokens` sizes the budget against the context window, which is
-    // larger than some models will emit in one reply — those providers reject the
+    // Our ceiling is a per-provider figure, which is still above what some
+    // individual models will emit in one reply — those providers reject the
     // request outright instead of clamping. Retry at the ceiling they named, or
     // uncapped if they named none: a shorter answer beats a failed turn.
     if (!rejectsMaxTokens(error)) throw error;
