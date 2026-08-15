@@ -23,6 +23,7 @@ export type ToolName =
   | 'create_xml'
   | 'zip_project'
   | 'fetch_url'
+  | 'run_js'
   | 'export_chat';
 
 export type ToolCategory = 'document' | 'export' | 'parse' | 'future';
@@ -156,6 +157,7 @@ export const TOOL_KIND: Record<ToolName, ArtifactKind | undefined> = {
   zip_project: 'zip',
   // A read tool: it returns text to the model, not a downloadable file.
   fetch_url: undefined,
+  run_js: undefined,
   export_chat: 'md',
 };
 

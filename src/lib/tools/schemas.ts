@@ -202,6 +202,20 @@ export const TOOL_SCHEMAS: Partial<Record<ToolName, JsonSchema>> = {
     },
     required: ['url'],
   },
+  run_js: {
+    type: 'object',
+    properties: {
+      content: {
+        type: 'string',
+        description:
+          'The JavaScript to run. Use console.log to report values, or end with an ' +
+          'expression — its value is returned. A returned promise is awaited. ' +
+          'Runs in a sandbox with NO network, NO file access and NO DOM worth ' +
+          'touching, and is killed after 5 seconds.',
+      },
+    },
+    required: ['content'],
+  },
 };
 
 export interface ToolDefinition {

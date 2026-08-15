@@ -26,7 +26,9 @@ import { uid } from '@/lib/utils/id';
 import { detectArtifacts, hasCompleteDirective } from '@/lib/tools/detect';
 import { enrichPatches, extractCodeBlocks } from '@/lib/tools/patch';
 import { toolDefinitions } from '@/lib/tools/schemas';
-import type { Artifact } from '@/lib/tools/types';
+import { getTool, isToolName } from '@/lib/tools/registry';
+import { getClientExecutor } from '@/lib/tools/client';
+import type { Artifact, GenerateRequest } from '@/lib/tools/types';
 import { searchWeb } from '@/lib/search/client';
 import { formatSearchContext, mergeSearchResponses, toSources } from '@/lib/search/format';
 import { buildPlanMessages, parsePlan, fallbackPlan, type SearchPlan } from '@/lib/search/plan';
@@ -241,16 +243,28 @@ export function useChat(conversationId: string | null) {
       calls: WireToolCall[],
     ): Promise<ApiChatMessage[]> => {
       const settled = await Promise.allSettled(
-        calls.map(async (call) => {
+        calls.map(async (call): Promise<{ artifact?: Artifact; text?: string }> => {
+          const request = {
+            ...call.arguments,
+            tool: call.name,
+            conversationId: convoId,
+            messageId,
+          };
+
+          // Client-side tools never touch the network. `run_js` is the reason
+          // `ToolMeta.server` exists as a discriminator rather than documentation:
+          // running model-authored code on the server would be arbitrary RCE, so
+          // it runs in an origin-isolated iframe in this tab instead.
+          if (isToolName(call.name) && getTool(call.name)?.server === false) {
+            const exec = await getClientExecutor(call.name);
+            if (!exec) throw new Error(`No client executor for "${call.name}".`);
+            return exec(request as GenerateRequest);
+          }
+
           const res = await fetch('/api/tools/execute', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ...call.arguments,
-              tool: call.name,
-              conversationId: convoId,
-              messageId,
-            }),
+            body: JSON.stringify(request),
           });
           if (!res.ok) {
             let detail = `Tool execution failed (${res.status}).`;

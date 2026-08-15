@@ -173,6 +173,11 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
         return { ok: false, error: 'fetch_url needs an absolute http(s) "url".' };
       }
       break;
+    case 'run_js':
+      if (!content?.trim()) {
+        return { ok: false, error: 'run_js needs JavaScript in "content".' };
+      }
+      break;
     default:
       if (NEEDS_PAYLOAD.has(tool) && !content && b.data === undefined && !request.title) {
         return { ok: false, error: `${tool} needs "content".` };

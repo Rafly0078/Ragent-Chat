@@ -108,6 +108,20 @@ export const TOOLS: ToolMeta[] = [
     category: 'parse',
     server: true,
   },
+  // The only tool that does NOT run on the server, and `server: false` is load-
+  // bearing rather than descriptive — see lib/tools/client/index.ts. Executing
+  // model-authored code in the deployment would be arbitrary RCE; in the browser
+  // it runs in an origin-isolated iframe with no network.
+  {
+    name: 'run_js',
+    label: 'Run JavaScript',
+    description:
+      'Execute a JavaScript snippet and return what it printed. Use for arithmetic, ' +
+      'date maths, parsing, sorting, or checking a small algorithm — anything where ' +
+      'computing the answer beats reasoning it out. No network and no file access.',
+    category: 'parse',
+    server: false,
+  },
   // No executor yet (see executors/index.ts). Marked `future` so the directive
   // parser rejects it instead of stripping the block and then 400ing — which
   // lost the message content and showed "Unknown tool: export_chat".

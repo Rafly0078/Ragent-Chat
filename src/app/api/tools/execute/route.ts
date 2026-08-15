@@ -82,6 +82,18 @@ export async function POST(request: Request): Promise<Response> {
   }
   const body = checked.request;
 
+  // A client-side tool (`run_js`) must never be run here. Executing
+  // model-authored code inside the deployment would be arbitrary RCE, and
+  // `node:vm` is not a security boundary — the browser's origin-isolated iframe
+  // is. Refused explicitly rather than falling into the "no executor" 500 below,
+  // so the message says what actually happened.
+  if (getTool(body.tool)?.server === false) {
+    return NextResponse.json(
+      { error: `"${body.tool}" runs in the browser, not on the server.` },
+      { status: 400 },
+    );
+  }
+
   const executor = await getExecutor(body.tool as ToolName);
   if (!executor) {
     // The name is a valid ToolName (validation just checked) but no loader is
