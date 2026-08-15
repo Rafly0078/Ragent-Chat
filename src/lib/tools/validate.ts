@@ -125,6 +125,10 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
   if (content !== undefined) request.content = content;
   if (str(b.name)) request.name = str(b.name);
   if (str(b.title)) request.title = str(b.title);
+  if (str(b.url)) request.url = str(b.url);
+  if (typeof b.maxChars === 'number' && Number.isFinite(b.maxChars)) {
+    request.maxChars = Math.max(1, Math.floor(b.maxChars));
+  }
   if (str(b.conversationId)) request.conversationId = str(b.conversationId);
   if (str(b.messageId)) request.messageId = str(b.messageId);
   if (b.data !== undefined) request.data = b.data;
@@ -162,6 +166,11 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
     case 'zip_project':
       if (!files && !content) {
         return { ok: false, error: 'zip_project needs "files" (path + content) or "content".' };
+      }
+      break;
+    case 'fetch_url':
+      if (!request.url) {
+        return { ok: false, error: 'fetch_url needs an absolute http(s) "url".' };
       }
       break;
     default:

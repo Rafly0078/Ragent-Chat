@@ -186,6 +186,22 @@ export const TOOL_SCHEMAS: Partial<Record<ToolName, JsonSchema>> = {
     },
     required: ['files'],
   },
+  fetch_url: {
+    type: 'object',
+    properties: {
+      url: {
+        type: 'string',
+        description:
+          'Absolute http(s) URL of the page to read. Private, loopback and ' +
+          'link-local addresses are refused.',
+      },
+      maxChars: {
+        type: 'number',
+        description: 'Cap on returned characters. Defaults to 40000.',
+      },
+    },
+    required: ['url'],
+  },
 };
 
 export interface ToolDefinition {

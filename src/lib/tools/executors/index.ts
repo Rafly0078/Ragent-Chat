@@ -8,10 +8,32 @@ export interface ExecutorContext {
   messageId?: string;
 }
 
-export type ExecutorFn = (
-  req: GenerateRequest,
-  ctx: ExecutorContext,
-) => Promise<{ buffer: Buffer; kind: ArtifactKind; mime: string; ext: string }>;
+/** A tool that produced a file. */
+export interface ToolFileOutput {
+  buffer: Buffer;
+  kind: ArtifactKind;
+  mime: string;
+  ext: string;
+}
+
+/**
+ * A tool that produced TEXT for the model rather than a file.
+ *
+ * The contract was file-only, which is why every capability here is a document
+ * generator: a read tool had nowhere to put its answer. `fetch_url` is the first
+ * of these, and the route branches on the shape.
+ */
+export interface ToolTextOutput {
+  text: string;
+}
+
+export type ToolOutput = ToolFileOutput | ToolTextOutput;
+
+export function isTextOutput(out: ToolOutput): out is ToolTextOutput {
+  return 'text' in out;
+}
+
+export type ExecutorFn = (req: GenerateRequest, ctx: ExecutorContext) => Promise<ToolOutput>;
 
 type ExecutorModule = { default: ExecutorFn };
 
@@ -30,6 +52,7 @@ const loaders: Partial<Record<ToolName, () => Promise<ExecutorModule>>> = {
   create_json: () => import('./json'),
   create_xml: () => import('./xml'),
   zip_project: () => import('./zip'),
+  fetch_url: () => import('./fetch-url'),
 };
 
 export async function getExecutor(tool: ToolName): Promise<ExecutorFn | undefined> {

@@ -216,6 +216,22 @@ export function parseCsvBody(text: string): string[][] {
   return rows;
 }
 
+/**
+ * Whether this tool is usable through a text directive at all.
+ *
+ * Two exclusions:
+ *  - `future` tools have no executor. Accepting one strips the block from the
+ *    message and then 400s, so the user loses the content and gets an error.
+ *  - READ tools (no `produces`, e.g. `fetch_url`) return text for the MODEL, and
+ *    this path has no way to feed anything back into the generation — the result
+ *    would be executed and then silently discarded. They are reachable only
+ *    through native function calling, which does have a return channel.
+ */
+function emitsFile(tool: string): boolean {
+  const meta = getTool(tool);
+  return meta !== undefined && !meta.future && meta.produces !== undefined;
+}
+
 /** Parse the body of a single ```artifact fence into a GenerateRequest, or null if neither supported shape matches. */
 function parseDirective(rawBody: string): GenerateRequest | null {
   const body = rawBody.trim();
@@ -231,7 +247,7 @@ function parseDirective(rawBody: string): GenerateRequest | null {
         parsed &&
         typeof parsed.tool === 'string' &&
         isToolName(parsed.tool) &&
-        !getTool(parsed.tool)?.future
+        emitsFile(parsed.tool)
       ) {
         // Re-validate the theme rather than passing the model's object through:
         // these values reach a stylesheet, so an unchecked string here would be
@@ -288,9 +304,7 @@ function parseDirective(rawBody: string): GenerateRequest | null {
 
   const tool = fields.tool;
   if (!tool || !isToolName(tool)) return null;
-  // Tools flagged `future` have no executor; accepting one strips the block from
-  // the message and then 400s, so the user loses the content and gets an error.
-  if (getTool(tool)?.future) return null;
+  if (!emitsFile(tool)) return null;
 
   const req: GenerateRequest = { tool };
   if (fields.name) req.name = fields.name;

@@ -96,6 +96,18 @@ export const TOOLS: ToolMeta[] = [
     produces: 'zip',
     server: true,
   },
+  // The one READ tool: it returns page text to the model instead of producing a
+  // file, which is why `produces` is absent and the category is `parse` (a
+  // ToolCategory member that existed and had no members until now).
+  {
+    name: 'fetch_url',
+    label: 'Fetch URL',
+    description:
+      'Read a specific web page and return its text. Use when the user names a URL, ' +
+      'or when a search result needs to be read in full rather than summarised.',
+    category: 'parse',
+    server: true,
+  },
   // No executor yet (see executors/index.ts). Marked `future` so the directive
   // parser rejects it instead of stripping the block and then 400ing — which
   // lost the message content and showed "Unknown tool: export_chat".

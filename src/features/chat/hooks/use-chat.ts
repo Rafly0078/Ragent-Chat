@@ -262,8 +262,9 @@ export function useChat(conversationId: string | null) {
             }
             throw new Error(detail);
           }
-          const { artifact } = (await res.json()) as { artifact: Artifact };
-          return artifact;
+          // Two result shapes: a generated file, or text for the model (a read
+          // tool such as `fetch_url`).
+          return (await res.json()) as { artifact?: Artifact; text?: string };
         }),
       );
 
@@ -272,11 +273,20 @@ export function useChat(conversationId: string | null) {
       settled.forEach((result, i) => {
         const call = calls[i]!;
         if (result.status === 'fulfilled') {
-          produced.push(result.value);
+          const { artifact, text } = result.value;
+          if (artifact) {
+            produced.push(artifact);
+            turns.push({
+              role: 'tool',
+              toolCallId: call.id,
+              content: `Created "${artifact.name}" (${artifact.mimeType}, ${artifact.size} bytes). It is attached to this message and downloadable by the user — do not repeat its contents in your reply.`,
+            });
+            return;
+          }
           turns.push({
             role: 'tool',
             toolCallId: call.id,
-            content: `Created "${result.value.name}" (${result.value.mimeType}, ${result.value.size} bytes). It is attached to this message and downloadable by the user — do not repeat its contents in your reply.`,
+            content: text ?? '(the tool returned nothing)',
           });
           return;
         }

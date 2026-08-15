@@ -1,7 +1,6 @@
 import 'server-only';
 
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { assertPublicUrl, BlockedUrlError } from '@/lib/server/public-url';
 import type { ChatRequest, ChatStreamChunk } from '@/lib/api/types';
 import { estimateTokens } from '@/lib/utils/format';
 import { resolveMaxOutputTokens } from './limits';
@@ -174,95 +173,19 @@ export function resolveProviderConnection(raw: ProviderInput): ProviderConnectio
   return { provider, baseUrl, apiKey, protocol: protocol as ProviderProtocol };
 }
 
-function blockedIpv4(address: string): boolean {
-  const parts = address.split('.').map(Number);
-  if (parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255))
-    return true;
-  const [a, b, c] = parts as [number, number, number, number];
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 0 && (c === 0 || c === 2)) ||
-    (a === 192 && b === 88 && c === 99) ||
-    (a === 192 && b === 168) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    (a === 198 && b === 51 && c === 100) ||
-    (a === 203 && b === 0 && c === 113) ||
-    a >= 224
-  );
-}
-
-function blockedIpv6(address: string): boolean {
-  const value = address.toLowerCase().split('%')[0]!;
-  if (value === '::' || value === '::1') return true;
-  const mapped = value.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  if (mapped) return blockedIpv4(mapped);
-  const first = Number.parseInt(value.split(':')[0] || '0', 16);
-  return (
-    (first >= 0xfc00 && first <= 0xfdff) ||
-    (first >= 0xfe80 && first <= 0xfebf) ||
-    first >= 0xff00 ||
-    value.startsWith('2001:db8:') ||
-    value === '2001:db8::' ||
-    value.startsWith('2001:0:') ||
-    value.startsWith('2002:') ||
-    value.startsWith('64:ff9b:')
-  );
-}
-
-function blockedAddress(address: string): boolean {
-  const family = isIP(address);
-  return family === 4 ? blockedIpv4(address) : family === 6 ? blockedIpv6(address) : true;
-}
-
 async function validateCustomBaseUrl(value: string): Promise<string> {
-  if (!value || value.length > 2_048)
-    throw new ProviderError('Enter a valid custom endpoint URL.', 400);
-
-  let url: URL;
+  // The SSRF rules live in lib/server/public-url.ts — `fetch_url` needs exactly
+  // the same ones, and a second copy would have been the weaker copy. The extra
+  // strictness here (no query, no fragment) is expressed through the options.
   try {
-    url = new URL(value);
-  } catch {
-    throw new ProviderError('Enter a valid custom endpoint URL.', 400);
-  }
-
-  if (url.protocol !== 'https:') throw new ProviderError('Custom endpoint must use HTTPS.', 400);
-  if (url.username || url.password)
-    throw new ProviderError('Custom endpoint cannot contain URL credentials.', 400);
-  if (url.search || url.hash)
-    throw new ProviderError('Custom endpoint cannot contain a query or fragment.', 400);
-
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (
-    hostname === 'localhost' ||
-    hostname.endsWith('.localhost') ||
-    hostname.endsWith('.local') ||
-    hostname.endsWith('.internal') ||
-    hostname.endsWith('.home.arpa')
-  ) {
-    throw new ProviderError('Custom endpoint must use a public hostname.', 400);
-  }
-
-  if (isIP(hostname)) {
-    if (blockedAddress(hostname))
-      throw new ProviderError('Private or reserved endpoint addresses are blocked.', 400);
-  } else {
-    let addresses: { address: string; family: number }[];
-    try {
-      addresses = await lookup(hostname, { all: true, verbatim: true });
-    } catch {
-      throw new ProviderError('Custom endpoint hostname could not be resolved.', 400);
+    const url = await assertPublicUrl(value, { allowQuery: false });
+    return url.toString().replace(/\/+$/, '');
+  } catch (err) {
+    if (err instanceof BlockedUrlError) {
+      throw new ProviderError(`Custom endpoint rejected: ${err.message}`, 400);
     }
-    if (!addresses.length || addresses.some((entry) => blockedAddress(entry.address))) {
-      throw new ProviderError('Custom endpoint resolves to a private or reserved address.', 400);
-    }
+    throw err;
   }
-
-  return url.toString().replace(/\/+$/, '');
 }
 
 async function checkedConnection(connection: ProviderConnection): Promise<ProviderConnection> {

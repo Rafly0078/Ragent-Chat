@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getExecutor } from '@/lib/tools/executors';
+import { getExecutor, isTextOutput } from '@/lib/tools/executors';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { EXT_BY_KIND, type Artifact, type ToolName } from '@/lib/tools/types';
 import { uid } from '@/lib/utils/id';
@@ -98,6 +98,12 @@ export async function POST(request: Request): Promise<Response> {
       conversationId: body.conversationId,
       messageId: body.messageId,
     });
+
+    // A read tool (`fetch_url`) returns text for the model, not a file. Nothing
+    // to upload, no artifact row, no signed URL — just hand it back.
+    if (isTextOutput(result)) {
+      return NextResponse.json({ text: result.text });
+    }
 
     const artifactId = uid();
     const ext = result.ext;

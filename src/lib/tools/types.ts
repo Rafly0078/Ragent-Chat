@@ -22,6 +22,7 @@ export type ToolName =
   | 'create_json'
   | 'create_xml'
   | 'zip_project'
+  | 'fetch_url'
   | 'export_chat';
 
 export type ToolCategory = 'document' | 'export' | 'parse' | 'future';
@@ -105,6 +106,10 @@ export interface GenerateRequest {
   data?: unknown;
   /** Model-chosen colours, font and cover flag (pdf / docx / pptx). */
   theme?: ThemeSpec;
+  /** Target page (fetch_url). */
+  url?: string;
+  /** Cap on returned characters (fetch_url). */
+  maxChars?: number;
   /** Linking metadata — filled by the client, not the model. */
   conversationId?: string;
   messageId?: string;
@@ -149,6 +154,8 @@ export const TOOL_KIND: Record<ToolName, ArtifactKind | undefined> = {
   create_json: 'json',
   create_xml: 'xml',
   zip_project: 'zip',
+  // A read tool: it returns text to the model, not a downloadable file.
+  fetch_url: undefined,
   export_chat: 'md',
 };
 

@@ -282,10 +282,12 @@ console.log('\n9. tool schemas offered for native function calling');
       (d) =>
         validateGenerateRequest({
           tool: d.name,
+          // A kitchen-sink payload: whatever each tool's minimum is, it's in here.
           content: 'x',
           files: [{ path: 'a', content: 'b' }],
           rows: [['a']],
           data: {},
+          url: 'https://example.com/',
         }).ok,
     ),
     true,
@@ -294,6 +296,17 @@ console.log('\n9. tool schemas offered for native function calling');
     'zip_project requires files',
     toolDefinitions().find((d) => d.name === 'zip_project').schema.required,
     ['files'],
+  );
+  eq(
+    'fetch_url is offered and requires a url',
+    toolDefinitions().find((d) => d.name === 'fetch_url')?.schema.required,
+    ['url'],
+  );
+  eq(
+    'a read tool is NOT reachable through the text directive',
+    detectArtifacts([`${F}artifact`, 'tool: fetch_url', '---', 'https://x.com', F].join('\n'))
+      .requests.length,
+    0,
   );
 }
 
