@@ -191,9 +191,37 @@ export async function saveConversation(convo: Conversation, userId: string): Pro
   if (convo.messages.length) {
     const rows = convo.messages.map((m, i) => messageToRow(m, convo.id, userId, i));
     const { error: upsertErr } = await supabase.from('messages').upsert(rows, { onConflict: 'id' });
-    if (upsertErr) throw new Error(upsertErr.message);
+    if (upsertErr) {
+      // Migration 0006 adds `messages.thinking_blocks`. If the app ships before
+      // that migration is applied, PostgREST rejects the whole upsert with
+      // "column messages.thinking_blocks does not exist" — and since the sync
+      // layer swallows errors, cloud sync would simply stop for every signed-in
+      // user until somebody noticed. Retry once without the column, so a deploy
+      // in the wrong order costs the ordered thinking blocks (which fall back to
+      // the flattened content/reasoning mirrors) rather than the whole chat.
+      if (/thinking_blocks/i.test(upsertErr.message)) {
+        if (!warnedMissingThinkingBlocks) {
+          warnedMissingThinkingBlocks = true;
+          console.warn(
+            '[conversations] messages.thinking_blocks is missing — apply ' +
+              'supabase/migrations/0006_thinking_blocks.sql. Syncing without ordered ' +
+              'thinking blocks; message text is unaffected.',
+          );
+        }
+        const legacy = rows.map(({ thinking_blocks: _drop, ...rest }) => rest);
+        const { error: retryErr } = await supabase
+          .from('messages')
+          .upsert(legacy, { onConflict: 'id' });
+        if (retryErr) throw new Error(retryErr.message);
+        return;
+      }
+      throw new Error(upsertErr.message);
+    }
   }
 }
+
+/** Logged once per session, not once per debounced flush. */
+let warnedMissingThinkingBlocks = false;
 
 /** Persist only the conversation row (title, model, pin, params) — no messages. */
 export async function saveConversationMeta(convo: Conversation, userId: string): Promise<void> {
