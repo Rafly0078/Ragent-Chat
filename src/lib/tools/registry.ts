@@ -146,6 +146,19 @@ export const TOOLS: ToolMeta[] = [
     category: 'parse',
     server: false,
   },
+  // Produces a file like the create_* tools, but its `produces` can't be a
+  // constant: the kind comes from the artifact being revised, discovered at
+  // runtime. Kept out of `TOOL_KIND` for the same reason.
+  {
+    name: 'edit_artifact',
+    label: 'Edit document',
+    description:
+      'Revise a document you already generated, by search/replace on its source. ' +
+      'Use this instead of regenerating the whole file for a small change. Only ' +
+      'works for documents built from text, and only for a signed-in user.',
+    category: 'document',
+    server: true,
+  },
 ];
 
 const BY_NAME = new Map<ToolName, ToolMeta>(TOOLS.map((t) => [t.name, t]));

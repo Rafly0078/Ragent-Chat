@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getExecutor, isTextOutput } from '@/lib/tools/executors';
+import { sourceMetadata } from '@/lib/tools/executors/edit-artifact';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { EXT_BY_KIND, type Artifact, type ToolName } from '@/lib/tools/types';
 import { uid } from '@/lib/utils/id';
@@ -119,7 +120,11 @@ export async function POST(request: Request): Promise<Response> {
 
     const artifactId = uid();
     const ext = result.ext;
-    const filename = safeFilename(body.name ?? body.title, ext);
+    // `filename`/`version` may be overridden by the executor: `edit_artifact`
+    // produces revision N+1 of an existing document and keeps its name, neither
+    // of which the model supplied.
+    const filename = result.filename ?? safeFilename(body.name ?? body.title, ext);
+    const version = result.version ?? 1;
     const storagePath = `${userId}/${artifactId}/${filename}`;
 
     let artifact: Artifact = {
@@ -128,7 +133,7 @@ export async function POST(request: Request): Promise<Response> {
       name: filename,
       mimeType: result.mime,
       size: result.buffer.length,
-      version: 1,
+      version,
       createdAt: Date.now(),
       ephemeral: true,
     };
@@ -200,8 +205,12 @@ export async function POST(request: Request): Promise<Response> {
           size_bytes: result.buffer.length,
           bucket,
           storage_path: storagePath,
-          version: 1,
-          metadata: {},
+          version,
+          // The text this was rendered from, so `edit_artifact` can revise it
+          // later without the model re-emitting the whole document. Empty for
+          // tools whose input is structured (rows/sheets/slides/files) rather
+          // than text — `edit_artifact` reports that case rather than guessing.
+          metadata: sourceMetadata(body),
         };
         let artifactSaved = true;
         const { error: artifactInsertErr } = await supabase.from('artifacts').insert({

@@ -14,6 +14,16 @@ export interface ToolFileOutput {
   kind: ArtifactKind;
   mime: string;
   ext: string;
+  /**
+   * Override the version the route would assign (1). Set by `edit_artifact`,
+   * which produces revision N+1 of an existing document rather than a new one.
+   */
+  version?: number;
+  /**
+   * Override the filename the route derives from `name`/`title`. `edit_artifact`
+   * keeps the original document's name, which the model never supplied.
+   */
+  filename?: string;
 }
 
 /**
@@ -53,6 +63,7 @@ const loaders: Partial<Record<ToolName, () => Promise<ExecutorModule>>> = {
   create_xml: () => import('./xml'),
   zip_project: () => import('./zip'),
   fetch_url: () => import('./fetch-url'),
+  edit_artifact: () => import('./edit-artifact'),
 };
 
 export async function getExecutor(tool: ToolName): Promise<ExecutorFn | undefined> {

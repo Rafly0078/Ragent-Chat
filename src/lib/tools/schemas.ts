@@ -235,6 +235,32 @@ export const TOOL_SCHEMAS: Partial<Record<ToolName, JsonSchema>> = {
       },
     },
   },
+  edit_artifact: {
+    type: 'object',
+    properties: {
+      artifactId: {
+        type: 'string',
+        description: 'Id of the document to revise, as reported when it was created.',
+      },
+      hunks: {
+        type: 'array',
+        description:
+          'The edits. Each "search" must match the document source EXACTLY and ' +
+          'uniquely — an ambiguous match is rejected rather than applied to the ' +
+          'wrong place. Include a line or two of surrounding context to make it ' +
+          'unique. Never send the whole document; that is what create_* is for.',
+        items: {
+          type: 'object',
+          properties: {
+            search: { type: 'string', description: 'Text to find, verbatim.' },
+            replace: { type: 'string', description: 'Text to put in its place.' },
+          },
+          required: ['search', 'replace'],
+        },
+      },
+    },
+    required: ['artifactId', 'hunks'],
+  },
 };
 
 export interface ToolDefinition {

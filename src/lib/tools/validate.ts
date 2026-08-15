@@ -92,6 +92,24 @@ function toFiles(v: unknown): FileSpec[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+/**
+ * Search/replace edits for `edit_artifact`. An empty `search` is dropped rather
+ * than passed on: `applyPatch` counts it as a failed hunk, and a request made
+ * entirely of them would report "nothing matched" instead of the real problem.
+ */
+function toHunks(v: unknown): Array<{ search: string; replace: string }> | undefined {
+  if (!Array.isArray(v) || v.length === 0) return undefined;
+  const out: Array<{ search: string; replace: string }> = [];
+  for (const raw of v.slice(0, 100)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const h = raw as Record<string, unknown>;
+    const search = str(h.search);
+    if (!search) continue;
+    out.push({ search, replace: str(h.replace) ?? '' });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export type ValidationResult =
   { ok: true; request: GenerateRequest } | { ok: false; error: string };
 
@@ -135,6 +153,9 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
   if (typeof b.length === 'number' && Number.isFinite(b.length)) {
     request.length = Math.max(1, Math.floor(b.length));
   }
+  if (str(b.artifactId)) request.artifactId = str(b.artifactId);
+  const hunks = toHunks(b.hunks);
+  if (hunks) request.hunks = hunks;
   if (str(b.conversationId)) request.conversationId = str(b.conversationId);
   if (str(b.messageId)) request.messageId = str(b.messageId);
   if (b.data !== undefined) request.data = b.data;
@@ -182,6 +203,17 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
     case 'run_js':
       if (!content?.trim()) {
         return { ok: false, error: 'run_js needs JavaScript in "content".' };
+      }
+      break;
+    case 'edit_artifact':
+      if (!request.artifactId) {
+        return { ok: false, error: 'edit_artifact needs the "artifactId" of the file to revise.' };
+      }
+      if (!request.hunks?.length) {
+        return {
+          ok: false,
+          error: 'edit_artifact needs "hunks", each with a non-empty "search" and its "replace".',
+        };
       }
       break;
     default:

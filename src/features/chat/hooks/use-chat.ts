@@ -293,7 +293,15 @@ export function useChat(conversationId: string | null) {
             turns.push({
               role: 'tool',
               toolCallId: call.id,
-              content: `Created "${artifact.name}" (${artifact.mimeType}, ${artifact.size} bytes). It is attached to this message and downloadable by the user — do not repeat its contents in your reply.`,
+              // The id is here so `edit_artifact` is reachable at all — without
+              // it the model has no handle on what it just produced and can only
+              // regenerate the whole document.
+              content:
+                `Created "${artifact.name}" (${artifact.mimeType}, ${artifact.size} bytes, ` +
+                `id ${artifact.id}, version ${artifact.version}). It is attached to this ` +
+                `message and downloadable by the user — do not repeat its contents in your ` +
+                `reply. To change it later, call edit_artifact with that id rather than ` +
+                `generating it again.`,
             });
             return;
           }

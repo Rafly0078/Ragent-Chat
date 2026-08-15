@@ -25,6 +25,7 @@ export type ToolName =
   | 'fetch_url'
   | 'run_js'
   | 'read_attachment'
+  | 'edit_artifact'
   | 'export_chat';
 
 export type ToolCategory = 'document' | 'export' | 'parse' | 'future';
@@ -116,6 +117,10 @@ export interface GenerateRequest {
   offset?: number;
   /** How many characters to read (read_attachment). */
   length?: number;
+  /** Artifact to revise (edit_artifact). */
+  artifactId?: string;
+  /** Search/replace edits to apply to its source (edit_artifact). */
+  hunks?: Array<{ search: string; replace: string }>;
   /** Linking metadata — filled by the client, not the model. */
   conversationId?: string;
   messageId?: string;
@@ -164,7 +169,31 @@ export const TOOL_KIND: Record<ToolName, ArtifactKind | undefined> = {
   fetch_url: undefined,
   run_js: undefined,
   read_attachment: undefined,
+  // Resolved at runtime from the artifact being edited, not from the tool name.
+  edit_artifact: undefined,
   export_chat: 'md',
+};
+
+/**
+ * Which tool re-renders a given artifact kind — the inverse of `TOOL_KIND`.
+ *
+ * Needed by `edit_artifact`: it discovers the kind from the stored artifact, then
+ * has to dispatch to the executor that produced it. Written out rather than
+ * derived, because the mapping is not one-to-one (`export_chat` also produces
+ * `md`) and the `create_*` tool is always the right choice here.
+ */
+export const TOOL_FOR_KIND: Record<ArtifactKind, ToolName> = {
+  pdf: 'create_pdf',
+  docx: 'create_docx',
+  pptx: 'create_pptx',
+  xlsx: 'create_xlsx',
+  csv: 'create_csv',
+  txt: 'create_txt',
+  md: 'create_md',
+  html: 'create_html',
+  json: 'create_json',
+  xml: 'create_xml',
+  zip: 'zip_project',
 };
 
 export const MIME_BY_KIND: Record<ArtifactKind, string> = {

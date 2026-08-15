@@ -17,7 +17,7 @@ const jiti = require('jiti')(`${ROOT}/verify.js`, {
 });
 
 const { detectArtifacts, hasCompleteDirective } = jiti(`${ROOT}/src/lib/tools/detect.ts`);
-const { detectPatches } = jiti(`${ROOT}/src/lib/tools/patch.ts`);
+const { detectPatches, applyPatch } = jiti(`${ROOT}/src/lib/tools/patch.ts`);
 const { findFences } = jiti(`${ROOT}/src/lib/tools/fences.ts`);
 const { validateGenerateRequest } = jiti(`${ROOT}/src/lib/tools/validate.ts`);
 const { toolDefinitions } = jiti(`${ROOT}/src/lib/tools/schemas.ts`);
@@ -289,6 +289,8 @@ console.log('\n9. tool schemas offered for native function calling');
           rows: [['a']],
           data: {},
           url: 'https://example.com/',
+          artifactId: 'a1',
+          hunks: [{ search: 'a', replace: 'b' }],
         }).ok,
     ),
     true,
@@ -339,6 +341,67 @@ console.log('\n10. attachment inlining (read_attachment is what makes truncation
     'without native tools it is still inlined whole — truncating would just lose it',
     body(toApiMessages(msg(long), '', undefined, undefined, false)).includes(long),
     true,
+  );
+}
+
+console.log('\n11. edit_artifact');
+{
+  const v = (body) => validateGenerateRequest(body);
+  eq(
+    'needs an artifactId',
+    v({ tool: 'edit_artifact', hunks: [{ search: 'a', replace: 'b' }] }).ok,
+    false,
+  );
+  eq('needs hunks', v({ tool: 'edit_artifact', artifactId: 'x' }).ok, false);
+  eq(
+    'a hunk with an empty search is dropped, and an all-empty set is rejected',
+    v({ tool: 'edit_artifact', artifactId: 'x', hunks: [{ search: '', replace: 'b' }] }).ok,
+    false,
+  );
+  const ok = v({
+    tool: 'edit_artifact',
+    artifactId: 'x',
+    hunks: [
+      { search: 'old', replace: 'new' },
+      { search: '', replace: 'z' },
+    ],
+  });
+  eq('a valid request survives', ok.ok, true);
+  eq('and only the usable hunk is kept', ok.request.hunks, [{ search: 'old', replace: 'new' }]);
+  eq(
+    'a missing replace becomes a deletion',
+    v({ tool: 'edit_artifact', artifactId: 'x', hunks: [{ search: 'gone' }] }).request.hunks,
+    [{ search: 'gone', replace: '' }],
+  );
+
+  // The point of the tool: patch the source, don't resend it.
+  eq(
+    'applyPatch rewrites only what was matched',
+    applyPatch('# Title\n\nBody text here.\n', [{ search: '# Title', replace: '# Better Title' }])
+      .result,
+    '# Better Title\n\nBody text here.\n',
+  );
+  eq(
+    'an ambiguous search is refused rather than applied to the wrong one',
+    applyPatch('x\nsame\nsame\n', [{ search: 'same', replace: 'y' }]).applied.length,
+    0,
+  );
+  eq(
+    'a search that is not present is reported as failed',
+    applyPatch('abc', [{ search: 'nope', replace: 'y' }]).failed.length,
+    1,
+  );
+
+  eq(
+    'edit_artifact is offered natively',
+    toolDefinitions().some((d) => d.name === 'edit_artifact'),
+    true,
+  );
+  eq(
+    'but is NOT reachable through the text directive — it has no artifact id there',
+    detectArtifacts([`${F}artifact`, 'tool: edit_artifact', '---', 'x', F].join('\n')).requests
+      .length,
+    0,
   );
 }
 
