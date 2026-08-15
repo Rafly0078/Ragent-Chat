@@ -129,6 +129,12 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
   if (typeof b.maxChars === 'number' && Number.isFinite(b.maxChars)) {
     request.maxChars = Math.max(1, Math.floor(b.maxChars));
   }
+  if (typeof b.offset === 'number' && Number.isFinite(b.offset)) {
+    request.offset = Math.max(0, Math.floor(b.offset));
+  }
+  if (typeof b.length === 'number' && Number.isFinite(b.length)) {
+    request.length = Math.max(1, Math.floor(b.length));
+  }
   if (str(b.conversationId)) request.conversationId = str(b.conversationId);
   if (str(b.messageId)) request.messageId = str(b.messageId);
   if (b.data !== undefined) request.data = b.data;

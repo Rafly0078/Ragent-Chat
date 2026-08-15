@@ -8,9 +8,12 @@
  * capabilities cannot run on the server, and forcing them there would be either
  * impossible or unsafe.
  *
- *   run_js — executing model-authored code server-side is arbitrary RCE inside
- *            the deployment. In the browser it runs in an origin-isolated iframe
- *            where the worst case is the user's own tab.
+ *   run_js          — executing model-authored code server-side is arbitrary RCE
+ *                     inside the deployment. In the browser it runs in an
+ *                     origin-isolated iframe where the worst case is the user's
+ *                     own tab.
+ *   read_attachment — the extracted text lives in the chat store and is never
+ *                     uploaded, so the server has nothing to read.
  *
  * Like the server table in ../executors/index.ts, entries are lazily imported so
  * a tool's implementation is only fetched once the model actually calls it.
@@ -33,6 +36,7 @@ const loaders: Partial<Record<ToolName, () => Promise<ClientExecutorFn>>> = {
       return { text: await runJs(code, signal) };
     };
   },
+  read_attachment: async () => (await import('./read-attachment')).default,
 };
 
 export async function getClientExecutor(tool: ToolName): Promise<ClientExecutorFn | undefined> {

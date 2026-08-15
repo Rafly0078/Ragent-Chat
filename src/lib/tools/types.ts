@@ -24,6 +24,7 @@ export type ToolName =
   | 'zip_project'
   | 'fetch_url'
   | 'run_js'
+  | 'read_attachment'
   | 'export_chat';
 
 export type ToolCategory = 'document' | 'export' | 'parse' | 'future';
@@ -111,6 +112,10 @@ export interface GenerateRequest {
   url?: string;
   /** Cap on returned characters (fetch_url). */
   maxChars?: number;
+  /** Character offset to read from (read_attachment). */
+  offset?: number;
+  /** How many characters to read (read_attachment). */
+  length?: number;
   /** Linking metadata — filled by the client, not the model. */
   conversationId?: string;
   messageId?: string;
@@ -158,6 +163,7 @@ export const TOOL_KIND: Record<ToolName, ArtifactKind | undefined> = {
   // A read tool: it returns text to the model, not a downloadable file.
   fetch_url: undefined,
   run_js: undefined,
+  read_attachment: undefined,
   export_chat: 'md',
 };
 

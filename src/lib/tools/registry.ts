@@ -134,6 +134,18 @@ export const TOOLS: ToolMeta[] = [
     server: true,
     future: true,
   },
+  // Also client-side, for a different reason than run_js: the extracted text
+  // lives in the chat store and is never uploaded, so the server cannot read it.
+  {
+    name: 'read_attachment',
+    label: 'Read attachment',
+    description:
+      'Read part of a file the user attached. A large attachment is not included ' +
+      'in full in the conversation — only a head plus its total size — so use this ' +
+      'to page through the rest when you need more of it.',
+    category: 'parse',
+    server: false,
+  },
 ];
 
 const BY_NAME = new Map<ToolName, ToolMeta>(TOOLS.map((t) => [t.name, t]));

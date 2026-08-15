@@ -216,6 +216,25 @@ export const TOOL_SCHEMAS: Partial<Record<ToolName, JsonSchema>> = {
     },
     required: ['content'],
   },
+  read_attachment: {
+    type: 'object',
+    properties: {
+      name: {
+        type: 'string',
+        description:
+          'Filename of the attachment, as shown in the conversation. Optional when ' +
+          'there is only one.',
+      },
+      offset: {
+        type: 'number',
+        description: 'Character offset to start from. Defaults to 0.',
+      },
+      length: {
+        type: 'number',
+        description: 'How many characters to read. Defaults to 8000, capped at 20000.',
+      },
+    },
+  },
 };
 
 export interface ToolDefinition {

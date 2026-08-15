@@ -21,6 +21,7 @@ const { detectPatches } = jiti(`${ROOT}/src/lib/tools/patch.ts`);
 const { findFences } = jiti(`${ROOT}/src/lib/tools/fences.ts`);
 const { validateGenerateRequest } = jiti(`${ROOT}/src/lib/tools/validate.ts`);
 const { toolDefinitions } = jiti(`${ROOT}/src/lib/tools/schemas.ts`);
+const { toApiMessages, ATTACHMENT_INLINE_LIMIT } = jiti(`${ROOT}/src/lib/api/types.ts`);
 
 let pass = 0;
 let fail = 0;
@@ -307,6 +308,37 @@ console.log('\n9. tool schemas offered for native function calling');
     detectArtifacts([`${F}artifact`, 'tool: fetch_url', '---', 'https://x.com', F].join('\n'))
       .requests.length,
     0,
+  );
+}
+
+console.log('\n10. attachment inlining (read_attachment is what makes truncation safe)');
+{
+  const msg = (text) => [
+    {
+      id: 'u1',
+      role: 'user',
+      content: 'question',
+      createdAt: 1,
+      attachments: [{ id: 'a', name: 'big.pdf', type: 'application/pdf', size: 1, text }],
+    },
+  ];
+  const body = (out) => out[out.length - 1].content;
+  const short = 'x'.repeat(100);
+  const long = 'y'.repeat(ATTACHMENT_INLINE_LIMIT + 5000);
+
+  eq(
+    'a short attachment is inlined whole',
+    body(toApiMessages(msg(short), '', undefined, undefined, true)).includes(short),
+    true,
+  );
+  const truncated = body(toApiMessages(msg(long), '', undefined, undefined, true));
+  eq('a long one is not inlined whole', truncated.includes(long), false);
+  eq('and states the real total', truncated.includes(`${long.length} characters`), true);
+  eq('and names the tool to page with', truncated.includes('read_attachment'), true);
+  eq(
+    'without native tools it is still inlined whole — truncating would just lose it',
+    body(toApiMessages(msg(long), '', undefined, undefined, false)).includes(long),
+    true,
   );
 }
 

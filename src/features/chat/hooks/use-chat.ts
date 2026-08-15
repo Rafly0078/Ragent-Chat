@@ -517,7 +517,7 @@ export function useChat(conversationId: string | null) {
           {
             model: convo.model,
             messages: [
-              ...toApiMessages(history, convo.systemPrompt, searchContext, summary),
+              ...toApiMessages(history, convo.systemPrompt, searchContext, summary, nativeTools),
               ...(opts?.extraTurns ?? []),
             ],
             options,

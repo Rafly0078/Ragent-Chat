@@ -155,11 +155,42 @@ export interface ModelsResponse {
  * grounding for a web-search-augmented turn — kept on the user turn (not a
  * separate system message) so it sits right next to the question it answers.
  */
+/**
+ * Above this many characters, an attachment's extracted text is NOT inlined in
+ * full — the model gets a head plus the total size and reads the rest with
+ * `read_attachment`.
+ *
+ * It used to be inlined whole, on every turn, forever. A 400k-character PDF (the
+ * extractor's cap) therefore consumed most of the context window for the entire
+ * rest of the conversation, was re-sent with every message, and the model had no
+ * way to ask for a specific part of it. The head is kept because for most
+ * attachments the opening is enough to know whether more is needed.
+ */
+export const ATTACHMENT_INLINE_LIMIT = 6_000;
+
+function inlineAttachment(name: string, text: string, canPage: boolean): string {
+  if (text.length <= ATTACHMENT_INLINE_LIMIT || !canPage) {
+    return `\n\n[Attached file: ${name}]\n\`\`\`\n${text}\n\`\`\``;
+  }
+  const head = text.slice(0, ATTACHMENT_INLINE_LIMIT);
+  return (
+    `\n\n[Attached file: ${name} — ${text.length} characters, showing the first ` +
+    `${ATTACHMENT_INLINE_LIMIT}. Call read_attachment with name "${name}" and an ` +
+    `offset to read more.]\n\`\`\`\n${head}\n\`\`\``
+  );
+}
+
 export function toApiMessages(
   messages: Message[],
   systemPrompt: string,
   searchContext?: string,
   summary?: ConversationSummary,
+  /**
+   * Whether `read_attachment` is actually callable this turn. Without native
+   * function calling there is no way to page through anything, so truncating
+   * would just lose the text — those providers keep getting it inlined whole.
+   */
+  toolsAvailable = false,
 ): ApiChatMessage[] {
   const out: ApiChatMessage[] = [];
   // TOOL_INSTRUCTIONS is always included — even conversations created before
@@ -197,7 +228,7 @@ export function toApiMessages(
     for (const att of m.attachments ?? []) {
       if (att.base64) images.push(att.base64);
       else if (att.text) {
-        content += `\n\n[Attached file: ${att.name}]\n\`\`\`\n${att.text}\n\`\`\``;
+        content += inlineAttachment(att.name, att.text, toolsAvailable);
       }
     }
 
