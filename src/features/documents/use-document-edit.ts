@@ -1,14 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PDFDocumentProxy } from 'pdfjs-dist';
 import type { Artifact, GenerateRequest } from '@/lib/tools/types';
 import { useChatStore } from '@/lib/store/chat-store';
-import { apiUrl, authHeaders } from '@/lib/api/config';
+import { extractDocumentText } from '@/lib/utils/files';
+import { chat } from '@/lib/api/client';
 
 /** Buffering an arbitrary upload on the main thread freezes the tab. */
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const MAX_PDF_PAGES = 200;
 
 export interface DocumentEditState {
   /** The original uploaded file */
@@ -131,25 +130,28 @@ export function useDocumentEdit(conversationId: string | null) {
           ? `${systemPrompt}\n\nImprove and refine the following document content. Maintain the original structure and meaning while improving clarity, grammar, and formatting:\n\n${state.extractedContent}`
           : `Improve and refine the following document content. Maintain the original structure and meaning while improving clarity, grammar, and formatting:\n\n${state.extractedContent}`;
 
-        const res = await fetch(apiUrl('/api/chat'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...authHeaders() },
-          body: JSON.stringify({
+        // Via `chat()`, not a hand-rolled fetch.
+        //
+        // This used to POST a bare `{model, messages, stream}` body at
+        // `apiUrl('/api/chat')`, which for every cloud provider resolves to
+        // /api/providers/chat — a route that requires
+        // `{provider, baseUrl, apiKey, protocol, request}`. It threw "Unknown
+        // cloud provider" 400, and the catch below flattened that into
+        // "Failed to get AI improvement". So Improve Content was broken for
+        // every non-Ollama provider, with an error that named the wrong cause.
+        // `chat()` already knows how to address both shapes.
+        const improved = await chat(
+          {
             model:
               useChatStore.getState().conversations.find((c) => c.id === conversationId)?.model ??
               '',
             messages: [{ role: 'user', content: prompt }],
-            stream: false,
-          }),
-          signal: controller.signal,
-        });
+          },
+          controller.signal,
+        );
 
-        if (!res.ok) throw new Error('Failed to get AI improvement');
-
-        const data = (await res.json()) as { message?: { content?: string }; response?: string };
         if (controller.signal.aborted) return;
-        const improved = data.message?.content ?? data.response ?? '';
-        if (!improved) throw new Error('AI returned empty response');
+        if (!improved.trim()) throw new Error('The model returned an empty response.');
 
         setState((s) => ({ ...s, improvedContent: improved, step: 'improved' }));
       } catch (err) {
@@ -215,6 +217,12 @@ export function useDocumentEdit(conversationId: string | null) {
 /**
  * Extract text content from a file using the browser.
  *
+ * Thin wrapper over `extractDocumentText` — the shared implementation in
+ * lib/utils/files.ts, which this file used to duplicate with weaker parsers: a
+ * bare `<w:t>` regex where the shared one is paragraph-boundary aware, and, for
+ * .xlsx alone, a full `exceljs` workbook *writer* (930 KB of async chunk) to
+ * read cell values out of a zip jszip was already opening two branches over.
+ *
  * Every failure path THROWS. They used to return a bracketed placeholder
  * (`[PDF "x.pdf" — could not extract text]`), which is non-empty, so
  * `extractContent`'s `if (!text.trim())` check passed, the UI reported
@@ -223,160 +231,13 @@ export function useDocumentEdit(conversationId: string | null) {
  * error string.
  */
 async function extractFileContent(file: File): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-
-  // Plain text / code / markdown
-  if (
-    [
-      'txt',
-      'md',
-      'csv',
-      'json',
-      'log',
-      'xml',
-      'yaml',
-      'yml',
-      'ts',
-      'tsx',
-      'js',
-      'jsx',
-      'py',
-      'go',
-      'rs',
-      'java',
-      'c',
-      'cpp',
-      'sh',
-      'html',
-      'css',
-    ].includes(ext) ||
-    file.type.startsWith('text/')
-  ) {
-    return file.text();
-  }
-
-  // PDF
-  if (ext === 'pdf' || file.type === 'application/pdf') {
-    let doc: PDFDocumentProxy | null = null;
-    try {
-      const pdfjs = await import('pdfjs-dist');
-      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-        'pdfjs-dist/build/pdf.worker.min.mjs',
-        import.meta.url,
-      ).toString();
-      const buf = await file.arrayBuffer();
-      doc = await pdfjs.getDocument({ data: buf }).promise;
-      let out = '';
-      const pages = Math.min(doc.numPages, MAX_PDF_PAGES);
-      for (let i = 1; i <= pages; i++) {
-        const page = await doc.getPage(i);
-        const content = await page.getTextContent();
-        out += content.items.map((it) => ('str' in it ? it.str : '')).join(' ') + '\n\n';
-        // Without this, pdf.js keeps every parsed page's operator list and font
-        // data alive for the lifetime of the tab.
-        page.cleanup();
-      }
-      return out.trim();
-    } catch {
-      throw new Error(`Could not extract text from "${file.name}" (unsupported or corrupt PDF).`);
-    } finally {
-      // Also terminates the dedicated worker.
-      await doc?.destroy().catch(() => {});
-    }
-  }
-
-  // DOCX — extract raw XML and pull text from <w:t> tags
-  if (ext === 'docx') {
-    let xml: string;
-    try {
-      const JSZip = (await import('jszip')).default;
-      const buf = await file.arrayBuffer();
-      const zip = await JSZip.loadAsync(buf);
-      const xmlFile = zip.file('word/document.xml');
-      if (!xmlFile) throw new Error('missing document.xml');
-      xml = await xmlFile.async('text');
-    } catch {
-      throw new Error(`Could not read "${file.name}" — it may not be a valid .docx file.`);
-    }
-    // Extract text between <w:t> tags
-    const texts: string[] = [];
-    const regex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
-    let match;
-    while ((match = regex.exec(xml)) !== null) {
-      if (match[1]) texts.push(match[1]);
-    }
-    const out = texts.join(' ').trim();
-    if (!out) throw new Error(`No text found in "${file.name}".`);
-    return out;
-  }
-
-  // XLSX — extract cell values
-  if (ext === 'xlsx') {
-    let lines: string[];
-    try {
-      const ExcelJS = (await import('exceljs')).default;
-      const buf = await file.arrayBuffer();
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(buf);
-      lines = [];
-      wb.eachSheet((ws) => {
-        ws.eachRow((row) => {
-          const vals = row.values as unknown[];
-          const cells: string[] = [];
-          for (let i = 1; i < vals.length; i++) {
-            cells.push(vals[i] == null ? '' : String(vals[i]));
-          }
-          const line = cells.join(', ');
-          if (line.trim()) lines.push(line);
-        });
-      });
-    } catch {
-      throw new Error(`Could not read "${file.name}" — it may not be a valid .xlsx file.`);
-    }
-    const out = lines.join('\n').trim();
-    if (!out) throw new Error(`No data found in "${file.name}".`);
-    return out;
-  }
-
-  // PPTX — extract text from slide XML
-  if (ext === 'pptx') {
-    const texts: string[] = [];
-    try {
-      const JSZip = (await import('jszip')).default;
-      const buf = await file.arrayBuffer();
-      const zip = await JSZip.loadAsync(buf);
-      const slideFiles = Object.keys(zip.files)
-        .filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f))
-        .sort(
-          (a, b) =>
-            Number(a.match(/slide(\d+)/)?.[1] ?? 0) - Number(b.match(/slide(\d+)/)?.[1] ?? 0),
-        );
-      for (const slideFile of slideFiles) {
-        const entry = zip.file(slideFile);
-        if (!entry) continue;
-        const xml = await entry.async('text');
-        const regex = /<a:t[^>]*>([^<]*)<\/a:t>/g;
-        let match;
-        while ((match = regex.exec(xml)) !== null) {
-          if (match[1]) texts.push(match[1]);
-        }
-        texts.push('---'); // slide separator
-      }
-    } catch {
-      throw new Error(`Could not read "${file.name}" — it may not be a valid .pptx file.`);
-    }
-    const out = texts
-      .join('\n')
-      .replace(/^(?:---\n?)+/, '')
-      .trim();
-    if (!out || /^-{3}$/.test(out)) throw new Error(`No text found in "${file.name}".`);
-    return out;
-  }
-
-  // Fallback: try reading as text.
+  let text: string;
   try {
-    return await file.text();
+    text = await extractDocumentText(file);
   } catch {
-    throw new Error(`Could not read "${file.name}" as text.`);
+    throw new Error(`Could not read "${file.name}" — it may be corrupt or an unsupported format.`);
   }
+  const out = text.trim();
+  if (!out) throw new Error(`No text found in "${file.name}".`);
+  return out;
 }

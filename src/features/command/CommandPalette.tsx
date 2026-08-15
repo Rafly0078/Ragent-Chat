@@ -7,6 +7,7 @@ import { MessageSquare, Plus, Search, Settings2, Sparkles, CornerDownLeft } from
 import { useChatStore } from '@/lib/store/chat-store';
 import { useSettings } from '@/lib/store/settings-store';
 import { cn } from '@/lib/utils/cn';
+import type { Conversation } from '@/types';
 
 interface Props {
   open: boolean;
@@ -22,9 +23,17 @@ interface Item {
   run: () => void;
 }
 
+/** Stable empty identity, so the gated selector below doesn't fire a re-render. */
+const NO_CONVERSATIONS: Conversation[] = [];
+
 export function CommandPalette({ open, onClose, onNewChat }: Props) {
   const router = useRouter();
-  const conversations = useChatStore((s) => s.conversations);
+  // Gated on `open`. This selector runs on every store write — including all
+  // ~60/sec while a response streams — and `items` below maps over the result,
+  // allocating an object and a closure per conversation. The component renders
+  // null when closed, so that was pure garbage: with 50 chats, thousands of
+  // objects per second of GC pressure on a phone, for a panel nobody can see.
+  const conversations = useChatStore((s) => (open ? s.conversations : NO_CONVERSATIONS));
   const setActive = useChatStore((s) => s.setActive);
   const grain = useSettings((s) => s.animatedBackground);
   const toggleSetting = useSettings((s) => s.toggle);

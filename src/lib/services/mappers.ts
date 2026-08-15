@@ -8,6 +8,7 @@ import type {
   ConversationSummary,
   GenerationParams,
   Message,
+  MessagePart,
   Role,
   ThinkingConfig,
   ThinkingEffort,
@@ -83,6 +84,52 @@ function safeMetadata(raw: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * Coerce the `thinking_blocks` jsonb column into ordered `MessagePart`s.
+ *
+ * Validated element by element, not trusted: the row owner can write anything
+ * into a jsonb column, and the renderer walks this array switching on `kind` and
+ * arithmetic on `endedAt - startedAt`. A bad `kind` would render nothing, a
+ * string `startedAt` would print `NaN` as the block duration.
+ *
+ * Returns undefined for an empty/absent array so callers fall through to the
+ * flattened `content`/`reasoning` mirrors, which is how pre-0006 rows still
+ * render.
+ */
+function safeThinkingBlocks(raw: unknown): MessagePart[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const num = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  const out: MessagePart[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const src = entry as Record<string, unknown>;
+    const text = typeof src.text === 'string' ? src.text : '';
+    const index = num(src.index, -1);
+    if (src.kind === 'text') {
+      out.push({ kind: 'text', index, text });
+      continue;
+    }
+    if (src.kind !== 'thinking') continue;
+    const startedAt = num(src.startedAt, 0);
+    const endedAt =
+      typeof src.endedAt === 'number' && Number.isFinite(src.endedAt)
+        ? Math.max(src.endedAt, startedAt)
+        : undefined;
+    out.push({
+      kind: 'thinking',
+      index,
+      text,
+      startedAt,
+      ...(endedAt !== undefined ? { endedAt } : {}),
+      ...(typeof src.signature === 'string' ? { signature: src.signature } : {}),
+      ...(src.redacted === true ? { redacted: true } : {}),
+      ...(src.interrupted === true ? { interrupted: true } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/**
  * The pre-v4 default context window. A row still holding it was written before
  * the store migration ran, so it is the old default rather than a choice, and is
  * raised to the current one — otherwise a second device (or any device that
@@ -126,6 +173,10 @@ export function rowToMessage(row: MessageRow): Message {
     // message list.
     metrics: safeMetrics(row.metrics),
     reasoning: row.reasoning ?? undefined,
+    // Ordered segments. Absent for anything written before 0006, in which case
+    // the renderer falls back to `content` + `reasoning` above and the message
+    // looks exactly as it always did.
+    parts: safeThinkingBlocks(row.thinking_blocks),
     // `artifacts` is deliberately absent here — the artifacts TABLE is the
     // source of truth and loadConversations merges it in afterwards. Persisting
     // it in metadata too would show every generated file twice.
@@ -197,6 +248,10 @@ export function messageToRow(
     metrics: msg.metrics ?? null,
     error: msg.error ?? null,
     reasoning: msg.reasoning ?? null,
+    // The ordered truth. `content` and `reasoning` above stay populated as its
+    // flattened mirrors so an older client — or any reader that predates this
+    // column — still gets a coherent message rather than an empty one.
+    thinking_blocks: msg.parts ?? [],
     metadata: Object.keys(metadata).length > 0 ? metadata : {},
     seq,
     created_at: msToIso(msg.createdAt),

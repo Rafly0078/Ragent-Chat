@@ -15,11 +15,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { getSupabaseBrowser } from '@/lib/supabase/client';
+import type { Session, SupabaseClient, User } from '@supabase/supabase-js';
+import { loadSupabaseBrowser } from '@/lib/supabase/client';
 import { supabaseConfigured } from '@/lib/supabase/env';
 import { useChatStore } from '@/lib/store/chat-store';
 import { ensureProfile } from '@/lib/services/profile.service';
+import type { Database } from '@/lib/supabase/types';
 
 export type OAuthProvider = 'google' | 'github';
 
@@ -49,14 +50,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(enabled);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const supabaseRef = useRef(enabled ? getSupabaseBrowser() : null);
+  // Populated by the mount effect, not at render time: creating the client
+  // eagerly here is what pulled @supabase/ssr into the root bundle of every
+  // route. Every consumer below already null-checks it, and AuthGate holds the
+  // app behind `loading` until the first session read resolves, so nothing can
+  // observe the brief null window.
+  const supabaseRef = useRef<SupabaseClient<Database> | null>(null);
   // Track which user we've already backfilled a profile for, so onAuthStateChange
   // firing repeatedly (token refresh, tab focus) doesn't re-hit the DB each time.
   const ensuredFor = useRef<string | null>(null);
 
   useEffect(() => {
-    const supabase = supabaseRef.current;
-    if (!supabase) return;
+    if (!enabled) return;
 
     // Self-heal a missing profile row on sign-in (see ensureProfile). Fire and
     // forget — never block auth on it, and swallow errors so a transient DB
@@ -70,26 +75,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     let active = true;
-    supabase.auth.getSession().then(({ data }) => {
+    let unsubscribe: (() => void) | undefined;
+
+    void (async () => {
+      const supabase = await loadSupabaseBrowser();
+      // `enabled` was true, so a null here means the config went away mid-flight
+      // — nothing to subscribe to, but the gate must still be released or the
+      // app sits on the spinner forever.
+      if (!supabase || !active) {
+        if (active) setLoading(false);
+        return;
+      }
+      supabaseRef.current = supabase;
+
+      const { data } = await supabase.auth.getSession();
       if (!active) return;
       setSession(data.session);
       setUser(data.session?.user ?? null);
       maybeEnsureProfile(data.session?.user ?? null);
       setLoading(false);
-    });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-      setUser(next?.user ?? null);
-      maybeEnsureProfile(next?.user ?? null);
-      setLoading(false);
-    });
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+        setSession(next);
+        setUser(next?.user ?? null);
+        maybeEnsureProfile(next?.user ?? null);
+        setLoading(false);
+      });
+      unsubscribe = () => sub.subscription.unsubscribe();
+      // A listener registered after the effect was torn down would leak.
+      if (!active) unsubscribe();
+    })();
 
     return () => {
       active = false;
-      sub.subscription.unsubscribe();
+      unsubscribe?.();
     };
-  }, []);
+  }, [enabled]);
 
   const redirectTo = useCallback(() => {
     if (typeof window === 'undefined') return undefined;

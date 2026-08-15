@@ -55,6 +55,43 @@ export interface MessageMetrics {
   tokensPerSecond?: number;
 }
 
+/**
+ * One ordered segment of an assistant message.
+ *
+ * This is what makes interleaved thinking possible. Reasoning used to be a
+ * single flat `reasoning` string appended to on every thinking delta, so a model
+ * that went think → answer → think again produced one blob of all thinking and
+ * one blob of all text, with the ordering between them unrecoverable. A message
+ * is now an ordered list: the renderer walks it and emits a reasoning panel or a
+ * markdown segment per entry, in the order the model actually produced them.
+ *
+ * `index` is the upstream content-block index where the provider gives one
+ * (Anthropic), or a synthesized counter where it doesn't (OpenAI-compatible,
+ * Ollama) — see `providerStream`. It exists so deltas arriving out of order, or
+ * a resumed block, land in the right part instead of opening a new one.
+ */
+export type MessagePart =
+  | { kind: 'text'; index: number; text: string }
+  | {
+      kind: 'thinking';
+      index: number;
+      text: string;
+      /** Epoch ms when the first delta for this block arrived. */
+      startedAt: number;
+      /** Set when the block closes; absent while it is still streaming. */
+      endedAt?: number;
+      /**
+       * Anthropic's opaque signature for the block. Must be echoed back
+       * verbatim alongside the thinking text on later turns or the API rejects
+       * the request — see `toApiMessages`.
+       */
+      signature?: string;
+      /** Anthropic returned this block encrypted; there is no text to show. */
+      redacted?: boolean;
+      /** The stream ended before this block closed (abort, error, timeout). */
+      interrupted?: boolean;
+    };
+
 export interface Message {
   id: string;
   role: Role;
@@ -67,14 +104,53 @@ export interface Message {
   model?: string;
   /** True while the message is actively streaming. */
   streaming?: boolean;
-  /** The model's extended-thinking output, streamed separately from content. */
+  /**
+   * Ordered text/thinking segments — the real shape of an assistant message.
+   *
+   * `content` and `reasoning` below remain the flattened mirrors of this, kept
+   * in sync by the store, because a great deal reads them: `toApiMessages`,
+   * artifact/patch detection, compaction, export, search-source extraction and
+   * every message persisted before this existed. Absent on user messages and on
+   * assistant messages from older sessions, so readers must fall back.
+   */
+  parts?: MessagePart[];
+  /** All thinking text concatenated. Derived mirror of `parts`; see above. */
   reasoning?: string;
-  /** Wall-clock time spent in the reasoning phase, ms (set once thinking ends). */
+  /** Wall-clock time spent thinking, ms — summed across every thinking part. */
   reasoningTimeMs?: number;
   /** Set when generation failed, holds a user-facing message. */
   error?: string;
   /** Arbitrary metadata — used by the tool engine to attach artifacts, etc. */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Flatten ordered parts back into the `content` / `reasoning` mirrors.
+ *
+ * One place, so the store, the Supabase mapper and the migration cannot drift
+ * on what "the text of this message" means.
+ */
+export function flattenParts(parts: MessagePart[]): {
+  content: string;
+  reasoning: string;
+  reasoningTimeMs?: number;
+} {
+  let content = '';
+  let reasoning = '';
+  let reasoningTimeMs = 0;
+  let sawTiming = false;
+  for (const p of parts) {
+    if (p.kind === 'text') {
+      content += p.text;
+      continue;
+    }
+    reasoning += p.text;
+    if (p.endedAt !== undefined) {
+      reasoningTimeMs += p.endedAt - p.startedAt;
+      sawTiming = true;
+    }
+  }
+  return { content, reasoning, ...(sawTiming ? { reasoningTimeMs } : {}) };
 }
 
 /** Per-conversation generation parameters. Falls back to global settings. */

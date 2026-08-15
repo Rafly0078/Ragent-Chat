@@ -25,7 +25,7 @@
  * This module is pure and browser-safe — no server-only imports.
  */
 
-const FENCE = /(`{3,})codepatch[ \t]*\n([\s\S]*?)\1/g;
+import { findFences, hasFenceTag, replaceFences } from './fences';
 
 /** Fence long enough to hold `body` — a patched file containing ``` used to close it early. */
 function fenceFor(body: string): string {
@@ -81,30 +81,30 @@ function parseDirective(rawBody: string): PatchDirective | null {
 }
 
 export function detectPatches(text: string): DetectPatchResult {
-  if (!text || !text.includes('```codepatch')) {
+  if (!text || !hasFenceTag(text, 'codepatch')) {
     return { patches: [], cleaned: text, found: false };
   }
 
   const patches: PatchDirective[] = [];
-  let found = false;
 
-  const cleaned = text.replace(FENCE, (whole, _fence: string, rawBody: string) => {
-    found = true;
-    const parsed = parseDirective(rawBody);
-    if (parsed) {
-      patches.push(parsed);
-      return ''; // strip recognized directive; the UI renders a PatchBlock instead
-    }
-    return whole; // malformed — leave visible so nothing is silently lost
+  // Via the shared nested-fence scanner, not a lazy regex. `FENCE` stopped at the
+  // first ``` inside the body, so any patch whose REPLACE section contained a
+  // markdown fence was truncated mid-hunk — `detect.ts` had solved this for
+  // `artifact` and `codepatch` never got the fix.
+  const { out, found } = replaceFences(text, 'codepatch', (match) => {
+    const parsed = parseDirective(match.body);
+    if (!parsed) return null; // malformed — leave visible so nothing is silently lost
+    patches.push(parsed);
+    return ''; // strip; the UI renders a PatchBlock instead
   });
 
-  return { patches, cleaned: cleaned.trim(), found };
+  return { patches, cleaned: out.trim(), found };
 }
 
-/** True when a (possibly still-streaming) text contains a complete codepatch fence. */
+/** True when a (possibly still-streaming) text contains a usable codepatch fence. */
 export function hasCompletePatch(text: string): boolean {
-  FENCE.lastIndex = 0;
-  return FENCE.test(text);
+  if (!hasFenceTag(text, 'codepatch')) return false;
+  return findFences(text, 'codepatch').matches.length > 0;
 }
 
 /**
@@ -230,30 +230,30 @@ export interface EnrichResult {
  * fence in place either way so the renderer can show the diff.
  */
 export function enrichPatches(content: string, priorCode: string[]): EnrichResult {
-  if (!content || !content.includes('```codepatch')) {
+  if (!content || !hasFenceTag(content, 'codepatch')) {
     return { content, found: false, applied: false };
   }
   let found = false;
   let applied = false;
 
-  const next = content.replace(FENCE, (whole, _fence: string, rawBody: string) => {
-    const directive = parseDirective(rawBody);
-    if (!directive) return whole; // malformed — leave as-is
+  const { out } = replaceFences(content, 'codepatch', (match) => {
+    const directive = parseDirective(match.body);
+    if (!directive) return null; // malformed — leave as-is
     found = true;
     // Skip fences already enriched (idempotent — guards double runs).
-    if (rawBody.includes(RESULT_MARKER)) {
+    if (match.body.includes(RESULT_MARKER)) {
       applied = true;
-      return whole;
+      return null;
     }
     const located = locateAndApply(priorCode, directive.hunks);
-    if (!located) return whole; // couldn't find source; keep bare hunks
+    if (!located) return null; // couldn't find source; keep bare hunks
     applied = true;
     const body = buildEnrichedBody(directive, located.result);
     const fence = fenceFor(body);
     return `${fence}codepatch\n${body}\n${fence}`;
   });
 
-  return { content: next, found, applied };
+  return { content: out, found, applied };
 }
 
 /** Collapse runs of whitespace and trim each line — used for fuzzy matching. */

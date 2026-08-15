@@ -46,6 +46,26 @@ function isPptx(file: File): boolean {
 function isXlsx(file: File): boolean {
   return /\.xlsx$/i.test(file.name) || file.type.includes('spreadsheetml');
 }
+export function isOffice(file: File): boolean {
+  return isDocx(file) || isPptx(file) || isXlsx(file);
+}
+
+/**
+ * Read a document's text with the browser, for any caller that needs the words
+ * rather than the bytes. Returns '' when nothing could be read — callers that
+ * want to fail loudly should check for that and throw their own message.
+ *
+ * This is the one implementation. `use-document-edit` used to carry its own
+ * ~155-line copy with weaker parsers (a bare `<w:t>` regex against the
+ * paragraph-boundary-aware `xmlToText` here, and — for .xlsx alone — a full
+ * `exceljs` workbook *writer*, 930 KB of async chunk, to read some cell values
+ * out of a zip this file already opens with jszip).
+ */
+export async function extractDocumentText(file: File): Promise<string> {
+  if (isPdf(file)) return extractPdfText(file);
+  if (isOffice(file)) return extractOffice(file);
+  return file.text();
+}
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

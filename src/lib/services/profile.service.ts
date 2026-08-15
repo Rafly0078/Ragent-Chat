@@ -3,11 +3,11 @@
 /** Profile + preferences persistence for the signed-in user. */
 
 import type { User } from '@supabase/supabase-js';
-import { getSupabaseBrowser } from '@/lib/supabase/client';
+import { loadSupabaseBrowser } from '@/lib/supabase/client';
 import type { ProfileRow } from '@/lib/supabase/types';
 
 export async function getProfile(): Promise<ProfileRow | null> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase) return null;
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return null;
@@ -30,7 +30,7 @@ export async function getProfile(): Promise<ProfileRow | null> {
  * Guests (anonymous users) are skipped.
  */
 export async function ensureProfile(user: User): Promise<void> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase || user.is_anonymous) return;
 
   const meta = user.user_metadata as
@@ -67,7 +67,7 @@ export async function ensureProfile(user: User): Promise<void> {
 export async function updateProfile(
   patch: Partial<Pick<ProfileRow, 'display_name' | 'avatar_url'>>,
 ): Promise<void> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase) throw new Error('Auth is not configured.');
   const { data: auth } = await supabase.auth.getUser();
   // Used to resolve normally with no session, so the settings UI reported a

@@ -29,7 +29,13 @@ interface Props {
   title: string;
   pinned: boolean;
   active: boolean;
-  onSelect: () => void;
+  /**
+   * Takes the id rather than closing over it, so the caller can pass one stable
+   * function for every row. `onSelect={() => select(c.id)}` allocated a fresh
+   * closure per row per render, which defeated the `memo` below entirely — every
+   * row re-rendered whenever the sidebar did.
+   */
+  onSelect: (id: string) => void;
 }
 
 export const ChatListItem = memo(function ChatListItem({
@@ -107,7 +113,7 @@ export const ChatListItem = memo(function ChatListItem({
         )}
       />
       <button
-        onClick={onSelect}
+        onClick={() => onSelect(id)}
         className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
         aria-current={active}
       >

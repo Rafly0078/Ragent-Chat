@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import type { Conversation } from '@/types';
 import { useChatStore } from '@/lib/store/chat-store';
 import { useThinkingStore } from '@/lib/store/thinking-store';
@@ -15,7 +15,14 @@ import { SystemPromptEditor } from './SystemPromptEditor';
 import type { MessageActions } from './MessageBubble';
 import { useToast } from '@/components/ui/toast';
 import { copyText } from '@/lib/utils/clipboard';
-import { ArtifactPanel } from '@/features/artifacts/ArtifactPanel';
+/**
+ * Code-split: 438 lines, rendered only once a conversation has produced a
+ * generated file. Statically imported it rode along in the chat route chunk for
+ * every visitor, including the majority who never generate a document.
+ */
+const ArtifactPanel = lazy(() =>
+  import('@/features/artifacts/ArtifactPanel').then((m) => ({ default: m.ArtifactPanel })),
+);
 import type { Artifact } from '@/lib/tools/types';
 import { useSettings } from '@/lib/store/settings-store';
 import {
@@ -26,11 +33,38 @@ import {
 import { DEFAULT_SEARCH_MODE, DEFAULT_THINKING } from '@/lib/store/defaults';
 
 interface Props {
-  conversation: Conversation;
+  conversationId: string;
   onToggleSidebar: () => void;
 }
 
-export function ChatView({ conversation, onToggleSidebar }: Props) {
+/**
+ * Subscribes to just this one conversation, so the page shell above it doesn't
+ * have to.
+ *
+ * The page used to select the whole `conversations` array and find the active
+ * one itself. `appendToMessage` mints a new array and a new conversation object
+ * on every flush, so that selector's identity changed ~60x/sec while streaming
+ * — which re-rendered the page, and with it the sidebar, the ambient
+ * background, the offline banner and the command palette, none of which had
+ * anything to do with the token that arrived. Narrowing the subscription to
+ * here means a streaming frame re-renders the chat column and nothing else.
+ *
+ * One hook before the conditional return, so hook order stays stable; the real
+ * body is `ChatViewInner` below.
+ */
+export function ChatView({ conversationId, onToggleSidebar }: Props) {
+  const conversation = useChatStore((s) => s.conversations.find((c) => c.id === conversationId));
+  if (!conversation) return null;
+  return <ChatViewInner conversation={conversation} onToggleSidebar={onToggleSidebar} />;
+}
+
+function ChatViewInner({
+  conversation,
+  onToggleSidebar,
+}: {
+  conversation: Conversation;
+  onToggleSidebar: () => void;
+}) {
   const generatingId = useChatStore((s) => s.generatingId);
   const deleteMessage = useChatStore((s) => s.deleteMessage);
   const setSystemPrompt = useChatStore((s) => s.setConversationSystemPrompt);
@@ -132,7 +166,11 @@ export function ChatView({ conversation, onToggleSidebar }: Props) {
       {hasMessages ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <MessageList conversation={conversation} generating={generating} actions={actions} />
-          {allArtifacts.length > 0 && <ArtifactPanel artifacts={allArtifacts} />}
+          {allArtifacts.length > 0 && (
+            <Suspense fallback={null}>
+              <ArtifactPanel artifacts={allArtifacts} />
+            </Suspense>
+          )}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">

@@ -2,17 +2,30 @@
 
 import { useCallback, useRef } from 'react';
 import type { Attachment, Message, SearchMode } from '@/types';
-import { useChatStore } from '@/lib/store/chat-store';
+import { useChatStore, type PartDelta } from '@/lib/store/chat-store';
 import { useSettings } from '@/lib/store/settings-store';
 import { DEFAULT_SEARCH_MODE } from '@/lib/store/defaults';
 import { useThinkingStore } from '@/lib/store/thinking-store';
 import { resolveLimits, limitSourceLabel } from '@/features/models/resolve-limits';
-import { ApiError, providerSupportsThinking, providerThinkingKey } from '@/lib/api/config';
+import {
+  ApiError,
+  providerSupportsThinking,
+  providerSupportsTools,
+  providerThinkingKey,
+} from '@/lib/api/config';
 import { streamChat, chat } from '@/lib/api/client';
-import { toApiMessages, toApiOptions, type ChatStreamChunk } from '@/lib/api/types';
+import {
+  toApiMessages,
+  toApiOptions,
+  type ApiChatMessage,
+  type ChatStreamChunk,
+  type WireTool,
+  type WireToolCall,
+} from '@/lib/api/types';
 import { uid } from '@/lib/utils/id';
-import { detectArtifacts } from '@/lib/tools/detect';
+import { detectArtifacts, hasCompleteDirective } from '@/lib/tools/detect';
 import { enrichPatches, extractCodeBlocks } from '@/lib/tools/patch';
+import { toolDefinitions } from '@/lib/tools/schemas';
 import type { Artifact } from '@/lib/tools/types';
 import { searchWeb } from '@/lib/search/client';
 import { formatSearchContext, mergeSearchResponses, toSources } from '@/lib/search/format';
@@ -31,6 +44,24 @@ import { useToast } from '@/components/ui/toast';
  * global Esc shortcut — without threading refs through the component tree.
  */
 let activeController: AbortController | null = null;
+
+/**
+ * How many times the model may call tools and be handed the results within one
+ * turn. Three covers "generate, see it failed, fix the arguments" and
+ * "generate two files in sequence" without letting a confused model spin.
+ */
+const MAX_TOOL_STEPS = 3;
+
+/** Tool definitions in wire shape. Stable, so it's computed once. */
+let cachedWireTools: WireTool[] | null = null;
+function wireTools(): WireTool[] {
+  cachedWireTools ??= toolDefinitions().map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.schema as unknown as Record<string, unknown>,
+  }));
+  return cachedWireTools;
+}
 
 /** Abort the current generation, if any. Safe to call when idle. */
 export function stopActiveGeneration(): void {
@@ -116,6 +147,10 @@ export function useChat(conversationId: string | null) {
         const artifacts = results
           .filter((r): r is PromiseFulfilledResult<Artifact> => r.status === 'fulfilled')
           .map((r) => r.value);
+        const failures = results
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map((r) => (r.reason instanceof Error ? r.reason.message : 'Tool execution failed.'));
+
         if (artifacts.length > 0) {
           const msg = store
             .getState()
@@ -129,16 +164,22 @@ export function useChat(conversationId: string | null) {
           }
         }
 
-        // Every directive failed — the stripped content would otherwise be gone
-        // for good. Restore the raw message so the user still sees the code, and
-        // surface why (the failure is silent server-side otherwise).
+        if (failures.length === 0) return;
+
         if (artifacts.length === 0) {
+          // Every directive failed — the stripped content would otherwise be gone
+          // for good. Restore the raw message so the user still sees the code, and
+          // surface why (the failure is silent server-side otherwise).
           store.getState().updateMessage(convoId, messageId, { content });
-          const reason = results.find(
-            (r): r is PromiseRejectedResult => r.status === 'rejected',
-          )?.reason;
-          const detail = reason instanceof Error ? reason.message : 'Tool execution failed.';
-          toast(`Couldn't generate the file: ${detail}`, 'error');
+          toast(`Couldn't generate the file: ${failures[0]}`, 'error');
+        } else {
+          // PARTIAL failure. This branch didn't exist: the restore-and-toast was
+          // gated on `artifacts.length === 0`, so 2 of 3 files failing produced
+          // no toast, no notice, and the stripped directives were simply gone.
+          // Restoring the raw content here would duplicate the files that DID
+          // succeed, so say what was lost instead.
+          const n = failures.length;
+          toast(`${n} of ${results.length} files couldn't be generated: ${failures[0]}`, 'error');
         }
       } finally {
         // Must always clear, or a message that threw here can never retry.
@@ -183,12 +224,107 @@ export function useChat(conversationId: string | null) {
     stopActiveGeneration();
   }, []);
 
+  /**
+   * Run the tools the model asked for, attach what they produced to the message,
+   * and return one `tool` turn per call to hand back upstream.
+   *
+   * Failures are returned as tool results too, not swallowed. That is the whole
+   * point of the loop: the executor's own message ("create_csv needs rows (an
+   * array of arrays) or content") goes back to the model, which can then fix its
+   * arguments. Previously an executor error reached the user as a toast and the
+   * model learned nothing, so a regenerate re-ran the same broken call.
+   */
+  const executeToolCalls = useCallback(
+    async (
+      convoId: string,
+      messageId: string,
+      calls: WireToolCall[],
+    ): Promise<ApiChatMessage[]> => {
+      const settled = await Promise.allSettled(
+        calls.map(async (call) => {
+          const res = await fetch('/api/tools/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...call.arguments,
+              tool: call.name,
+              conversationId: convoId,
+              messageId,
+            }),
+          });
+          if (!res.ok) {
+            let detail = `Tool execution failed (${res.status}).`;
+            try {
+              const body = (await res.json()) as { error?: string };
+              if (body.error) detail = body.error;
+            } catch {
+              /* non-JSON error body */
+            }
+            throw new Error(detail);
+          }
+          const { artifact } = (await res.json()) as { artifact: Artifact };
+          return artifact;
+        }),
+      );
+
+      const produced: Artifact[] = [];
+      const turns: ApiChatMessage[] = [];
+      settled.forEach((result, i) => {
+        const call = calls[i]!;
+        if (result.status === 'fulfilled') {
+          produced.push(result.value);
+          turns.push({
+            role: 'tool',
+            toolCallId: call.id,
+            content: `Created "${result.value.name}" (${result.value.mimeType}, ${result.value.size} bytes). It is attached to this message and downloadable by the user — do not repeat its contents in your reply.`,
+          });
+          return;
+        }
+        const message =
+          result.reason instanceof Error ? result.reason.message : 'Tool execution failed.';
+        turns.push({
+          role: 'tool',
+          toolCallId: call.id,
+          toolError: true,
+          content: `Error: ${message}`,
+        });
+      });
+
+      if (produced.length > 0) {
+        const msg = store
+          .getState()
+          .conversations.find((c) => c.id === convoId)
+          ?.messages.find((m) => m.id === messageId);
+        if (msg) {
+          const existing = (msg.metadata?.artifacts as Artifact[]) ?? [];
+          store.getState().updateMessage(convoId, messageId, {
+            metadata: { ...msg.metadata, artifacts: [...existing, ...produced] },
+          });
+        }
+      }
+      return turns;
+    },
+    [store],
+  );
+
   /** Core streaming routine: streams into an existing assistant message id. */
   const runStream = useCallback(
     async (
       convoId: string,
       assistantId: string,
-      opts?: { append?: boolean; searchContext?: string },
+      opts?: {
+        append?: boolean;
+        searchContext?: string;
+        /**
+         * Extra turns appended after the conversation history — the assistant's
+         * own tool requests and their results, on a follow-up pass of the native
+         * tool-calling loop. Carried here rather than written into the store so a
+         * tool round trip doesn't add visible messages to the transcript.
+         */
+        extraTurns?: ApiChatMessage[];
+        /** Which pass of the tool loop this is; bounded by MAX_TOOL_STEPS. */
+        toolStep?: number;
+      },
     ) => {
       const s = store.getState();
       const convo = s.conversations.find((c) => c.id === convoId);
@@ -310,26 +446,26 @@ export function useChat(conversationId: string | null) {
         },
       });
 
-      // Coalesce streamed tokens into a single store write per animation
+      // Coalesce streamed segments into a single store write per animation
       // frame. Upstream emits one delta per token; writing to the store per
       // token forces a full React re-render (and, via persist, a serialize)
       // thousands of times per response. Buffering to rAF caps that at the
       // display refresh rate while losing no content.
-      let contentBuffer = '';
-      let reasoningBuffer = '';
+      //
+      // ONE ordered queue, not a `contentBuffer` and a `reasoningBuffer`. Two
+      // parallel scalars flushed in a fixed order could not represent
+      // think → answer → think: within a single frame the interleaving was
+      // already gone, and the store then concatenated each into one flat string.
+      let pending: PartDelta[] = [];
       let rafId: number | null = null;
       let firstToken = true;
 
       const flushBuffers = () => {
         rafId = null;
-        if (contentBuffer) {
-          store.getState().appendToMessage(convoId, assistantId, contentBuffer);
-          contentBuffer = '';
-        }
-        if (reasoningBuffer) {
-          store.getState().appendReasoning(convoId, assistantId, reasoningBuffer);
-          reasoningBuffer = '';
-        }
+        if (pending.length === 0) return;
+        const batch = pending;
+        pending = [];
+        store.getState().appendParts(convoId, assistantId, batch);
       };
       const scheduleFlush = () => {
         if (rafId === null) rafId = requestAnimationFrame(flushBuffers);
@@ -344,18 +480,35 @@ export function useChat(conversationId: string | null) {
         flushBuffers();
       };
 
+      // Native function calling, where the provider supports it. The text
+      // directive in TOOL_INSTRUCTIONS stays in the prompt as the fallback for
+      // Ollama and for models that ignore the tools array.
+      const toolStep = opts?.toolStep ?? 0;
+      const nativeTools = providerSupportsTools() && toolStep < MAX_TOOL_STEPS;
+      /** Tool calls collected during this pass, executed once the stream ends. */
+      const requestedCalls: WireToolCall[] = [];
+
       try {
         await streamChat(
           {
             model: convo.model,
-            messages: toApiMessages(history, convo.systemPrompt, searchContext, summary),
+            messages: [
+              ...toApiMessages(history, convo.systemPrompt, searchContext, summary),
+              ...(opts?.extraTurns ?? []),
+            ],
             options,
             ...(thinkingEnabled ? { think: convo.thinking.effort } : {}),
+            ...(nativeTools ? { tools: wireTools() } : {}),
           },
           {
-            onDelta: (delta) => {
-              // First answer token ends the agentic-search phase display.
-              if (firstToken) {
+            onToolCalls: (calls) => {
+              requestedCalls.push(...calls);
+            },
+            onPart: (part) => {
+              // The first token of EITHER stream ends the agentic-search phase
+              // display. It used to fire only on content, so a thinking model
+              // sat under "Searching…" for the whole reasoning block.
+              if (firstToken && part.text) {
                 firstToken = false;
                 const m = store
                   .getState()
@@ -367,20 +520,35 @@ export function useChat(conversationId: string | null) {
                   });
                 }
               }
-              contentBuffer += delta;
-              scheduleFlush();
-            },
-            onThinking: (delta) => {
-              reasoningBuffer += delta;
+              pending.push({
+                kind: part.kind,
+                index: part.index,
+                text: part.text,
+                ...(part.done ? { done: true } : {}),
+                ...(part.signature ? { signature: part.signature } : {}),
+                ...(part.redacted ? { redacted: true } : {}),
+              });
               scheduleFlush();
             },
             onDone: (final) => {
               flushNow();
+              // Close a thinking block the provider never explicitly ended, so
+              // no panel is left reading "Thinking…" on a finished message.
+              store.getState().sealParts(convoId, assistantId);
               const finalContent =
                 store
                   .getState()
                   .conversations.find((c) => c.id === convoId)
                   ?.messages.find((m) => m.id === assistantId)?.content ?? '';
+              // The model asked for tools. Keep the message streaming, run them,
+              // hand the results back, and let it continue — the loop lives in
+              // the `finally` below so it runs after this handler returns.
+              if (requestedCalls.length > 0) {
+                store.getState().updateMessage(convoId, assistantId, {
+                  metrics: metricsFromChunk(final, startedAt),
+                });
+                return;
+              }
               store.getState().updateMessage(convoId, assistantId, {
                 streaming: false,
                 metrics: metricsFromChunk(final, startedAt),
@@ -394,18 +562,26 @@ export function useChat(conversationId: string | null) {
           controller.signal,
         );
       } catch (err) {
-        // Preserve whatever was buffered before the stream broke off.
+        // Preserve whatever was buffered before the stream broke off, then close
+        // the open thinking block AS INTERRUPTED so the panel can say it was cut
+        // off rather than leaving it reading "Thinking…" forever.
         flushNow();
+        store.getState().sealParts(convoId, assistantId, true);
         const apiErr = ApiError.from(err);
         const cur = store
           .getState()
           .conversations.find((c) => c.id === convoId)
           ?.messages.find((m) => m.id === assistantId);
         if (apiErr.kind === 'aborted') {
-          // Keep whatever was streamed; just mark it finished.
+          // Keep whatever was streamed; just mark it finished. Timing counts
+          // when EITHER stream produced something: stopping part-way through a
+          // long reasoning block is still work the user waited for, and gating
+          // this on `content` alone left a thinking-only stop with no metrics
+          // and no visible affordance at all.
+          const produced = Boolean(cur?.content) || Boolean(cur?.reasoning);
           store.getState().updateMessage(convoId, assistantId, {
             streaming: false,
-            metrics: cur?.content ? { responseTimeMs: Date.now() - startedAt } : undefined,
+            metrics: produced ? { responseTimeMs: Date.now() - startedAt } : undefined,
           });
         } else {
           // If the model returned an error while thinking was enabled, it
@@ -429,6 +605,18 @@ export function useChat(conversationId: string | null) {
             error: apiErr.userMessage,
           });
         }
+
+        // A directive that finished before the stream broke off is still a valid
+        // directive. This path never ran detection at all, so stopping a
+        // generation right after the model closed its ```artifact fence threw the
+        // whole file away — `hasCompleteDirective` existed for exactly this and
+        // was never called from anywhere.
+        const partial = cur?.content ?? '';
+        if (partial && hasCompleteDirective(partial)) {
+          void processArtifacts(convoId, assistantId, partial);
+        }
+        // A failed pass ends the loop; don't run the tools it asked for.
+        requestedCalls.length = 0;
       } finally {
         // Only the generation that still owns the slot may release it. A newer
         // stream may already have taken over (regenerate while streaming, or a
@@ -439,8 +627,46 @@ export function useChat(conversationId: string | null) {
           store.getState().setGenerating(null);
         }
       }
+
+      // The agentic step. Outside the try/finally above so the controller for
+      // this pass is already released — the recursive call installs its own.
+      //
+      // This is the loop the tool system never had: tools used to run exactly
+      // once, after the full response, with the result visible only to the user.
+      // The model could not see what it produced, could not repair a failure, and
+      // could not chain two calls. Bounded by MAX_TOOL_STEPS so a model that
+      // keeps asking can't spin.
+      if (requestedCalls.length > 0 && !controller.signal.aborted) {
+        // Hold the generating flag across the tool round trip. The `finally` above
+        // released it, and executing a tool is a network call — without this the
+        // stop button and typing indicator would blink off while the message is
+        // still, correctly, marked `streaming`.
+        store.getState().setGenerating(convoId);
+        const results = await executeToolCalls(convoId, assistantId, requestedCalls);
+        const nextTurns: ApiChatMessage[] = [
+          ...(opts?.extraTurns ?? []),
+          // The assistant turn that made the requests. Required: a tool result
+          // referencing a call the model never sees is rejected by both APIs.
+          {
+            role: 'assistant',
+            content:
+              store
+                .getState()
+                .conversations.find((c) => c.id === convoId)
+                ?.messages.find((m) => m.id === assistantId)?.content ?? '',
+            toolCalls: requestedCalls,
+          },
+          ...results,
+        ];
+        await runStream(convoId, assistantId, {
+          append: true,
+          searchContext,
+          extraTurns: nextTurns,
+          toolStep: toolStep + 1,
+        });
+      }
     },
-    [store, processArtifacts, processPatches, toast],
+    [store, processArtifacts, processPatches, executeToolCalls, toast],
   );
 
   /**
@@ -469,6 +695,16 @@ export function useChat(conversationId: string | null) {
       history: Message[],
       model: string,
       mode: 'auto' | 'always',
+      /**
+       * Abort signal for the whole search phase.
+       *
+       * Previously absent: the planning call was passed `undefined` and
+       * `searchWeb` no signal at all, so pressing Stop while "Searching…" was on
+       * screen cancelled nothing. The planner round trip and every Tavily query
+       * ran to completion, and `send` then fell through and started a brand-new
+       * generation the user had just asked to stop.
+       */
+      signal: AbortSignal,
     ): Promise<string | undefined> => {
       const setMeta = (patch: Record<string, unknown>) => {
         const msg = store
@@ -491,11 +727,14 @@ export function useChat(conversationId: string | null) {
             messages: buildPlanMessages(userText, history, mode),
             think: false, // plan JSON must be clean — no reasoning tokens in the body
           },
-          undefined,
+          signal,
           PLAN_TIMEOUT_MS,
         );
         plan = parsePlan(raw);
-      } catch {
+      } catch (err) {
+        // An abort has to propagate: treating it as "no plan" let `always` mode
+        // fall through to searching the raw text after the user pressed Stop.
+        if (err instanceof ApiError && err.kind === 'aborted') throw err;
         plan = null;
       }
 
@@ -533,7 +772,7 @@ export function useChat(conversationId: string | null) {
         plannedQueries: plan.queries,
         searchGoal: plan.goal,
       });
-      const settled = await Promise.allSettled(plan.queries.map((q) => searchWeb(q)));
+      const settled = await Promise.allSettled(plan.queries.map((q) => searchWeb(q, signal)));
       const responses = settled
         .filter(
           (r): r is PromiseFulfilledResult<Awaited<ReturnType<typeof searchWeb>>> =>
@@ -613,6 +852,14 @@ export function useChat(conversationId: string | null) {
 
       let searchContext: string | undefined;
       if (mode !== 'off' && trimmed && convo.model) {
+        // The search phase gets its own controller, published as the active one
+        // so the Stop button and Esc reach it. Without this the whole phase was
+        // uncancellable, and a Stop during "Searching…" was followed by a fresh
+        // generation starting anyway.
+        const searchController = new AbortController();
+        activeController?.abort();
+        activeController = searchController;
+        s.setGenerating(conversationId);
         try {
           searchContext = await runAgenticSearch(
             conversationId,
@@ -621,9 +868,11 @@ export function useChat(conversationId: string | null) {
             convo.messages,
             convo.model,
             mode,
+            searchController.signal,
           );
         } catch (err) {
-          toast(err instanceof Error ? err.message : 'Web search failed', 'error');
+          const aborted =
+            (err instanceof ApiError && err.kind === 'aborted') || searchController.signal.aborted;
           // Clear only the search keys — a bare object would also wipe `effort`
           // and anything else already stamped on this message.
           const msg = store
@@ -632,7 +881,21 @@ export function useChat(conversationId: string | null) {
             ?.messages.find((m) => m.id === assistantMsg.id);
           store.getState().updateMessage(conversationId, assistantMsg.id, {
             metadata: { ...msg?.metadata, searchPhase: undefined, searching: false },
+            ...(aborted ? { streaming: false } : {}),
           });
+          if (aborted) {
+            // Stopped during search: don't then start the generation they stopped.
+            if (activeController === searchController) {
+              activeController = null;
+              store.getState().setGenerating(null);
+            }
+            return;
+          }
+          toast(err instanceof Error ? err.message : 'Web search failed', 'error');
+        } finally {
+          // runStream installs its own controller; release this one either way so
+          // it can't abort the generation that follows.
+          if (activeController === searchController) activeController = null;
         }
       }
 
@@ -656,11 +919,15 @@ export function useChat(conversationId: string | null) {
       const metadata = prev?.metadata ? { ...prev.metadata } : undefined;
       if (metadata) delete metadata.artifacts;
 
-      // Reset the assistant message content and re-stream. Clear reasoning too
-      // so a regenerated response doesn't append onto the prior attempt's.
+      // Reset the assistant message and re-stream. `parts` has to be cleared
+      // alongside `content`/`reasoning` — it is now the ordered truth those two
+      // are derived from, so leaving it would have the regenerated answer append
+      // onto the previous attempt's blocks.
       s.updateMessage(conversationId, assistantId, {
         content: '',
+        parts: undefined,
         reasoning: undefined,
+        reasoningTimeMs: undefined,
         error: undefined,
         streaming: true,
         metrics: undefined,
@@ -674,6 +941,12 @@ export function useChat(conversationId: string | null) {
   const continueGeneration = useCallback(
     async (assistantId: string) => {
       if (!conversationId) return;
+      // Seal the previous turn's trailing thinking block before re-streaming.
+      // Without this, a continue appended the new turn's reasoning seamlessly
+      // onto the old block — the two turns' thinking silently became one.
+      // Ordered parts make the second turn's blocks land after the first turn's
+      // text, which is what actually happened.
+      store.getState().sealParts(conversationId, assistantId);
       store.getState().updateMessage(conversationId, assistantId, { streaming: true });
       await runStream(conversationId, assistantId, { append: true });
     },

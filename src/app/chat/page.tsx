@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AmbientBackground } from '@/components/AmbientBackground';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { ApiConfigNotice } from '@/components/ApiConfigNotice';
@@ -21,8 +21,14 @@ export default function HomePage() {
   const hydrated = useHydrated();
   const isMobile = useIsMobile();
 
-  const conversations = useChatStore((s) => s.conversations);
+  // Primitives only. Selecting `s.conversations` here meant this component —
+  // and therefore the sidebar, ambient background, offline banner and command
+  // palette — re-rendered on every streamed frame, because `appendToMessage`
+  // returns a new array each time. `ChatView` subscribes to the active
+  // conversation itself; everything below just needs to know which one it is.
   const activeId = useChatStore((s) => s.activeId);
+  const conversationCount = useChatStore((s) => s.conversations.length);
+  const firstConversationId = useChatStore((s) => s.conversations[0]?.id ?? null);
   const setActive = useChatStore((s) => s.setActive);
   const createConversation = useChatStore((s) => s.createConversation);
   const generatingId = useChatStore((s) => s.generatingId);
@@ -37,10 +43,7 @@ export default function HomePage() {
     setSidebarOpen(!isMobile);
   }, [isMobile]);
 
-  const active = useMemo(
-    () => conversations.find((c) => c.id === activeId) ?? conversations[0] ?? null,
-    [conversations, activeId],
-  );
+  const activeConversationId = activeId ?? firstConversationId;
 
   const newChat = useCallback(() => {
     createConversation({
@@ -58,12 +61,12 @@ export default function HomePage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!apiConfigured()) return;
-    if (conversations.length === 0) {
+    if (conversationCount === 0) {
       newChat();
       return;
     }
-    if (!activeId && conversations[0]) setActive(conversations[0].id);
-  }, [hydrated, activeId, conversations, setActive, newChat]);
+    if (!activeId && firstConversationId) setActive(firstConversationId);
+  }, [hydrated, activeId, conversationCount, firstConversationId, setActive, newChat]);
 
   const focusSearch = useCallback(() => {
     setSidebarOpen(true);
@@ -98,8 +101,11 @@ export default function HomePage() {
             </div>
           ) : !apiConfigured() ? (
             <ApiConfigNotice />
-          ) : active ? (
-            <ChatView conversation={active} onToggleSidebar={() => setSidebarOpen((o) => !o)} />
+          ) : activeConversationId ? (
+            <ChatView
+              conversationId={activeConversationId}
+              onToggleSidebar={() => setSidebarOpen((o) => !o)}
+            />
           ) : (
             <div className="flex-1 overflow-y-auto">
               <EmptyState onPick={() => newChat()} />

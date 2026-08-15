@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getExecutor } from '@/lib/tools/executors';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { EXT_BY_KIND, type GenerateRequest, type Artifact, type ToolName } from '@/lib/tools/types';
+import { EXT_BY_KIND, type Artifact, type ToolName } from '@/lib/tools/types';
 import { uid } from '@/lib/utils/id';
 import { getTool } from '@/lib/tools/registry';
+import { validateGenerateRequest } from '@/lib/tools/validate';
 import { guard } from '@/lib/server/guard';
 import { bodyErrorResponse, readJson } from '@/lib/server/body';
 
@@ -61,22 +62,31 @@ export async function POST(request: Request): Promise<Response> {
   const gate = await guard(request, { bucket: 'tools', limit: 30, windowMs: 60_000 });
   if (!gate.ok) return gate.response;
 
-  let body: GenerateRequest;
+  let raw: unknown;
   try {
-    body = await readJson<GenerateRequest>(request, MAX_BODY_BYTES);
+    raw = await readJson<unknown>(request, MAX_BODY_BYTES);
   } catch (err) {
     return (
       bodyErrorResponse(err) ?? NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 })
     );
   }
 
-  if (!body.tool) {
-    return NextResponse.json({ error: 'Missing "tool" field.' }, { status: 400 });
+  // Validate and coerce at the trust boundary. This route used to check only
+  // that `tool` was truthy and resolved to an executor; every other field went
+  // into the executor as-is, and the executors trust their inputs. So
+  // `{"tool":"create_csv","rows":"oops"}` — reachable from any client — passed a
+  // `rows.length` truthiness check, then `rows.map` threw and the request 500'd.
+  const checked = validateGenerateRequest(raw);
+  if (!checked.ok) {
+    return NextResponse.json({ error: checked.error }, { status: 400 });
   }
+  const body = checked.request;
 
   const executor = await getExecutor(body.tool as ToolName);
   if (!executor) {
-    return NextResponse.json({ error: `Unknown tool: ${body.tool}` }, { status: 400 });
+    // The name is a valid ToolName (validation just checked) but no loader is
+    // registered — a registry/executor-table mismatch, i.e. our bug, not theirs.
+    return NextResponse.json({ error: `No executor for tool: ${body.tool}` }, { status: 500 });
   }
 
   const supabase = await getSupabaseServer();

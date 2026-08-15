@@ -73,6 +73,12 @@ export type MessageRow = {
   error: string | null;
   /** Added in 0005. The model's extended-thinking output. */
   reasoning: string | null;
+  /**
+   * Added in 0006. jsonb array of ordered text/thinking segments — the real
+   * shape of an assistant message. `content` and `reasoning` are its flattened
+   * mirrors; an empty array means a pre-0006 row that only has those.
+   */
+  thinking_blocks: unknown;
   /** Added in 0005. jsonb — search sources/context, effort, etc. */
   metadata: unknown;
   parent_id: string | null;
@@ -257,6 +263,7 @@ export interface Database {
           | 'metrics'
           | 'error'
           | 'reasoning'
+          | 'thinking_blocks'
           | 'metadata'
           | 'parent_id'
           | 'seq'

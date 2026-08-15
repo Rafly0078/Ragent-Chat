@@ -11,7 +11,7 @@
  */
 
 import type { Conversation, Message } from '@/types';
-import { getSupabaseBrowser } from '@/lib/supabase/client';
+import { loadSupabaseBrowser } from '@/lib/supabase/client';
 import {
   conversationToRow,
   messageToRow,
@@ -54,7 +54,7 @@ async function selectAllPages<T>(
 
 /** Load every conversation for the current user, newest first, with messages. */
 export async function loadConversations(): Promise<Conversation[]> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase) return [];
 
   const convoRows = await selectAllPages<ConversationRow>((from, to) =>
@@ -158,7 +158,7 @@ export async function loadConversations(): Promise<Conversation[]> {
  * messages by id and delete only the ones that were actually removed.
  */
 export async function saveConversation(convo: Conversation, userId: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase) return;
 
   const { error: convoErr } = await supabase
@@ -197,7 +197,7 @@ export async function saveConversation(convo: Conversation, userId: string): Pro
 
 /** Persist only the conversation row (title, model, pin, params) — no messages. */
 export async function saveConversationMeta(convo: Conversation, userId: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase) return;
   const { error } = await supabase
     .from('conversations')
@@ -206,7 +206,7 @@ export async function saveConversationMeta(convo: Conversation, userId: string):
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
+  const supabase = await loadSupabaseBrowser();
   if (!supabase) return;
   const { error } = await supabase.from('conversations').delete().eq('id', id);
   if (error) throw new Error(error.message);

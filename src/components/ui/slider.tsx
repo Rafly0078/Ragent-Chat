@@ -38,7 +38,9 @@ export function Slider({
           max={max}
           step={step}
           onChange={(e) => onChange(clamp(Number(e.target.value), min, max))}
-          className="input h-7 w-20 px-2 py-0 text-right text-xs tabular-nums"
+          // 16px on touch so focusing it doesn't trigger iOS zoom (the box grows
+          // to h-9 to fit); back to the dense 28px/12px chip on pointer devices.
+          className="input h-9 w-24 px-2 py-0 text-right tabular-nums [@media(hover:hover)]:h-7 [@media(hover:hover)]:w-20 [@media(hover:hover)]:text-xs"
           aria-label={`${label} value`}
         />
       </div>

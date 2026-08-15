@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
 import type {
   Conversation,
   ConversationSummary,
   GenerationParams,
   Message,
+  MessagePart,
   SearchMode,
   ThinkingConfig,
   ThinkingEffort,
@@ -13,6 +14,8 @@ import { SEARCH_MODES } from '@/types';
 import { uid } from '@/lib/utils/id';
 import { notify } from '@/components/ui/toast';
 import { browserStorage } from './storage';
+import { sealed, seedParts, withParts, type PartDelta } from './message-parts';
+export type { PartDelta } from './message-parts';
 import {
   DEFAULT_PARAMS,
   DEFAULT_SEARCH_MODE,
@@ -51,6 +54,17 @@ interface ChatState {
   appendToMessage: (convoId: string, msgId: string, delta: string) => void;
   /** Append a reasoning delta to a message's `reasoning` field. */
   appendReasoning: (convoId: string, msgId: string, delta: string) => void;
+  /**
+   * Append ordered stream segments to a message, preserving interleaving.
+   *
+   * Each entry either extends the currently-open part with a matching
+   * `(kind, index)` or opens a new one after it, and `content`/`reasoning` are
+   * re-derived so every existing reader keeps working. Batched as an array
+   * because the stream consumer flushes a whole frame's worth at once.
+   */
+  appendParts: (convoId: string, msgId: string, incoming: PartDelta[]) => void;
+  /** Close any still-open thinking part — stream ended, aborted or errored. */
+  sealParts: (convoId: string, msgId: string, interrupted?: boolean) => void;
   updateMessage: (convoId: string, msgId: string, patch: Partial<Message>) => void;
   deleteMessage: (convoId: string, msgId: string) => void;
   /** Remove a message and everything after it (used by regenerate/edit). */
@@ -119,10 +133,21 @@ function slimSnapshot(json: string): string | null {
 
 /**
  * A localStorage wrapper that coalesces writes. During streaming the store is
- * updated once per token; without this, `persist` would `JSON.stringify` the
- * entire conversation set on every token, driving RAM and GC pressure through
- * the roof (and hanging the tab) on long chats. Writes are deferred and only
- * the latest value is flushed, at most once per `delayMs`.
+ * updated once per animation frame; without this, `persist` would write the
+ * entire conversation set to localStorage ~60 times a second, driving RAM and
+ * GC pressure through the roof (and hanging the tab) on long chats. Writes are
+ * deferred and only the latest value is flushed, at most once per `delayMs`.
+ *
+ * This is a `PersistStorage`, NOT a `StateStorage` behind `createJSONStorage`,
+ * and that distinction is the whole point. `createJSONStorage` runs
+ * `JSON.stringify` in its own `setItem` — i.e. BEFORE handing the value down
+ * here — so wrapping it only ever deferred the `localStorage.setItem` call. The
+ * serialization itself (a full clone of state plus a stringify of every
+ * conversation, every message, and every base64 image still in memory) still
+ * happened on every frame; one 500 KB attachment in history was 20-40 ms of
+ * main-thread work per frame on a phone, by itself. Taking the raw object here
+ * and stringifying inside `flush` is what actually moves that cost off the hot
+ * path: once per second instead of once per frame.
  *
  * The flush runs inside a timer, i.e. outside any caller's try/catch, so a
  * `QuotaExceededError` used to escape as an unhandled exception AND leave
@@ -135,11 +160,17 @@ function slimSnapshot(json: string): string | null {
  * or discard a backgrounded tab without ever firing `beforeunload`, which meant
  * losing up to `delayMs` of the conversation.
  */
-function throttledStorage(delayMs: number) {
+/**
+ * Typed against `unknown` rather than the persisted slice on purpose: this
+ * wrapper never inspects the value, it only defers serializing it, and the
+ * `persist` middleware's own PersistedState generic widens to `unknown` here
+ * anyway (the `migrate` below can return the raw persisted blob).
+ */
+function throttledStorage(delayMs: number): PersistStorage<unknown> {
   const storage = browserStorage();
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingKey: string | null = null;
-  let pendingValue: string | null = null;
+  let pendingValue: StorageValue<unknown> | null = null;
   /** Set once a full write has failed — keep writing the slim form after that. */
   let degraded = false;
   let warned = false;
@@ -163,9 +194,17 @@ function throttledStorage(delayMs: number) {
     timer = null;
     if (key === null || value === null) return;
 
-    if (!degraded && tryWrite(key, value)) return;
+    // The one stringify, once per flush window rather than once per frame.
+    let json: string;
+    try {
+      json = JSON.stringify(value);
+    } catch {
+      return;
+    }
 
-    const slim = slimSnapshot(value);
+    if (!degraded && tryWrite(key, json)) return;
+
+    const slim = slimSnapshot(json);
     if (slim && tryWrite(key, slim)) {
       if (!degraded) {
         degraded = true;
@@ -197,8 +236,16 @@ function throttledStorage(delayMs: number) {
   }
 
   return {
-    getItem: (key: string) => storage.getItem(key),
-    setItem: (key: string, value: string) => {
+    getItem: (key: string) => {
+      const raw = storage.getItem(key);
+      if (typeof raw !== 'string') return null;
+      try {
+        return JSON.parse(raw) as StorageValue<unknown>;
+      } catch {
+        return null;
+      }
+    },
+    setItem: (key: string, value: StorageValue<unknown>) => {
       pendingKey = key;
       pendingValue = value;
       if (timer) return;
@@ -251,7 +298,47 @@ function sanitizeMessage(raw: unknown): Message | null {
     // Never restore a "still streaming" flag from a file — nothing is streaming.
     streaming: false,
     attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
+    // Ordered segments arrive from an untrusted export file, and the renderer
+    // switches on `kind` and does arithmetic on `endedAt - startedAt`. A bad
+    // `kind` renders nothing; a string `startedAt` prints NaN as the duration.
+    parts: sanitizeParts(m.parts),
   } as Message;
+}
+
+/** Element-by-element validation of imported `parts`. Mirrors safeThinkingBlocks. */
+function sanitizeParts(raw: unknown): MessagePart[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const num = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  const out: MessagePart[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const p = entry as Record<string, unknown>;
+    const text = typeof p.text === 'string' ? p.text : '';
+    const index = num(p.index, -1);
+    if (p.kind === 'text') {
+      out.push({ kind: 'text', index, text });
+      continue;
+    }
+    if (p.kind !== 'thinking') continue;
+    const startedAt = num(p.startedAt, 0);
+    const ended =
+      typeof p.endedAt === 'number' && Number.isFinite(p.endedAt)
+        ? Math.max(p.endedAt, startedAt)
+        : undefined;
+    out.push({
+      kind: 'thinking',
+      index,
+      text,
+      startedAt,
+      ...(ended !== undefined ? { endedAt: ended } : {}),
+      ...(typeof p.signature === 'string' ? { signature: p.signature } : {}),
+      ...(p.redacted === true ? { redacted: true } : {}),
+      // An import is never mid-stream, so an unclosed block was interrupted.
+      ...(ended === undefined ? { interrupted: true, endedAt: startedAt } : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /**
@@ -450,6 +537,32 @@ export const useChatStore = create<ChatState>()(
           ),
         })),
 
+      appendParts: (convoId, msgId, incoming) => {
+        if (incoming.length === 0) return;
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === convoId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) => (m.id === msgId ? withParts(m, incoming) : m)),
+                }
+              : c,
+          ),
+        }));
+      },
+
+      sealParts: (convoId, msgId, interrupted) =>
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === convoId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m) => (m.id === msgId ? sealed(m, interrupted) : m)),
+                }
+              : c,
+          ),
+        })),
+
       updateMessage: (convoId, msgId, patch) =>
         set((s) => ({
           conversations: s.conversations.map((c) =>
@@ -502,8 +615,8 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'ollama-webui:chats',
-      storage: createJSONStorage(() => throttledStorage(1000)),
-      version: 5,
+      storage: throttledStorage(1000),
+      version: 6,
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;
         const state = persisted as { conversations?: Conversation[] };
@@ -558,6 +671,21 @@ export const useChatStore = create<ChatState>()(
                 : { maxTokensAuto: false }),
             },
             searchMode: c.searchMode ?? DEFAULT_SEARCH_MODE,
+          }));
+        }
+        // v5 → v6: reasoning became an ordered `parts` array. Existing messages
+        // are seeded from the flat pair, which reproduces the only ordering the
+        // old model could express — all thinking, then all text. Doing it here
+        // rather than lazily means a `continue` on an old message appends after
+        // its blocks instead of silently discarding them.
+        if (version < 6 && state.conversations) {
+          state.conversations = state.conversations.map((c) => ({
+            ...c,
+            messages: (c.messages ?? []).map((m) =>
+              m.role === 'assistant' && !m.parts && (m.reasoning || m.content)
+                ? { ...m, parts: seedParts(m) }
+                : m,
+            ),
           }));
         }
         return state;

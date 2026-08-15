@@ -9,8 +9,8 @@ import {
   getProviderConnection,
   getProviderModel,
 } from './config';
-import { parseChatStream } from './stream';
-import type { ChatRequest, ChatStreamChunk, ModelsResponse, RawModel } from './types';
+import { createPartRouter, parseChatStream, type StreamPart } from './stream';
+import type { ChatRequest, ChatStreamChunk, ModelsResponse, RawModel, WireToolCall } from './types';
 
 /**
  * Direct mode sends these from the BROWSER straight to Ollama. Any custom header
@@ -171,9 +171,24 @@ export async function fetchModels(signal?: AbortSignal): Promise<ModelInfo[]> {
 }
 
 export interface StreamHandlers {
-  onDelta: (text: string) => void;
+  /**
+   * Flat text deltas, in arrival order. Convenience for callers that don't care
+   * about ordering against thinking; `onPart` is the complete picture.
+   */
+  onDelta?: (text: string) => void;
   /** Reasoning deltas from the model's `thinking` stream, if any. */
   onThinking?: (text: string) => void;
+  /**
+   * Ordered segments, with block identity — the handler interleaved thinking
+   * needs. `onDelta`/`onThinking` still fire alongside it so callers that only
+   * want the flat text don't have to care.
+   */
+  onPart?: (part: StreamPart) => void;
+  /**
+   * The model requested one or more tools. Each call arrives complete — the
+   * server assembles the streamed argument fragments.
+   */
+  onToolCalls?: (calls: WireToolCall[]) => void;
   onDone: (final: ChatStreamChunk) => void;
 }
 
@@ -254,16 +269,28 @@ export async function streamChat(
       throw new ApiError('The server did not return a stream body.', { kind: 'parse' });
 
     let final: ChatStreamChunk = {};
+    const router = createPartRouter();
+    // Dispatch through the router rather than reading `thinking` then `content`
+    // off each chunk. That old order was fixed regardless of what the model
+    // actually did, and the server compounded it by packing both into one
+    // chunk — between them, ordering was gone before the UI saw a thing.
+    const dispatch = (parts: StreamPart[]) => {
+      for (const part of parts) {
+        handlers.onPart?.(part);
+        if (!part.text) continue;
+        if (part.kind === 'thinking') handlers.onThinking?.(part.text);
+        else handlers.onDelta?.(part.text);
+      }
+    };
     try {
       for await (const chunk of parseChatStream(res.body, idle.signal)) {
         armIdleTimer();
         if (chunk.error) throw new ApiError(chunk.error, { kind: 'http', status: res.status });
-        const thinking = chunk.message?.thinking ?? '';
-        if (thinking) handlers.onThinking?.(thinking);
-        const delta = chunk.message?.content ?? chunk.response ?? '';
-        if (delta) handlers.onDelta(delta);
+        if (chunk.tool_calls?.length) handlers.onToolCalls?.(chunk.tool_calls);
+        dispatch(router.route(chunk));
         if (chunk.done) final = { ...final, ...chunk };
       }
+      dispatch(router.flush());
     } catch (err) {
       throw normalize(err);
     }

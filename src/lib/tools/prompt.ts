@@ -67,4 +67,11 @@ Rich Markdown available in the body (create_pdf, create_docx, create_pptx):
   Variants: note, info, tip, success, warning, danger.
 - A line containing only <!-- pagebreak --> forces a new page (a new slide in create_pptx).
 - Tables, bullet and numbered lists, blockquotes, code fences, bold/italic and links all render with the theme applied.
-For create_pptx, each "#", "##" or "###" heading starts a new slide and the text under it becomes that slide's content.`;
+For create_pptx, each "#", "##" or "###" heading starts a new slide and the text under it becomes that slide's content.
+
+Structured bodies. For five tools the body may instead be a single JSON object, which gives you control the Markdown path cannot:
+- create_xlsx — {"sheets": [{"name": "Q3", "rows": [["Region","Revenue"],["EMEA",120]]}]} for a multi-sheet workbook, or {"rows": [[…],[…]]} for one sheet. The first row is the header.
+- create_pptx — {"slides": [{"title": "Findings", "bullets": ["…","…"]}, {"title": "Detail", "body": "paragraph text"}]} when you want to decide exactly where each slide breaks.
+- zip_project — {"files": [{"path": "src/index.ts", "content": "…"}, {"path": "README.md", "content": "…"}]}. Without this a ZIP ends up containing only a single file, so always use it for a multi-file project.
+- create_json and create_xml — {"data": {…}} with the value to serialize. For create_xml, "title" becomes the root tag name.
+Use the JSON form only for those five; every other tool takes a plain body.`;

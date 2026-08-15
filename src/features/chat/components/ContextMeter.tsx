@@ -59,10 +59,21 @@ export function ContextMeter({ conversation }: { conversation: Conversation }) {
 
   const used = useMemo(
     () => estimateContextUsage(conversation),
-    // Re-estimate whenever the message list identity, length, or the
-    // streaming/last message content changes.
+    // Keyed on `updatedAt`, not on `conversation.messages`.
+    //
+    // The message array gets a new identity on every streamed frame, so this
+    // used to re-reduce over the entire history ~60x/sec — and before the first
+    // turn returns metrics, `estimateContextUsage` calls `estimateTokens` on
+    // every message, which does `text.trim().split(/\s+/)`: a regex split
+    // allocating an array of every word in every message. On mobile all of that
+    // was thrown away, since the element below is `hidden md:flex`.
+    //
+    // `appendToMessage` skips `touch()`, so `updatedAt` moves only when a
+    // message is added, edited, or finishes streaming — which is exactly when
+    // the number of tokens that will be SENT next turn changes. That's what this
+    // meter reports, so keying on it is not just cheaper, it's more correct.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversation.messages, conversation.systemPrompt],
+    [conversation.id, conversation.updatedAt, conversation.systemPrompt],
   );
 
   if (!limit || conversation.messages.length === 0) return null;

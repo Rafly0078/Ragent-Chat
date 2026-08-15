@@ -483,6 +483,26 @@ h4 {
   }
 }
 
+/* Same idea as the 44px tap floor above, for text size: iOS Safari zooms the
+   viewport on focus for any field under 16px, and `maximumScale: 5` in the
+   viewport config — correct, for accessibility — leaves that auto-zoom enabled.
+   Every field in this app was under it (`.input` is 14px, the composer 15.2px,
+   the slider chip 12px), so every tap into one zoomed the page and the user had
+   to pinch back out.
+
+   One floor here rather than at ~16 call sites, and `!important` because it has
+   to beat whatever `text-xs`/`text-sm` utility each site already carries — a
+   bare element selector loses to a class. Scoped to `hover: none`, so pointer
+   devices keep the density the type scale was designed around, and future
+   fields are covered without anyone having to remember this. */
+@media (hover: none) {
+  input:not([type='range']):not([type='checkbox']):not([type='radio']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 @layer components {
   /* Primary IS the lamp. It is the only warm fill on the page, which is what
      makes it findable without a size or a shadow doing the work. Hover turns
@@ -563,6 +583,11 @@ h4 {
       border-color var(--dur-fast) var(--ease-out),
       box-shadow var(--dur) var(--ease-out),
       background-color var(--dur-fast) var(--ease-out);
+  }
+  /* The composer textarea isn't an `.input` — it's the bare field inside the
+     dock. Named so the touch floor below can reach it like every other field. */
+  .composer-field {
+    font-size: 0.95rem;
   }
   .input:hover:not(:focus) {
     border-color: rgb(var(--border) / 0.5);

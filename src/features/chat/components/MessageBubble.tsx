@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   AlertCircle,
@@ -21,7 +21,14 @@ import type { Message, ThinkingEffort } from '@/types';
 import type { Source } from '@/lib/search/types';
 import { Markdown } from '@/components/markdown/Markdown';
 import { Tooltip } from '@/components/ui/tooltip';
-import { SandboxPanel } from '@/features/sandbox/SandboxPanel';
+/**
+ * Code-split: 292 lines plus the sandbox runner and self-heal loop, rendered
+ * only for the rare message that actually contains runnable web source, but
+ * downloaded as part of the chat route by every visitor when imported statically.
+ */
+const SandboxPanel = lazy(() =>
+  import('@/features/sandbox/SandboxPanel').then((m) => ({ default: m.SandboxPanel })),
+);
 import { extractWebSource } from '@/lib/sandbox/compose';
 import { TypingIndicator } from './TypingIndicator';
 import { attachmentPreview } from '@/lib/utils/files';
@@ -243,18 +250,9 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         )}
 
-        {/* Reasoning: the model's thinking stream, shown in a collapsible panel
-            that auto-expands while thinking and collapses once the answer starts. */}
-        {!isUser && message.reasoning && (
-          <ReasoningPanel
-            reasoning={message.reasoning}
-            thinking={message.streaming === true}
-            hasContent={message.content.length > 0}
-            effort={message.metadata?.effort as ThinkingEffort | undefined}
-          />
-        )}
-
-        {/* Content */}
+        {/* Content — for an assistant message this is an ORDERED walk over
+            text/thinking segments, so a model that thinks, answers, then thinks
+            again renders in that order instead of "all thinking, then all text". */}
         {editing ? (
           <div className="space-y-2">
             <textarea
@@ -295,23 +293,19 @@ export const MessageBubble = memo(function MessageBubble({
           <div className="whitespace-pre-wrap break-words text-[0.95rem] leading-7 text-content">
             {message.content}
           </div>
-        ) : message.content ? (
-          <div className={message.streaming ? 'streaming-caret' : undefined}>
-            <Markdown content={message.content} streaming={message.streaming} />
-          </div>
-        ) : message.streaming ? (
-          <div className="py-1">
-            <TypingIndicator />
-          </div>
-        ) : null}
+        ) : (
+          <MessageBody message={message} />
+        )}
 
         {/* Sandbox: run + auto-fix the message's web code. */}
         {webSource && (
-          <SandboxPanel
-            conversationId={conversationId}
-            source={webSource}
-            streaming={message.streaming}
-          />
+          <Suspense fallback={null}>
+            <SandboxPanel
+              conversationId={conversationId}
+              source={webSource}
+              streaming={message.streaming}
+            />
+          </Suspense>
         )}
 
         {/* Metrics */}
@@ -395,33 +389,138 @@ export const MessageBubble = memo(function MessageBubble({
 });
 
 /**
- * Collapsible panel showing the model's reasoning stream. Auto-expands while
- * the model is still thinking (content hasn't started), then auto-collapses
- * once the answer begins — matching the "show the thinking, then tuck it away"
- * pattern from other chat UIs. A manual toggle overrides the auto behavior.
+ * An assistant message body, rendered as an ORDERED sequence of segments.
+ *
+ * The old layout was structurally "all thinking, then all text": one reasoning
+ * panel was rendered as a sibling *above* the content block, and since reasoning
+ * was a single flat string there was only ever one of them. A model that thought,
+ * answered, then thought again could not be shown truthfully.
+ *
+ * Messages that predate `parts` — and every user message — fall back to the flat
+ * pair, which reproduces exactly what they used to look like.
+ */
+function MessageBody({ message }: { message: Message }) {
+  const streaming = message.streaming === true;
+  const effort = message.metadata?.effort as ThinkingEffort | undefined;
+  const parts = message.parts;
+
+  if (!parts?.length) {
+    // Legacy shape: reasoning (if any) above the answer.
+    return (
+      <>
+        {message.reasoning && (
+          <ReasoningPanel
+            text={message.reasoning}
+            active={streaming && message.content.length === 0}
+            effort={effort}
+            durationMs={message.reasoningTimeMs}
+          />
+        )}
+        {message.content ? (
+          <div className={streaming ? 'streaming-caret' : undefined}>
+            <Markdown content={message.content} streaming={streaming} />
+          </div>
+        ) : streaming ? (
+          <div className="py-1">
+            <TypingIndicator />
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
+  // Only the final segment of a live message carries the caret / the "thinking
+  // now" treatment. Keying the panel's live state off `!hasContent` — as the old
+  // one did — is wrong the moment interleaving exists, because block 2 starts
+  // *after* content is already on screen.
+  const lastIndex = parts.length - 1;
+  const thinkingOrdinals = new Map<number, number>();
+  let seen = 0;
+  for (const [i, p] of parts.entries()) {
+    if (p.kind === 'thinking') thinkingOrdinals.set(i, ++seen);
+  }
+  const totalThinking = seen;
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        const isLast = i === lastIndex;
+        if (part.kind === 'thinking') {
+          return (
+            <ReasoningPanel
+              key={`t${part.index}-${i}`}
+              text={part.text}
+              active={streaming && isLast && part.endedAt === undefined}
+              effort={effort}
+              durationMs={part.endedAt !== undefined ? part.endedAt - part.startedAt : undefined}
+              ordinal={totalThinking > 1 ? thinkingOrdinals.get(i) : undefined}
+              interrupted={part.interrupted}
+              redacted={part.redacted}
+            />
+          );
+        }
+        return (
+          <div
+            key={`c${part.index}-${i}`}
+            className={streaming && isLast ? 'streaming-caret' : undefined}
+          >
+            <Markdown content={part.text} streaming={streaming && isLast} />
+          </div>
+        );
+      })}
+      {/* Nothing has arrived yet, or the last thing to arrive was a closed
+          thinking block and the answer hasn't started. */}
+      {streaming && parts[lastIndex]?.kind !== 'text' && (
+        <div className="py-1">
+          <TypingIndicator />
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * Collapsible panel for ONE thinking block.
+ *
+ * Auto-expands while that block is the one actively streaming, then collapses.
+ * A manual toggle pins the state so auto-collapse can't yank it shut mid-read.
  */
 function ReasoningPanel({
-  reasoning,
-  thinking,
-  hasContent,
+  text,
+  active,
   effort,
+  durationMs,
+  ordinal,
+  interrupted,
+  redacted,
 }: {
-  reasoning: string;
-  thinking: boolean;
-  hasContent: boolean;
+  text: string;
+  /** This specific block is streaming right now. */
+  active: boolean;
   effort?: ThinkingEffort;
+  durationMs?: number;
+  /** 1-based position among this message's thinking blocks; omitted when there's one. */
+  ordinal?: number;
+  interrupted?: boolean;
+  redacted?: boolean;
 }) {
-  // Live reasoning (thinking, no answer yet) starts open. Once the answer
-  // arrives or streaming ends, default to collapsed. `manual` pins the state
-  // once the user clicks, so auto-collapse doesn't yank it shut mid-read.
-  const liveThinking = thinking && !hasContent;
   const [manual, setManual] = useState<boolean | null>(null);
-  const open = manual ?? liveThinking;
+  const open = manual ?? active;
 
   // "Max" effort gets the ultracode treatment — a shimmering gradient sweep on
-  // the label + a soft accent glow around the panel — but only while it's
-  // actively thinking. Once the answer lands it settles into the normal panel.
-  const maxThinking = liveThinking && effort === 'max';
+  // the label + a soft accent glow around the panel — but only on the block that
+  // is actually thinking, so a message with three blocks doesn't glow three times.
+  const maxThinking = active && effort === 'max';
+
+  const label = active
+    ? maxThinking
+      ? 'Thinking harder…'
+      : 'Thinking…'
+    : interrupted
+      ? 'Thinking (stopped)'
+      : redacted
+        ? 'Thought process (encrypted)'
+        : 'Thought process';
 
   return (
     <div
@@ -438,13 +537,23 @@ function ReasoningPanel({
         <Brain
           className={cn(
             'h-3.5 w-3.5 shrink-0 text-accent',
-            liveThinking && !maxThinking && 'animate-pulse',
+            active && !maxThinking && 'animate-pulse',
             maxThinking && 'reasoning-brain-max',
           )}
         />
         <span className={cn('flex-1', maxThinking && 'reasoning-shimmer')}>
-          {liveThinking ? (maxThinking ? 'Thinking harder…' : 'Thinking…') : 'Thought process'}
+          {label}
+          {ordinal !== undefined && (
+            <span className="ml-1.5 tabular-nums text-content-subtle">#{ordinal}</span>
+          )}
         </span>
+        {/* Duration was declared on the message type and never once written or
+            read. Now it's per block, which is the only place it means anything. */}
+        {durationMs !== undefined && durationMs >= 100 && (
+          <span className="shrink-0 tabular-nums text-content-subtle">
+            {formatDuration(durationMs)}
+          </span>
+        )}
         <ChevronDown
           className={cn('h-4 w-4 shrink-0 transition-transform', open && 'rotate-180')}
         />
@@ -460,13 +569,19 @@ function ReasoningPanel({
             <div
               className={cn(
                 'whitespace-pre-wrap break-words border-t border-border/15 px-3 py-2 text-[0.82rem] leading-6 text-content-subtle',
-                // While thinking is live, cap the height so a long reasoning
+                // While this block is live, cap the height so a long reasoning
                 // stream stays contained instead of shoving the answer offscreen.
-                liveThinking && 'max-h-64 overflow-y-auto',
+                active && 'max-h-64 overflow-y-auto',
               )}
             >
-              {reasoning}
-              {liveThinking && <span className="streaming-caret" />}
+              {redacted && !text ? (
+                <span className="italic">
+                  The provider returned this reasoning encrypted, so there is nothing to show.
+                </span>
+              ) : (
+                text
+              )}
+              {active && <span className="streaming-caret" />}
             </div>
           </m.div>
         )}

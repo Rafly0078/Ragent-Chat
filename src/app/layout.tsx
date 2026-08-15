@@ -44,7 +44,10 @@ export const metadata: Metadata = {
   authors: [{ name: 'Ollama WebUI' }],
   keywords: ['ollama', 'ai', 'chat', 'llm', 'webui', 'local ai', 'private ai'],
   icons: {
-    icon: '/favicon.svg',
+    // NOT favicon.svg. That file is a traced raster — 712 <path> nodes at
+    // 2048x2048, 676 KB — and every visitor downloaded it to draw a 16px tab
+    // icon. icon.svg is the same mark as real geometry, 755 bytes.
+    icon: '/icon.svg',
     apple: '/apple-touch-icon.png',
   },
   manifest: '/manifest.webmanifest',

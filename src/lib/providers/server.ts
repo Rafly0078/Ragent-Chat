@@ -460,6 +460,28 @@ function outputCeiling(connection: ProviderConnection, request: ChatRequest): nu
 
 function openAiBody(connection: ProviderConnection, request: ChatRequest): Record<string, unknown> {
   const messages = request.messages.map((message) => {
+    // A tool result. `tool_call_id` is what ties it back to the request, and
+    // OpenAI rejects the turn without it.
+    if (message.role === 'tool') {
+      return {
+        role: 'tool' as const,
+        tool_call_id: message.toolCallId ?? '',
+        content: message.content,
+      };
+    }
+    // An assistant turn that requested tools has to replay them, or the model
+    // sees a result for a call it never made.
+    if (message.toolCalls?.length) {
+      return {
+        role: 'assistant' as const,
+        content: message.content || null,
+        tool_calls: message.toolCalls.map((call) => ({
+          id: call.id,
+          type: 'function' as const,
+          function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+        })),
+      };
+    }
     if (!message.images?.length) return { role: message.role, content: message.content };
     return {
       role: message.role,
@@ -484,6 +506,12 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
   if (request.stream && connection.provider === 'openai') {
     body.stream_options = { include_usage: true };
   }
+  if (request.tools?.length) {
+    body.tools = request.tools.map((tool) => ({
+      type: 'function',
+      function: { name: tool.name, description: tool.description, parameters: tool.parameters },
+    }));
+  }
   if (request.think) {
     let effort = request.think === true ? 'medium' : request.think;
     // OpenAI's `reasoning_effort` only accepts low|medium|high. `max` is an app-
@@ -499,6 +527,10 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
 
 type AnthropicContent =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; thinking: string; signature: string }
+  | { type: 'redacted_thinking'; data: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
 
 function anthropicBody(request: ChatRequest): Record<string, unknown> {
@@ -510,13 +542,47 @@ function anthropicBody(request: ChatRequest): Record<string, unknown> {
   const messages: { role: 'user' | 'assistant'; content: AnthropicContent[] }[] = [];
   for (const message of request.messages) {
     if (message.role === 'system') continue;
-    const content: AnthropicContent[] = [{ type: 'text', text: message.content }];
+    const content: AnthropicContent[] = [];
+
+    // A tool result is a USER turn on this protocol, not its own role.
+    if (message.role === 'tool') {
+      content.push({
+        type: 'tool_result',
+        tool_use_id: message.toolCallId ?? '',
+        content: message.content,
+        ...(message.toolError ? { is_error: true } : {}),
+      });
+      const prev = messages.at(-1);
+      if (prev?.role === 'user') prev.content.push(...content);
+      else messages.push({ role: 'user', content });
+      continue;
+    }
+
+    // Thinking blocks come FIRST in an assistant turn — Anthropic requires the
+    // replayed reasoning to precede the text it produced, each with its original
+    // signature. Without this, interleaved thinking only ever worked for a single
+    // turn: the next request referenced blocks it hadn't sent, and was rejected.
+    for (const block of message.thinking ?? []) {
+      if (block.redacted) content.push({ type: 'redacted_thinking', data: block.text });
+      else if (block.signature) {
+        content.push({ type: 'thinking', thinking: block.text, signature: block.signature });
+      }
+    }
+    // An empty text block is a 400. That is reachable on an image-only turn,
+    // where `content` is '' by design, so the block is conditional rather than
+    // unconditional as it used to be.
+    if (message.content) content.push({ type: 'text', text: message.content });
     for (const image of message.images ?? []) {
       content.push({
         type: 'image',
         source: { type: 'base64', media_type: inferImageMediaType(image), data: image },
       });
     }
+    // Tool requests come last in the turn that made them.
+    for (const call of message.toolCalls ?? []) {
+      content.push({ type: 'tool_use', id: call.id, name: call.name, input: call.arguments });
+    }
+    if (content.length === 0) continue;
     const previous = messages.at(-1);
     if (previous?.role === message.role) previous.content.push(...content);
     else messages.push({ role: message.role, content });
@@ -530,6 +596,14 @@ function anthropicBody(request: ChatRequest): Record<string, unknown> {
     max_tokens: maxTokens,
     ...(system ? { system } : {}),
   };
+
+  if (request.tools?.length) {
+    body.tools = request.tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.parameters,
+    }));
+  }
 
   if (request.think) {
     const budgets = { low: 1_024, medium: 2_048, high: 4_096, max: 8_192 } as const;
@@ -770,6 +844,18 @@ function providerStream(
   let promptTokens: number | undefined;
   let completionTokens: number | undefined;
   let finished = false;
+  /** Anthropic only: content-block index → what kind of block it is. */
+  const blockKinds = new Map<number, 'text' | 'thinking' | 'tool_use'>();
+  /**
+   * Tool calls under construction, keyed by block/choice index.
+   *
+   * Both protocols stream the arguments JSON in fragments, so they are assembled
+   * here and emitted once, whole — the client never has to parse partial JSON.
+   */
+  const pendingCalls = new Map<number, { id: string; name: string; args: string }>();
+  /** Synthesized block state for protocols with no upstream index. */
+  let synthKind: 'text' | 'thinking' | null = null;
+  let synthCounter = -1;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -787,6 +873,103 @@ function providerStream(
           }),
         );
       };
+      /**
+       * Emit one ordered segment.
+       *
+       * `message.content` / `message.thinking` are still populated exactly as
+       * before so nothing downstream of this endpoint breaks; `part` is the new
+       * ordering metadata. A signature-only event carries no text, and is still
+       * emitted — that is how the signature reaches the client.
+       */
+      const emitPart = (
+        index: number,
+        kind: 'text' | 'thinking',
+        text: string,
+        extra?: { signature?: string; redacted?: boolean; done?: boolean },
+      ) => {
+        if (!text && !extra?.signature && !extra?.redacted && !extra?.done) return;
+        controller.enqueue(
+          ndjson({
+            model,
+            message: {
+              role: 'assistant',
+              content: kind === 'text' ? text : '',
+              thinking: kind === 'thinking' ? text : '',
+            },
+            part: { kind, index, ...extra },
+            done: false,
+          }),
+        );
+      };
+
+      /** Anthropic `content_block_start` — remember the kind for this index. */
+      const openBlock = (index: number, kind: 'text' | 'thinking', redacted = false) => {
+        blockKinds.set(index, kind);
+        if (redacted) emitPart(index, 'thinking', '', { redacted: true });
+      };
+
+      /**
+       * Assemble and emit one completed tool call. Arguments that don't parse are
+       * sent as `{}` rather than dropped — the executor's validation then returns
+       * a message the model can act on, which is strictly better than silence.
+       */
+      const flushCall = (index: number) => {
+        const call = pendingCalls.get(index);
+        if (!call) return;
+        pendingCalls.delete(index);
+        if (!call.name) return;
+        let args: Record<string, unknown> = {};
+        const raw = call.args.trim();
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as unknown;
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              args = parsed as Record<string, unknown>;
+            }
+          } catch {
+            /* leave {} — validation downstream explains what was wrong */
+          }
+        }
+        controller.enqueue(
+          ndjson({
+            model,
+            message: { role: 'assistant', content: '' },
+            tool_calls: [{ id: call.id, name: call.name, arguments: args }],
+            done: false,
+          }),
+        );
+      };
+
+      const flushAllCalls = () => {
+        for (const index of [...pendingCalls.keys()]) flushCall(index);
+      };
+
+      /** Anthropic `content_block_stop` — tell the client the block is final. */
+      const closeBlock = (index: number) => {
+        const kind = blockKinds.get(index);
+        if (!kind) return;
+        blockKinds.delete(index);
+        if (kind === 'tool_use') {
+          flushCall(index);
+          return;
+        }
+        emitPart(index, kind, '', { done: true });
+      };
+
+      /**
+       * Block index for protocols that don't provide one (OpenAI-compatible,
+       * and Ollama through the `<think>` splitter). Bumps only when the kind
+       * changes, so a run of consecutive text deltas stays one part and a flip
+       * to thinking opens the next.
+       */
+      const synthIndex = (kind: 'text' | 'thinking') => {
+        if (synthKind !== kind) {
+          synthKind = kind;
+          synthCounter += 1;
+        }
+        return synthCounter;
+      };
+
       const handle = (dataText: string) => {
         if (!dataText || dataText === '[DONE]') {
           if (dataText === '[DONE]') finish();
@@ -803,8 +986,24 @@ function providerStream(
         if (protocol === 'anthropic') {
           const data = event as {
             type?: string;
+            index?: number;
+            content_block?: {
+              type?: string;
+              thinking?: string;
+              text?: string;
+              data?: string;
+              id?: string;
+              name?: string;
+            };
             message?: { model?: string; usage?: { input_tokens?: number } };
-            delta?: { type?: string; text?: string; thinking?: string };
+            delta?: {
+              type?: string;
+              text?: string;
+              thinking?: string;
+              signature?: string;
+              partial_json?: string;
+              stop_reason?: string;
+            };
             usage?: { output_tokens?: number };
             error?: { message?: string };
           };
@@ -820,24 +1019,72 @@ function providerStream(
             promptTokens = data.message.usage.input_tokens;
           }
           if (data.usage?.output_tokens !== undefined) completionTokens = data.usage.output_tokens;
-          if (data.type === 'content_block_delta') {
-            const content = data.delta?.type === 'text_delta' ? (data.delta.text ?? '') : '';
-            const thinking =
-              data.delta?.type === 'thinking_delta' ? (data.delta.thinking ?? '') : '';
-            if (content || thinking) {
-              controller.enqueue(
-                ndjson({ model, message: { role: 'assistant', content, thinking }, done: false }),
-              );
+
+          // Anthropic is the ONE provider that tells us where blocks begin and
+          // end, and those boundaries are precisely the interleaving signal.
+          // They used to be dropped on the floor: only `content_block_delta` was
+          // handled, `index` wasn't even declared on the delta type, and content
+          // and thinking were packed into a single chunk — which cannot express
+          // "thinking, then text". Tracking start/stop here is what lets the
+          // client reconstruct think → answer → think in the right order.
+          if (data.type === 'content_block_start') {
+            const kind = data.content_block?.type;
+            if (kind === 'thinking' || kind === 'redacted_thinking') {
+              openBlock(data.index ?? 0, 'thinking', kind === 'redacted_thinking');
+            } else if (kind === 'text') {
+              openBlock(data.index ?? 0, 'text');
+            } else if (kind === 'tool_use') {
+              const idx = data.index ?? 0;
+              blockKinds.set(idx, 'tool_use');
+              pendingCalls.set(idx, {
+                id: data.content_block?.id ?? `call_${idx}`,
+                name: data.content_block?.name ?? '',
+                args: '',
+              });
             }
+            return;
           }
-          if (data.type === 'message_stop') finish();
+          if (data.type === 'content_block_delta') {
+            const idx = data.index ?? 0;
+            if (data.delta?.type === 'text_delta') {
+              emitPart(idx, 'text', data.delta.text ?? '');
+            } else if (data.delta?.type === 'thinking_delta') {
+              emitPart(idx, 'thinking', data.delta.thinking ?? '');
+            } else if (data.delta?.type === 'signature_delta') {
+              // Carries no text. The signature must survive to the client and
+              // back upstream on the next turn, or Anthropic rejects a request
+              // that replays this thinking block.
+              emitPart(idx, 'thinking', '', { signature: data.delta.signature });
+            } else if (data.delta?.type === 'input_json_delta') {
+              const call = pendingCalls.get(idx);
+              if (call) call.args += data.delta.partial_json ?? '';
+            }
+            return;
+          }
+          if (data.type === 'content_block_stop') {
+            closeBlock(data.index ?? 0);
+            return;
+          }
+          if (data.type === 'message_stop') {
+            flushAllCalls();
+            finish();
+          }
           return;
         }
 
         const data = event as {
           model?: string;
           choices?: {
-            delta?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown };
+            delta?: {
+              content?: unknown;
+              reasoning_content?: unknown;
+              reasoning?: unknown;
+              tool_calls?: {
+                index?: number;
+                id?: string;
+                function?: { name?: string; arguments?: string };
+              }[];
+            };
             finish_reason?: unknown;
           }[];
           usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
@@ -856,10 +1103,36 @@ function providerStream(
         const choice = data.choices?.[0];
         const content = textValue(choice?.delta?.content);
         const thinking = textValue(choice?.delta?.reasoning_content ?? choice?.delta?.reasoning);
-        if (content || thinking) {
-          controller.enqueue(
-            ndjson({ model, message: { role: 'assistant', content, thinking }, done: false }),
-          );
+        // No upstream block index exists on this protocol, so boundaries are
+        // synthesized from the thinking↔text transition (see `synthIndex`).
+        // Emitted as two separate chunks rather than one merged chunk, in the
+        // order the fields appear, so a provider that flips mid-response still
+        // produces ordered parts.
+        if (thinking) emitPart(synthIndex('thinking'), 'thinking', thinking);
+        if (content) emitPart(synthIndex('text'), 'text', content);
+
+        // Tool calls arrive as fragments spread across many deltas: the first
+        // carries `id` and `function.name`, the rest append to
+        // `function.arguments`. Accumulate by index.
+        for (const part of choice?.delta?.tool_calls ?? []) {
+          const idx = part.index ?? 0;
+          const existing = pendingCalls.get(idx);
+          if (existing) {
+            if (part.id) existing.id = part.id;
+            if (part.function?.name) existing.name = part.function.name;
+            existing.args += part.function?.arguments ?? '';
+          } else {
+            pendingCalls.set(idx, {
+              id: part.id ?? `call_${idx}`,
+              name: part.function?.name ?? '',
+              args: part.function?.arguments ?? '',
+            });
+          }
+        }
+        // `finish_reason` was destructured and then never used, which is why
+        // `tool_calls` was invisible even when the upstream announced it.
+        if (choice?.finish_reason === 'tool_calls' || choice?.finish_reason === 'stop') {
+          flushAllCalls();
         }
       };
 
@@ -897,6 +1170,9 @@ function providerStream(
             handle(data);
           } else handle(tail);
         }
+        // A provider that ends the stream without a terminal `finish_reason` or
+        // `message_stop` would otherwise leave a fully-assembled call unsent.
+        flushAllCalls();
         finish();
         controller.close();
       } catch (error) {

@@ -61,6 +61,63 @@ function useHasBeenVisible(streaming: boolean) {
   return { ref, visible };
 }
 
+/**
+ * How often the rich renderer is allowed to re-parse a streaming message.
+ *
+ * The store already coalesces upstream tokens to one write per animation frame,
+ * but that is still ~60 writes/sec, and each one produces a new `content`
+ * string — which means the entire remark → mdast → rehype-katex →
+ * rehype-highlight → hast → React pipeline ran again over the WHOLE
+ * accumulated message, then reconciled the full element tree. A 4 KB answer
+ * with two code fences is roughly 5-10 ms of that work on a desktop and 30-60 ms
+ * on a mid-tier Android — 2-4x the 16.7 ms frame budget, growing linearly with
+ * message length, so the end of a long answer was the jankiest part.
+ *
+ * ~100 ms caps it at ~10 parses/sec instead of 60. Text still visibly flows and
+ * code blocks still format live; the work drops ~6x. The final render is exact
+ * and unthrottled — see `useRenderContent`.
+ */
+const STREAM_PARSE_INTERVAL_MS = 100;
+
+/**
+ * Live content for the cheap plain-text path, time-sliced content for the
+ * expensive one. Returns `content` verbatim the moment `streaming` goes false,
+ * so the settled message is never a stale frame behind.
+ */
+function useRenderContent(content: string, streaming: boolean): string {
+  const [shown, setShown] = useState(content);
+  const latest = useRef(content);
+  latest.current = content;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!streaming) {
+      // Settled: drop the pending tick so it can't fire a pointless re-render
+      // after we've already switched to returning `content` verbatim.
+      if (timer.current !== null) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      return;
+    }
+    // A tick is already pending — it will pick up `latest.current`.
+    if (timer.current !== null) return;
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setShown(latest.current);
+    }, STREAM_PARSE_INTERVAL_MS);
+  }, [content, streaming]);
+
+  useEffect(
+    () => () => {
+      if (timer.current !== null) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  return streaming ? shown : content;
+}
+
 export const Markdown = memo(function Markdown({
   content,
   streaming,
@@ -68,7 +125,11 @@ export const Markdown = memo(function Markdown({
   content: string;
   streaming?: boolean;
 }) {
-  const { ref, visible } = useHasBeenVisible(streaming === true);
+  const isStreaming = streaming === true;
+  const { ref, visible } = useHasBeenVisible(isStreaming);
+  // Plain text below gets the live string — it costs nothing to render and keeps
+  // the caret moving at frame rate. Only the rich renderer is time-sliced.
+  const parsed = useRenderContent(content, isStreaming);
 
   if (!visible) {
     return (
@@ -80,7 +141,7 @@ export const Markdown = memo(function Markdown({
 
   return (
     <Suspense fallback={<PlainFallback content={content} />}>
-      <MarkdownRenderer content={content} streaming={streaming} />
+      <MarkdownRenderer content={parsed} streaming={streaming} />
     </Suspense>
   );
 });

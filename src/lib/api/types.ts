@@ -1,14 +1,29 @@
-import type { ConversationSummary, GenerationParams, Message } from '@/types';
+import type { ConversationSummary, GenerationParams, Message, MessagePart } from '@/types';
 import { TOOL_INSTRUCTIONS } from '@/lib/tools/prompt';
 import { PATCH_INSTRUCTIONS } from '@/lib/tools/patch-prompt';
 
 /** Wire types matching an Ollama-compatible proxy. */
 
 export interface ApiChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   /** base64-encoded images (no data-url prefix) for vision models. */
   images?: string[];
+  /**
+   * The assistant's own thinking blocks, replayed on a later turn.
+   *
+   * Anthropic requires this for interleaved thinking: a thinking block sent back
+   * must carry its original `signature` verbatim, or the request is rejected.
+   * Only `providerChat`'s anthropic branch consumes it; every other protocol
+   * ignores it, which is why it's separate from `content` rather than inlined.
+   */
+  thinking?: { text: string; signature?: string; redacted?: boolean }[];
+  /** Tool calls this assistant turn made. Replayed so the model sees its own request. */
+  toolCalls?: WireToolCall[];
+  /** On a `tool` message: which call this is the result of. */
+  toolCallId?: string;
+  /** On a `tool` message: whether the tool failed, so the model can repair. */
+  toolError?: boolean;
 }
 
 export interface ChatRequest {
@@ -20,6 +35,16 @@ export interface ChatRequest {
    * `true`/`false` toggle it; the string levels set the reasoning effort.
    */
   think?: boolean | 'low' | 'medium' | 'high' | 'max';
+  /**
+   * Tools offered to the model for NATIVE function calling.
+   *
+   * Every provider here supports this and none of it was ever sent: tools were
+   * invoked by regex-scraping fenced directives out of the model's prose, which
+   * meant no argument validation, no way to return a result, and no multi-step
+   * loop. Present only when the active protocol supports it — the text-directive
+   * path in `TOOL_INSTRUCTIONS` remains the fallback for everything else.
+   */
+  tools?: WireTool[];
   options?: {
     temperature?: number;
     top_p?: number;
@@ -30,6 +55,29 @@ export interface ChatRequest {
   };
 }
 
+/** A tool offered to the model, in a protocol-neutral shape. */
+export interface WireTool {
+  name: string;
+  description: string;
+  /** JSON Schema for the arguments object. */
+  parameters: Record<string, unknown>;
+}
+
+/**
+ * A completed tool call requested by the model.
+ *
+ * Assembled server-side and emitted once, whole. Providers stream the arguments
+ * JSON in fragments (`tool_calls[i].function.arguments` on OpenAI,
+ * `input_json_delta` on Anthropic); accumulating there rather than here means the
+ * client never has to parse partial JSON.
+ */
+export interface WireToolCall {
+  id: string;
+  name: string;
+  /** Parsed arguments. `{}` when the model sent nothing parseable. */
+  arguments: Record<string, unknown>;
+}
+
 /** One NDJSON/SSE chunk from a streaming chat response (Ollama shape). */
 export interface ChatStreamChunk {
   model?: string;
@@ -38,12 +86,43 @@ export interface ChatStreamChunk {
   /** Some proxies use `response` (generate endpoint) instead of message.content. */
   response?: string;
   done?: boolean;
+  /**
+   * Which ordered segment this chunk belongs to.
+   *
+   * Added for interleaved thinking. Without it a chunk could only say "here is
+   * some thinking and/or some text", and the server was in fact packing both
+   * into ONE chunk — which cannot express "thinking, then text", so the
+   * ordering was destroyed before the client ever saw it. `index` is the
+   * upstream content-block index (Anthropic) or a synthesized counter
+   * (OpenAI-compatible, Ollama); `kind` says which stream the delta belongs to.
+   *
+   * Optional on purpose: `message.content` / `message.thinking` are still
+   * populated exactly as before, so an older client, the raw-passthrough Ollama
+   * bridge, and any third-party consumer of this endpoint keep working
+   * unchanged. A client that understands `part` gets ordering; one that doesn't
+   * degrades to the old flattened behaviour.
+   */
+  part?: {
+    kind: 'text' | 'thinking';
+    index: number;
+    /** The upstream closed this block — nothing more will arrive for `index`. */
+    done?: boolean;
+    /** Anthropic thinking signature, delivered on the block's final event. */
+    signature?: string;
+    /** Anthropic returned the block encrypted; there is no readable text. */
+    redacted?: boolean;
+  };
   // Timing/token stats present on the final chunk.
   total_duration?: number;
   eval_count?: number;
   eval_duration?: number;
   prompt_eval_count?: number;
   error?: string;
+  /**
+   * Complete tool calls the model requested, emitted once each. Present only on
+   * the native function-calling path; the text-directive path leaves this absent.
+   */
+  tool_calls?: WireToolCall[];
 }
 
 export interface RawModelDetails {
@@ -126,10 +205,25 @@ export function toApiMessages(
       content += `\n\n---\n${searchContext}`;
     }
 
+    // Replay the assistant's signed thinking blocks. Anthropic rejects a turn
+    // that references earlier interleaved thinking without them, and until now
+    // `reasoning` was simply dropped on every subsequent turn — which made
+    // multi-turn interleaved thinking impossible rather than merely lossy.
+    // Signature-less blocks are skipped: sending one is worse than sending none.
+    const thinking = (m.parts ?? [])
+      .filter((p): p is Extract<MessagePart, { kind: 'thinking' }> => p.kind === 'thinking')
+      .filter((p) => p.signature !== undefined || p.redacted === true)
+      .map((p) => ({
+        text: p.text,
+        ...(p.signature ? { signature: p.signature } : {}),
+        ...(p.redacted ? { redacted: true } : {}),
+      }));
+
     out.push({
       role: m.role,
       content,
       ...(images.length ? { images } : {}),
+      ...(thinking.length ? { thinking } : {}),
     });
   }
   return out;

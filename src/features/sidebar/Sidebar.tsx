@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import Link from 'next/link';
 import { Plus, Search, Settings2, X } from 'lucide-react';
@@ -95,10 +95,14 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
     [rows, debouncedQuery],
   );
 
-  const select = (id: string) => {
-    setActive(id);
-    if (isMobile) onClose();
-  };
+  // One identity for every row, so `ChatListItem`'s memo actually holds.
+  const select = useCallback(
+    (id: string) => {
+      setActive(id);
+      if (isMobile) onClose();
+    },
+    [setActive, isMobile, onClose],
+  );
 
   const content = (
     <div className="flex h-full flex-col">
@@ -181,7 +185,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
                 title={c.title}
                 pinned={c.pinned}
                 active={c.id === activeId}
-                onSelect={() => select(c.id)}
+                onSelect={select}
               />
             ))}
           </Section>
@@ -195,7 +199,7 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
                 title={c.title}
                 pinned={c.pinned}
                 active={c.id === activeId}
-                onSelect={() => select(c.id)}
+                onSelect={select}
               />
             ))}
           </Section>

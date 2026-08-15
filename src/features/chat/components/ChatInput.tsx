@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   ArrowUp,
@@ -23,7 +23,20 @@ import { useSettings } from '@/lib/store/settings-store';
 import { useToast } from '@/components/ui/toast';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
-import { DocumentEditDialog } from '@/features/documents/DocumentEditDialog';
+/**
+ * Code-split, and mounted only after its first open. The dialog pulls in
+ * `use-document-edit`, which lazily loads pdfjs-dist and exceljs — but the
+ * dialog's own module was in the chat route chunk for everyone.
+ *
+ * `docEverOpened` latches instead of gating straight on `docEditOpen` so the
+ * modal keeps its exit animation: it stays mounted (closed) once seen, rather
+ * than being torn out mid-transition.
+ */
+const DocumentEditDialog = lazy(() =>
+  import('@/features/documents/DocumentEditDialog').then((m) => ({
+    default: m.DocumentEditDialog,
+  })),
+);
 
 interface Props {
   disabled?: boolean;
@@ -72,6 +85,8 @@ export function ChatInput({
   onSearchModeChange,
 }: Props) {
   const [docEditOpen, setDocEditOpen] = useState(false);
+  /** Latches on first open — see the note on the lazy DocumentEditDialog. */
+  const [docEverOpened, setDocEverOpened] = useState(false);
   const [value, setValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -377,6 +392,7 @@ export function ChatInput({
                   <button
                     role="menuitem"
                     onClick={() => {
+                      setDocEverOpened(true);
                       setDocEditOpen(true);
                       setMenuOpen(false);
                     }}
@@ -459,7 +475,7 @@ export function ChatInput({
             // `max-h-[220px]` here meant editing the constant silently left the
             // two disagreeing.
             style={{ maxHeight: MAX_TEXTAREA_PX }}
-            className="scrollbar-thin flex-1 resize-none bg-transparent px-1 py-2.5 text-[0.95rem] leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
+            className="scrollbar-thin composer-field flex-1 resize-none bg-transparent px-1 py-2.5 leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
           />
 
           {/* Thinking toggle + effort selector */}
@@ -597,11 +613,15 @@ export function ChatInput({
         )}
       </div>
 
-      <DocumentEditDialog
-        open={docEditOpen}
-        onClose={() => setDocEditOpen(false)}
-        conversationId={conversationId ?? null}
-      />
+      {docEverOpened && (
+        <Suspense fallback={null}>
+          <DocumentEditDialog
+            open={docEditOpen}
+            onClose={() => setDocEditOpen(false)}
+            conversationId={conversationId ?? null}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

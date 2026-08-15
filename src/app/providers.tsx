@@ -1,6 +1,6 @@
 'use client';
 
-import { LazyMotion, domAnimation, MotionConfig } from 'framer-motion';
+import { LazyMotion, MotionConfig } from 'framer-motion';
 import { ThemeManager } from './theme-manager';
 import { ToastProvider } from '@/components/ui/toast';
 import { AuthProvider } from '@/features/auth/AuthProvider';
@@ -19,13 +19,21 @@ function ChatSync() {
   return null;
 }
 
+/** Resolved on mount instead of at module scope — see the note on `features`. */
+const loadDomAnimation = () => import('framer-motion').then((m) => m.domAnimation);
+
 /**
  * Client providers. LazyMotion loads only the animation features we use,
  * shrinking the Framer Motion runtime for a better mobile bundle.
+ *
+ * `features` is a loader, not the imported `domAnimation` object: passing the
+ * object statically defeats the point — it puts the feature bundle in the root
+ * chunk of every route, including the landing page, which animates purely in
+ * CSS. The async form is what actually defers it.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <LazyMotion features={domAnimation} strict>
+    <LazyMotion features={loadDomAnimation} strict>
       <MotionConfig reducedMotion="user">
         <ThemeManager>
           <AuthProvider>

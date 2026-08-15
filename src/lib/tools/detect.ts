@@ -29,6 +29,7 @@
 
 import type { GenerateRequest, SheetSpec, SlideSpec, FileSpec, ThemeSpec } from './types';
 import { getTool, isToolName } from './registry';
+import { findFences, hasFenceTag, type FenceMatch } from './fences';
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -148,60 +149,22 @@ function sanitizeTheme(v: unknown): ThemeSpec | undefined {
 }
 
 /**
- * Locate complete ```artifact blocks.
+ * Locate ```artifact blocks.
  *
  * Not a single regex, because the interesting case is a document that itself
  * contains code fences. CommonMark says a bare ``` closes an outer 3-backtick
  * block, so `/```artifact\s*\n([\s\S]*?)```/` stopped at the first nested
  * closing fence and silently truncated the file (asking for a Markdown or PDF
- * doc that documents code is routine). The prompt now tells the model to use a
- * longer outer fence, and this scanner additionally tracks nested fences so the
- * common 3-backtick mistake still parses correctly.
+ * doc that documents code is routine). The prompt tells the model to use a longer
+ * outer fence, and the scanner additionally tracks nested fences so the common
+ * 3-backtick mistake still parses.
+ *
+ * A thin wrapper over the shared scanner in ./fences — this logic used to live
+ * here as a private copy, which is how `codepatch` ended up with a lazy regex and
+ * none of the nesting handling.
  */
-interface FenceMatch {
-  body: string;
-  /** Line index of the opening fence. */
-  from: number;
-  /** Line index of the closing fence. */
-  to: number;
-}
-
-const OPEN_RE = /^[ \t]*(`{3,})artifact[ \t]*$/;
-const FENCE_LINE_RE = /^[ \t]*(`{3,})[ \t]*(\S.*)?$/;
-
 function findArtifactFences(text: string): { lines: string[]; matches: FenceMatch[] } {
-  const lines = text.split('\n');
-  const matches: FenceMatch[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const open = OPEN_RE.exec(lines[i]!);
-    if (!open) continue;
-    const openTicks = open[1]!.length;
-
-    // Walk forward. A fence line WITH an info string opens a nested block; a
-    // bare fence line closes the innermost open block, or — at depth 0 and long
-    // enough — the artifact block itself.
-    let depth = 0;
-    let close = -1;
-    for (let j = i + 1; j < lines.length; j++) {
-      const f = FENCE_LINE_RE.exec(lines[j]!);
-      if (!f) continue;
-      if (f[2]) {
-        depth++;
-      } else if (depth > 0) {
-        depth--;
-      } else if (f[1]!.length >= openTicks) {
-        close = j;
-        break;
-      }
-    }
-    if (close === -1) continue; // unterminated — not a complete directive yet
-
-    matches.push({ body: lines.slice(i + 1, close).join('\n'), from: i, to: close });
-    i = close;
-  }
-
-  return { lines, matches };
+  return findFences(text, 'artifact');
 }
 
 export interface DetectResult {
@@ -291,6 +254,8 @@ function parseDirective(rawBody: string): GenerateRequest | null {
   const lines = body.split('\n');
   const fields: Record<string, string> = {};
   let sepAt = -1;
+  /** First line that couldn't be a header — where the body starts if `---` is absent. */
+  let bodyAt = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.trim() === '') continue;
@@ -298,11 +263,23 @@ function parseDirective(rawBody: string): GenerateRequest | null {
       sepAt = i;
       break;
     }
-    const m = line.match(/^\s*([a-zA-Z_]+)\s*:\s*(.*)$/);
-    if (!m) break; // real content before any separator — malformed directive
+    // `[a-zA-Z_]` was too narrow: a `2024: notes` line, or any key with a digit
+    // or dash, aborted header parsing and lost the whole directive.
+    const m = line.match(/^\s*([a-zA-Z][\w-]*)\s*:\s*(.*)$/);
+    if (!m) {
+      bodyAt = i;
+      break;
+    }
     fields[m[1]!.toLowerCase()] = m[2]!.trim();
   }
-  if (sepAt === -1) return null;
+  // A missing `---` is the most common malformation a small model produces, and
+  // it used to mean total loss. If we parsed a `tool:` header and then hit real
+  // content, treat that content as the body — the tool-name check below still
+  // has to pass, so this can't invent a directive out of prose.
+  if (sepAt === -1) {
+    if (bodyAt === -1 || !fields.tool) return null;
+    sepAt = bodyAt - 1;
+  }
 
   const content = lines
     .slice(sepAt + 1)
@@ -346,7 +323,10 @@ function parseDirective(rawBody: string): GenerateRequest | null {
 }
 
 export function detectArtifacts(text: string): DetectResult {
-  if (!text || !text.includes('```artifact')) {
+  // `hasFenceTag` is the cheap pre-filter, and it is case-INSENSITIVE. The
+  // literal `text.includes('```artifact')` that used to guard this rejected
+  // `Artifact` outright, no matter how tolerant the scanner behind it became.
+  if (!text || !hasFenceTag(text, 'artifact')) {
     return { requests: [], cleaned: text, found: false };
   }
 
@@ -372,8 +352,12 @@ export function detectArtifacts(text: string): DetectResult {
   return { requests, cleaned: out.join('\n').trim(), found: true };
 }
 
-/** True when a (possibly still-streaming) text contains a complete directive. */
+/**
+ * True when a (possibly still-streaming, or truncated) text contains a directive
+ * the parser can act on. Used by the abort path, so a file the model finished
+ * emitting before the user pressed Stop isn't thrown away.
+ */
 export function hasCompleteDirective(text: string): boolean {
-  if (!text.includes('```artifact')) return false;
+  if (!hasFenceTag(text, 'artifact')) return false;
   return findArtifactFences(text).matches.length > 0;
 }

@@ -120,6 +120,25 @@ export function providerSupportsThinking(
 }
 
 /**
+ * Whether the active provider gets a `tools` array for NATIVE function calling.
+ *
+ * True only for the two cloud protocols, which our server layer knows how to
+ * serialize tool definitions and tool results for. Ollama is deliberately
+ * excluded: `/api/bridge/chat` is a raw byte passthrough and direct mode never
+ * reaches our server at all, so nothing there can translate a tool result — those
+ * models keep using the text-directive path in `TOOL_INSTRUCTIONS`, which is why
+ * that path is retained rather than replaced.
+ */
+export function providerSupportsTools(
+  provider: ApiProvider = apiProvider,
+  customProtocol: ProviderProtocol = customProviderProtocol,
+): boolean {
+  if (provider === 'ollama') return false;
+  const protocol = resolveProviderProtocol(provider, customProtocol);
+  return protocol === 'openai' || protocol === 'anthropic';
+}
+
+/**
  * Wire protocol for a provider, with Ollama pinned.
  *
  * `resolveProviderProtocol` answers "which request shape does this provider
