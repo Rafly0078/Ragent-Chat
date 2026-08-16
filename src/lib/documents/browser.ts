@@ -97,14 +97,17 @@ export async function launchBrowser(): Promise<Browser> {
   const puppeteer = await import('puppeteer-core');
 
   if (isServerless()) {
-    let chromium: typeof import('@sparticuz/chromium').default;
-    try {
-      chromium = (await import('@sparticuz/chromium')).default;
-    } catch (err) {
-      throw new BrowserUnavailableError(
-        `@sparticuz/chromium is not installed or failed to load: ${describe(err)}`,
-      );
-    }
+    // Loaded through the promise chain rather than a try/catch around an `await`,
+    // so the binding needs no type annotation: the only one available for this
+    // module is an `import()` type, which the lint rule forbids for good reason —
+    // it hides a dependency from every reader who greps for imports.
+    const chromium = await import('@sparticuz/chromium')
+      .then((m) => m.default)
+      .catch((err: unknown) => {
+        throw new BrowserUnavailableError(
+          `@sparticuz/chromium is not installed or failed to load: ${describe(err)}`,
+        );
+      });
     try {
       // `graphics: false` keeps swiftshader out of the bundle — nothing here
       // needs WebGL, and it is a large chunk of the cold-start unpack cost.
