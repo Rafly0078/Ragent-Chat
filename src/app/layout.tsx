@@ -9,8 +9,12 @@ import { SITE_URL } from '@/lib/app-meta';
 // every string in the app. The other two are pinned to the weights actually
 // referenced, which makes next/font ship those static instances instead of the
 // whole axis: `--font-display` is only ever used at 600 (`.type-brand`,
-// `.type-mega`, `.ghost-word`, `.numeral`) and mono at 400/600. On a phone that
-// is the difference between three variable files blocking first text and one.
+// `.type-mega`, `.numeral`) and mono at 400/600. On a phone that is the
+// difference between three variable files blocking first text and one.
+//
+// The landing page is set entirely in mono and Inter now, so `display` is a
+// preload that page never spends — it is loaded here because the chat empty
+// state and the sidebar brand do need it on their first paint.
 const display = Unbounded({
   subsets: ['latin'],
   weight: ['600'],
@@ -24,15 +28,17 @@ const sans = Inter({
   display: 'swap',
 });
 
-// Not preloaded: mono appears in code blocks, model chips and the install
-// snippet — none of which are on the critical path for first paint, and a
-// preload for each competes with the two faces that are.
+// Preloaded, which it was not before. Mono used to appear only in code blocks
+// and model chips, none of which are on the critical path — but the landing page
+// now sets its headline, both rails and both buttons in it, so on the entry
+// route this is the face that blocks first text. Left unpreloaded it rendered
+// that headline in the platform fallback and swapped, which also re-laid the
+// ASCII grid out on the real advance width a beat later.
 const mono = JetBrains_Mono({
   subsets: ['latin'],
   weight: ['400', '600'],
   variable: '--font-mono',
   display: 'swap',
-  preload: false,
 });
 
 export const metadata: Metadata = {

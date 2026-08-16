@@ -30,15 +30,16 @@
      now and the accent is the ink itself, so this held a second copy of
      `--night`'s channels — an alias states that outright, and the two can no
      longer drift apart on a one-sided edit. Kept as a name because the accent
-     reads as "the lamp" everywhere it is spent (.lamp-field, .lamp-pool, the
-     avatar glow in MessageBubble). */
+     reads as "the lamp" everywhere it is spent (.lamp-pool, the avatar glow in
+     MessageBubble). */
   --lamp: var(--night);
   --ember: 82 82 76;
   --linen: 241 240 236;
   --paper: 250 249 246;
 
-  /* Fluid unit. Needs a container-query context (see .lamp-field); the anchor
-     keeps it sane before containment resolves. */
+  /* Fluid unit. Nothing opts into `container-type` any more, so `cqw` resolves
+     against the small viewport — which is what the type scales want anyway. The
+     anchor is the floor, and it is what the unit returns under ~1370px. */
   --u-anchor: 0.58px;
   --u: max(calc(100cqw / 2360), var(--u-anchor));
 
@@ -135,19 +136,270 @@
 }
 
 /* ---------------------------------------------------------------------------
-   THE FIELD — one canvas for the whole product: landing, chat, settings.
-   `container-type` is what gives the fluid `--u` unit something to measure.
+   THE TERMINAL — the landing page's field, and only the landing page's.
+
+   The rest of the product is warm paper under a lamp. The landing is the one
+   surface with an ASCII wave running behind it, and that preset
+   (src/features/landing/ascii-flow.json) is white on #101111 — so the page it
+   sits behind is too. The palette below is that file's own two colours.
+
+   Scoped exactly the way `.paper` is: re-point the tokens on one element and
+   everything inside re-grounds, because components read `rgb(var(--content))`
+   and `--border` rather than literals. It also survives ThemeManager writing
+   `--accent` inline on <html>, since an element's own declaration beats a value
+   inherited from an ancestor.
+
+   Measured on #101111 (relative luminance 0.0055):
+
+     content 16.2:1     muted 7.5:1     subtle 4.8:1     accent 18.9:1
+
+   Every tier clears AA, and the inverse-video button clears it in both
+   directions — white on #101111 and #101111 on white are the same 18.9:1.
 --------------------------------------------------------------------------- */
-.lamp-field {
+.terminal-field {
+  /* Horizontal rhythm for the whole screen: rails and content share one gutter,
+     so the wordmark, the headline and the status line all start on one edge. */
+  --term-gutter: clamp(0.875rem, 4.5vw, 4.5rem);
+
+  --surface: 16 17 17;
+  --surface-raised: 22 23 23;
+  --surface-overlay: 28 29 29;
+  --surface-mid: 22 23 23;
+
+  --border: 255 255 255;
+  --border-alpha: 0.13;
+  --border-strong: 0.3;
+
+  --content: 236 238 236;
+  --content-muted: 160 164 160;
+  --content-subtle: 126 130 126;
+
+  --accent: 255 255 255;
+  --accent-soft: 200 204 200;
+  --accent-solid: 255 255 255;
+  --accent-hover: 224 226 224;
+  --accent-fg: 16 17 17;
+
   background-color: rgb(var(--surface));
   color: rgb(var(--content));
-  container-type: inline-size;
   isolation: isolate;
 }
 
+/* One screen, and the document is exactly as tall as it. Nothing overflows, so
+   there is nothing to scroll — no scroll lock on <html>, no JS, and the page
+   still behaves if the script never arrives.
+
+   The escape hatch is not a compromise. Under 520px of height — a landscape
+   phone, or a desktop at 200% zoom, which WCAG 1.4.4 asks to work — the
+   one-screen composition is no longer possible, and clipping there would hide
+   the only action on the page. So the page takes its scrollbar back. */
+.terminal-lock {
+  height: 100dvh;
+  overflow: hidden;
+}
+@media (max-height: 520px) {
+  .terminal-lock {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+}
+
+/* The wave itself. Faint on a phone, where it sits directly behind the headline
+   and only has to read as texture; stronger on a wide screen, where the scrim
+   below clears the reading column and gives it a whole half to be legible in. */
+.ascii-canvas {
+  opacity: 0.15;
+}
+@media (min-width: 768px) {
+  .ascii-canvas {
+    opacity: 0.26;
+  }
+}
+
+/* What keeps the wave off the words: field colour laid back over the canvas.
+
+   Two stops top and bottom on every size, which is what hands the status rails a
+   clean ground to sit on. Under `md` a band of solid field is parked over the
+   text block, because on a phone the block is the whole width and there is no
+   left half to clear — the wave lives above and below it instead. Above `md` that
+   band becomes a left-to-right ramp: opaque across the reading column, gone by
+   the far edge, so the composition is a quiet left and a lit right rather than
+   one even texture with type sitting on top of it.
+
+   Gradients of the field colour rather than a `mask-image`, because masking would
+   mean compositing two of them, and `mask-composite` still spells itself
+   differently in WebKit. */
+.ascii-scrim {
+  background-image:
+    linear-gradient(
+      to bottom,
+      rgb(var(--surface)) 0%,
+      rgb(var(--surface) / 0) 15%,
+      rgb(var(--surface) / 0) 85%,
+      rgb(var(--surface)) 100%
+    ),
+    radial-gradient(
+      130% 34% at 50% 49%,
+      rgb(var(--surface)) 0%,
+      rgb(var(--surface)) 62%,
+      rgb(var(--surface) / 0) 100%
+    );
+}
+@media (min-width: 768px) {
+  .ascii-scrim {
+    background-image:
+      linear-gradient(
+        to bottom,
+        rgb(var(--surface)) 0%,
+        rgb(var(--surface) / 0) 12%,
+        rgb(var(--surface) / 0) 88%,
+        rgb(var(--surface)) 100%
+      ),
+      linear-gradient(
+        to right,
+        rgb(var(--surface)) 0%,
+        rgb(var(--surface)) 40%,
+        rgb(var(--surface) / 0.55) 60%,
+        rgb(var(--surface) / 0) 86%
+      );
+  }
+}
+
+/* The two status lines. A tmux rail, not a nav: fixed height, one thing at each
+   end, and it never grows into the content between them. */
+.term-rail {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: clamp(0.7rem, 1.7vh, 1.1rem) var(--term-gutter);
+  font-family: var(--font-mono);
+  font-size: clamp(0.6rem, 1.4vw, 0.7rem);
+  letter-spacing: 0.12em;
+  line-height: 1.5;
+}
+
+/* The mark: a cursor block. The product's brand is a lit room, but at 8px next
+   to lowercase mono the only honest reading of a filled square is a caret. */
+.term-pip {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: rgb(var(--accent));
+}
+
+/* Display type is mono here, which is the one place this surface argues with
+   DESIGN.md's "display is Unbounded" — a geometric display face set over an
+   ASCII wave reads as two unrelated pages. Negative tracking is what keeps mono
+   from looking like output at this size. */
+.term-head {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  /* The `9.5vh` term is what makes the no-scroll promise hold on a short, wide
+     window: without it a 1440x600 viewport gets a 92px headline and the buttons
+     fall off the bottom. The floor is set by the longest phrase in
+     RotatingLine at 320px, which is the narrowest screen still in service. */
+  font-size: clamp(1.35rem, min(6.4vw, 9.5vh), 4.25rem);
+  letter-spacing: -0.03em;
+  line-height: 1.16;
+}
+
+/* A shell prompt is chrome, not the sentence. */
+.term-prompt {
+  font-weight: 400;
+  color: rgb(var(--content-subtle));
+}
+
+/* The half of the rotating line that has not resolved yet. Dim, so the settled
+   half reads as a sentence from the first frame instead of the whole line
+   reading as punctuation for a quarter of a second. */
+.term-ghost {
+  color: rgb(var(--content) / 0.24);
+}
+
+/* A drawn block rather than the `▌` glyph: a box is crisp at every size and in
+   every font, and it cannot be missing from a subset. */
+.term-caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.92em;
+  margin-left: 0.14em;
+  vertical-align: -0.1em;
+  background-color: rgb(var(--accent));
+}
+
+/* The one run of prose on the page, and the only thing set in Inter. Mono is
+   right for a headline, a rail and a button; it is not right for the sentence a
+   visitor actually reads. */
+.term-lede {
+  margin-top: clamp(1rem, 3vh, 1.75rem);
+  max-width: 52ch;
+  font-family: var(--font-sans);
+  font-size: clamp(0.875rem, min(1.55vw, 2.2vh), 1.0625rem);
+  line-height: 1.62;
+  color: rgb(var(--content-muted));
+}
+
+.term-actions {
+  margin-top: clamp(1.5rem, 4vh, 2.5rem);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+@layer components {
+  .term-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6em;
+    /* 44px — the touch floor, and the height the rest of the product's primary
+       actions already use. */
+    height: 2.75rem;
+    padding-inline: 1.1rem;
+    border: 1px solid rgb(var(--border) / var(--border-strong));
+    border-radius: var(--radius-xs);
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    white-space: nowrap;
+    user-select: none;
+    transition:
+      background-color var(--dur-fast) var(--ease-out),
+      border-color var(--dur-fast) var(--ease-out),
+      color var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-spring);
+  }
+  /* Inverse video — how a terminal has always said "this one is selected". */
+  .term-btn-solid {
+    background-color: rgb(var(--accent));
+    border-color: rgb(var(--accent));
+    color: rgb(var(--accent-fg));
+  }
+  .term-btn-solid:hover {
+    background-color: rgb(var(--accent-hover));
+    border-color: rgb(var(--accent-hover));
+  }
+  .term-btn-ghost {
+    color: rgb(var(--content-muted));
+  }
+  /* The same inversion on hover: the selection moving, not a new colour. */
+  .term-btn-ghost:hover {
+    background-color: rgb(var(--accent));
+    border-color: rgb(var(--accent));
+    color: rgb(var(--accent-fg));
+  }
+  .term-btn:active {
+    transform: translateY(1px);
+  }
+}
+
 /* ---------------------------------------------------------------------------
-   THE PAPER INVERSION — ink on warm white, for the one printed-card moment on
-   the landing page. Spent once, deliberately: a sheet of paper under the lamp.
+   THE PAPER INVERSION — ink on warm white, for the inverted panels in settings
+   and the switch track. Spent sparingly: a sheet of paper under the lamp.
 
    Everything inside re-grounds automatically because components read
    `rgb(var(--content))` / `--border` / `--accent` rather than literals.
@@ -266,27 +518,6 @@ body {
   font-size: clamp(0.68rem, calc(18 * var(--u)), 0.86rem);
   font-weight: 600;
   line-height: 1.4;
-}
-/* An eyebrow is a label that has been told to stay out of the way. It also
-   carries the lamp's dash, so a section opening always reads as lit. */
-.type-eyebrow {
-  font-family: var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: clamp(0.66rem, calc(17 * var(--u)), 0.8rem);
-  font-weight: 500;
-  line-height: 1.4;
-  color: rgb(var(--content-muted));
-  display: inline-flex;
-  align-items: center;
-  gap: 0.7em;
-}
-.type-eyebrow::before {
-  content: '';
-  width: 1.6em;
-  height: 1px;
-  background-color: rgb(var(--accent));
-  flex: none;
 }
 
 h1,
@@ -450,14 +681,6 @@ h4 {
     height: 2.75rem;
     padding-inline: 1.375rem;
     font-size: 0.78rem;
-  }
-  /* Marketing scale. The landing's CTAs each carried their own px/py pair
-     before this, which is how one page ends up with three button heights. */
-  .btn-xl {
-    height: 3.25rem;
-    padding-inline: 1.75rem;
-    font-size: 0.86rem;
-    border-radius: var(--radius-lg);
   }
   .btn-icon {
     padding-inline: 0;
@@ -738,35 +961,6 @@ h4 {
   }
 }
 
-/* Section divider. Brightest at the left, where the eye enters the section. */
-.rule-t {
-  height: 1px;
-  border: 0;
-  background: linear-gradient(
-    to right,
-    rgb(var(--border) / 0.4),
-    rgb(var(--border) / 0.1) 45%,
-    transparent
-  );
-}
-
-/* Oversized ghosted wordmark, the page-closing device. A flat low-opacity wash
-   rather than a blend mode, because a blend resolved differently in every
-   stacking context it landed in. */
-.ghost-word {
-  font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.065em;
-  line-height: 0.78;
-  white-space: nowrap;
-  color: transparent;
-  background-image: linear-gradient(to bottom, rgb(var(--content) / 0.12), rgb(var(--content) / 0));
-  -webkit-background-clip: text;
-  background-clip: text;
-  pointer-events: none;
-  user-select: none;
-}
-
 /* The numeral on a capability row: a graphic element, not a list marker. */
 .numeral {
   font-family: var(--font-display);
@@ -779,87 +973,22 @@ h4 {
 }
 
 /* ---------------------------------------------------------------------------
-   PAGE-LOAD SEQUENCE
+   ENTRANCE
 
    CSS keyframes, not framer-motion. An `initial={{ opacity: 0 }}` inline style
-   is written during SSR, so if hydration is slow or fails the hero stays
-   permanently invisible — and it ships no-JS visitors a blank page. A keyframe
-   with `both` fill runs without React, and the reduced-motion block above
-   collapses its duration to nothing, which lands it on the end state instead of
-   the start one. Delays are set per element with `animation-delay`.
+   is written during SSR, so if hydration is slow or fails the element stays
+   permanently invisible — and it ships no-JS visitors a blank surface. A
+   keyframe with `both` fill runs without React, and the reduced-motion block
+   above collapses its duration to nothing, which lands it on the end state
+   instead of the start one. Delays are set per element with `animation-delay`.
 --------------------------------------------------------------------------- */
-.enter,
-.enter-fade,
-.enter-line,
-.enter-pop {
-  animation-fill-mode: both;
-  animation-timing-function: var(--ease-out);
-}
 .enter {
-  animation-name: enter-rise;
-  animation-duration: var(--dur-slow);
-}
-.enter-fade {
-  animation-name: enter-fade;
-  animation-duration: 700ms;
-}
-.enter-line {
-  animation-name: enter-line;
-  animation-duration: 900ms;
-}
-.enter-pop {
-  animation-name: enter-pop;
-  animation-duration: 1100ms;
+  animation: enter-rise var(--dur-slow) var(--ease-out) both;
 }
 @keyframes enter-rise {
   from {
     opacity: 0;
     transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@keyframes enter-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes enter-line {
-  from {
-    transform: translateY(105%);
-  }
-  to {
-    transform: none;
-  }
-}
-@keyframes enter-pop {
-  from {
-    opacity: 0;
-    transform: scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-/* Scroll reveal (see features/landing/Reveal.tsx). `pending` is only ever set by
-   JavaScript, so the server HTML stays visible. */
-[data-reveal='pending'] {
-  opacity: 0;
-}
-[data-reveal='in'] {
-  animation: enter-rise-far 640ms var(--ease-out) both;
-}
-@keyframes enter-rise-far {
-  from {
-    opacity: 0;
-    transform: translateY(22px);
   }
   to {
     opacity: 1;
@@ -903,29 +1032,6 @@ h4 {
   }
   .edge-lit:hover::after {
     opacity: 1;
-  }
-
-  /* Infinite ticker. The track holds the content twice; translating exactly
-     -50% makes the seam invisible. Transform-only, so it never lays out. */
-  .marquee {
-    display: flex;
-    overflow: hidden;
-    mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
-  }
-  .marquee-track {
-    display: flex;
-    flex: none;
-    align-items: center;
-    animation: marquee 42s linear infinite;
-  }
-  .marquee:hover .marquee-track {
-    animation-play-state: paused;
-  }
-  @keyframes marquee {
-    to {
-      transform: translateX(-50%);
-    }
   }
 }
 
@@ -1194,9 +1300,9 @@ h4 {
 
 /* The global reduced-motion block near the top already collapses every
    animation to 0.001ms with one iteration, which lands each of the loops above
-   on its end frame — so `animation: none` here for `.reasoning-panel-max`,
-   `.reasoning-brain-max` and `.marquee-track` restated a rule that had already
-   won on `!important`. What survives is only what duration alone cannot fix:
+   on its end frame — so `animation: none` here for `.reasoning-panel-max` and
+   `.reasoning-brain-max` restated a rule that had already won on `!important`.
+   What survives is only what duration alone cannot fix:
    `.reasoning-shimmer` paints its text in `transparent` and relies on a moving
    gradient through `background-clip: text`, so freezing the animation leaves
    the label legible only by accident — it needs the fill put back. And

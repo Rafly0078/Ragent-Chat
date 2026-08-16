@@ -23,6 +23,11 @@ motion. Product proof comes from real chat surfaces, not decorative dashboards.
 Do not use Inter for hero-scale display. Keep display headlines under three lines
 at common desktop widths.
 
+The landing page is the one exception: it is a terminal surface, and its display
+type is JetBrains Mono at negative tracking. Unbounded over an ASCII wave reads
+as two unrelated pages. Prose there is still Inter — mono is for the headline,
+the rails and the buttons, not for the sentence a visitor actually reads.
+
 ## Palette
 
 - Field: `--linen` (warm off-white)
@@ -36,6 +41,10 @@ Color creates hierarchy through tonal contrast, borders, and shadows. No purple,
 blue, rainbow, neon, or decorative gradients. State colors remain reserved for
 success, warning, and error feedback.
 
+Two scoped inversions re-point the same tokens rather than introducing colours:
+`.paper` (ink on warm white) and `.terminal-field` (white on `#101111`, the
+landing page only, taken from the ASCII preset it sits behind).
+
 ## Shape and elevation
 
 - Radius scale: 4 / 6 / 10 / 14 / 20 / 28px.
@@ -45,21 +54,26 @@ success, warning, and error feedback.
 
 ## Layout
 
-- Landing max width: 1400px.
 - Chat reading column: 860px.
-- Full-height layouts use `min-h-[100dvh]`.
+- Full-height app layouts use `min-h-[100dvh]`.
 - Mobile collapses to one column; sidebar becomes a drawer; touch targets stay
   at least 44px.
-- Landing hero stays left-led and asymmetric. Product preview shows actual chat
-  hierarchy and composer affordances.
+- The landing page is one screen and does not scroll: full-bleed, `height:
+100dvh` with the overflow clipped, one shared gutter for the rails and the
+  content. It takes its scrollbar back under 520px of viewport height, where the
+  composition stops being possible and clipping would hide the only action.
+- Landing composition stays left-led and asymmetric: type in the left column,
+  the ASCII field lit on the right.
 
 ## Motion
 
 - Animate transform and opacity only.
-- Entrances use CSS classes (`.enter`, `.enter-line`, `.enter-pop`, `.enter-fade`).
+- Entrances use one CSS class (`.enter`).
 - Interactive motion uses the shared spring easing tokens.
 - Streaming state remains visible and cancellable.
-- Respect `prefers-reduced-motion`, including animation delays.
+- Respect `prefers-reduced-motion`, including animation delays. A canvas has to
+  opt in itself: the landing field draws one static frame under it, and the
+  rotating headline does not rotate at all.
 
 ## Accessibility floor
 
@@ -77,6 +91,11 @@ success, warning, and error feedback.
 - No emoji or raster UI icons.
 
 ## Last updated
+
+2026-08-16 - landing page rebuilt from scratch as a single non-scrolling terminal
+screen: scoped `.terminal-field` palette, mono display type, an ASCII ripple
+canvas driven by `src/features/landing/ascii-flow.json`, and a headline line that
+rewrites itself every 1.3s. The chat and settings surfaces are unchanged.
 
 2026-08-08 - connection settings expanded for local and cloud providers while
 preserving the Quiet Machine field, form hierarchy, spacing, and security copy.

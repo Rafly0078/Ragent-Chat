@@ -1,0 +1,38 @@
+{
+  "speed": {
+    "mode": "static",
+    "value": 1
+  },
+  "size": {
+    "mode": "static",
+    "value": 1.65
+  },
+  "zoom": {
+    "mode": "static",
+    "value": 1
+  },
+  "rotation": {
+    "mode": "static",
+    "value": 0
+  },
+  "logoSize": {
+    "mode": "static",
+    "value": 1.15
+  },
+  "scale2": {
+    "mode": "static",
+    "value": 7
+  },
+  "mode": {
+    "mode": "static",
+    "value": "ripple"
+  },
+  "logoMask": false,
+  "color": "#FFFFFF",
+  "colorMode": "solid",
+  "__color": {
+    "mode": "solid",
+    "active": 0,
+    "palette": ["#FFFFFF", "#101111", "#7C6DEB", "#1E9E76", "#E05A30"]
+  }
+}
