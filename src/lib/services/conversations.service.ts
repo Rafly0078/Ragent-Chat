@@ -236,6 +236,49 @@ export async function saveConversationMeta(convo: Conversation, userId: string):
 export async function deleteConversation(id: string): Promise<void> {
   const supabase = await loadSupabaseBrowser();
   if (!supabase) return;
+
+  // The FK cascade does not reach Storage. Deleting the conversation row deletes its
+  // `artifacts` rows with it (`on delete cascade`), and those rows hold the only
+  // record of where the files live — so without this the bytes stay in the bucket
+  // forever, unreferenced and uncountable. Read the paths BEFORE the delete, and
+  // remove the objects after: the row is the source of truth, so a tab that dies
+  // in between leaves the leak we already had rather than a conversation whose
+  // files have silently gone.
+  const { data: files } = await supabase
+    .from('artifacts')
+    .select('bucket,storage_path')
+    .eq('conversation_id', id);
+
   const { error } = await supabase.from('conversations').delete().eq('id', id);
   if (error) throw new Error(error.message);
+
+  await removeStoredFiles(supabase, files ?? []);
+}
+
+/**
+ * Best effort, one call per bucket. Never throws: the rows are already gone, so a
+ * failure here is a leaked object, not a broken delete — and telling the user their
+ * chat failed to delete when it did would be worse than the leak.
+ */
+async function removeStoredFiles(
+  supabase: NonNullable<Awaited<ReturnType<typeof loadSupabaseBrowser>>>,
+  files: Array<{ bucket: string | null; storage_path: string | null }>,
+): Promise<void> {
+  const byBucket = new Map<string, string[]>();
+  for (const file of files) {
+    if (!file.storage_path) continue;
+    const bucket = file.bucket ?? 'artifacts';
+    const paths = byBucket.get(bucket) ?? [];
+    paths.push(file.storage_path);
+    byBucket.set(bucket, paths);
+  }
+  for (const [bucket, paths] of byBucket) {
+    const { error } = await supabase.storage.from(bucket).remove(paths);
+    if (error) {
+      console.warn(
+        `[conversations] ${paths.length} file(s) left in ${bucket} — removal failed:`,
+        error.message,
+      );
+    }
+  }
 }
