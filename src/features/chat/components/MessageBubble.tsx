@@ -29,6 +29,7 @@ const SandboxPanel = lazy(() =>
 );
 import { extractWebSource } from '@/lib/sandbox/compose';
 import { AsciiWordmark } from '@/components/AsciiWordmark';
+import { hasFenceTag } from '@/lib/tools/fences';
 import { useChatStore } from '@/lib/store/chat-store';
 import { attachmentPreview } from '@/lib/utils/files';
 import { clockTime, formatDuration, formatNumber } from '@/lib/utils/format';
@@ -123,10 +124,19 @@ export const MessageBubble = memo(function MessageBubble({
   // once, so the absence of sources reads as a decision rather than a failure.
   const searchSkipped = message.metadata?.searchSkipped === true;
   const searchSkipReason = message.metadata?.searchSkipReason as string | undefined;
-  // A tool is writing a file for this turn. Session state rather than metadata (see
-  // `generatingFiles` in the store), so it is read from the store rather than off
-  // the message: a boolean selector re-renders this bubble only when it flips.
-  const generatingFile = useChatStore((s) => s.generatingFiles.has(message.id));
+  // A file is being written for this turn, in either of the two senses that matter
+  // to a reader: the model is still typing one (an ```artifact fence has opened in
+  // the text it is streaming), or the stream is over and a tool is writing it now
+  // (the store flag, raised by both artifact paths in `use-chat`).
+  //
+  // The first is by far the longer wait — a landing page is a minute of source — and
+  // it is why the mark is derived here rather than only from the flag: the fence that
+  // raises it is the same one `MarkdownRenderer` stops rendering, so the mark stands
+  // in for the file's source rather than sitting beside it. `hasFenceTag` is a scan
+  // of the message text, run once per streamed frame for the one live message.
+  const executingFile = useChatStore((s) => s.generatingFiles.has(message.id));
+  const generatingFile =
+    executingFile || (message.streaming === true && hasFenceTag(message.content, 'artifact'));
 
   // Only the newest message plays the entrance animation. Animating every turn
   // on mount means a 50-message conversation fires 50 simultaneous transitions
@@ -261,7 +271,7 @@ export const MessageBubble = memo(function MessageBubble({
             <span>{message.content}</span>
           </div>
         ) : (
-          <MessageBody message={message} />
+          <MessageBody message={message} writingFile={generatingFile} />
         )}
 
         {/* A side effect of the turn rather than the turn itself: it goes directly
@@ -373,7 +383,16 @@ export const MessageBubble = memo(function MessageBubble({
  * Messages that predate `parts` — and every user message — fall back to the flat
  * pair, which reproduces exactly what they used to look like.
  */
-function MessageBody({ message }: { message: Message }) {
+function MessageBody({
+  message,
+  writingFile,
+}: {
+  message: Message;
+  /** The GENERATING mark is up below this body, so the caret is redundant: the mark
+   *  already says text is still arriving, and a caret on the now-empty line where a
+   *  hidden artifact fence is streaming reads as debris rather than as a cursor. */
+  writingFile?: boolean;
+}) {
   const streaming = message.streaming === true;
   const parts = message.parts;
   const lastPart = parts?.[parts.length - 1];
@@ -398,7 +417,7 @@ function MessageBody({ message }: { message: Message }) {
           />
         )}
         {message.content ? (
-          <div className={streaming ? 'streaming-caret' : undefined}>
+          <div className={streaming && !writingFile ? 'streaming-caret' : undefined}>
             <Markdown content={message.content} streaming={streaming} />
           </div>
         ) : streaming && !message.reasoning ? (
@@ -440,7 +459,7 @@ function MessageBody({ message }: { message: Message }) {
         return (
           <div
             key={`c${part.index}-${i}`}
-            className={streaming && isLast ? 'streaming-caret' : undefined}
+            className={streaming && isLast && !writingFile ? 'streaming-caret' : undefined}
           >
             <Markdown content={part.text} streaming={streaming && isLast} />
           </div>

@@ -44,17 +44,16 @@ function nodeToString(node?: HastNode): string {
  * through to the generic CodeBlock, which just labels it "ARTIFACT" and
  * looks like a normal finished block) avoids the illusion that a file was
  * produced when nothing was actually generated.
+ *
+ * While the fence is still streaming there is nothing to show here at all: the
+ * GENERATING wordmark stands in for the whole message (see MessageBubble), and it
+ * is raised by the same opening fence this would have rendered. A file's source
+ * arriving as a wall of directive text was the longest, least readable stretch of
+ * a turn — a minute of raw HTML scrolling past for a document the reader is going
+ * to receive as a file anyway.
  */
-function ArtifactDirectiveNotice({ raw, streaming }: { raw: string; streaming: boolean }) {
-  if (streaming) {
-    // Still being generated — this is completely normal mid-stream, not a
-    // failure yet. Render with the same neutral chrome as any other block.
-    return (
-      <CodeBlock language="artifact" raw={raw}>
-        <code>{raw}</code>
-      </CodeBlock>
-    );
-  }
+function ArtifactDirectiveNotice({ streaming }: { streaming: boolean }) {
+  if (streaming) return null;
   return (
     <div className="my-2 flex items-start gap-2 rounded-xl border border-error/30 bg-error/5 p-3 text-sm text-error">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -93,7 +92,7 @@ function makeComponents(streaming: boolean): Components {
         return <Mermaid code={raw} streaming={streaming} />;
       }
       if (lang === 'artifact') {
-        return <ArtifactDirectiveNotice raw={raw} streaming={streaming} />;
+        return <ArtifactDirectiveNotice streaming={streaming} />;
       }
       if (lang === 'codepatch') {
         return <PatchBlock raw={raw} streaming={streaming} />;
