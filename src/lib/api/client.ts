@@ -51,12 +51,16 @@ function withTimeout(
 async function assertOk(res: Response): Promise<void> {
   if (res.ok) return;
   let detail = res.statusText;
+  let code: string | undefined;
   try {
     const text = await res.text();
     if (text) {
       try {
-        const j = JSON.parse(text) as { error?: string };
+        const j = JSON.parse(text) as { error?: string; code?: string };
         detail = j.error ?? text;
+        // `guard()` marks its own 401 so it isn't reported as the provider
+        // rejecting a key that was never sent upstream.
+        if (typeof j.code === 'string') code = j.code;
       } catch {
         detail = text;
       }
@@ -64,7 +68,7 @@ async function assertOk(res: Response): Promise<void> {
   } catch {
     /* ignore */
   }
-  throw new ApiError(detail, { kind: 'http', status: res.status });
+  throw new ApiError(detail, { kind: 'http', status: res.status, code });
 }
 
 function mapModel(raw: RawModel): ModelInfo {
@@ -189,6 +193,15 @@ export interface StreamHandlers {
    * server assembles the streamed argument fragments.
    */
   onToolCalls?: (calls: WireToolCall[]) => void;
+  /**
+   * A tool call has STARTED: its name is known, its arguments are still arriving.
+   *
+   * The gap this closes is the whole wait. A document tool's argument is the
+   * document, so `onToolCalls` — which cannot fire until the last fragment lands —
+   * arrives a minute after the model began writing the file, and until then the turn
+   * looks finished and idle. Fires once per call.
+   */
+  onToolCallStart?: (name: string) => void;
   onDone: (final: ChatStreamChunk) => void;
 }
 
@@ -286,6 +299,7 @@ export async function streamChat(
       for await (const chunk of parseChatStream(res.body, idle.signal)) {
         armIdleTimer();
         if (chunk.error) throw new ApiError(chunk.error, { kind: 'http', status: res.status });
+        if (chunk.tool_call_start?.name) handlers.onToolCallStart?.(chunk.tool_call_start.name);
         if (chunk.tool_calls?.length) handlers.onToolCalls?.(chunk.tool_calls);
         dispatch(router.route(chunk));
         if (chunk.done) final = { ...final, ...chunk };

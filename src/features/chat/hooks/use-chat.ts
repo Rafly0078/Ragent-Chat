@@ -575,6 +575,8 @@ export function useChat(conversationId: string | null) {
       const nativeTools = providerSupportsTools() && toolStep < MAX_TOOL_STEPS;
       /** Tool calls collected during this pass, executed once the stream ends. */
       const requestedCalls: WireToolCall[] = [];
+      /** Whether this pass raised the file-writing mark, so it can release it once. */
+      let announcedFile = false;
 
       try {
         await streamChat(
@@ -591,6 +593,16 @@ export function useChat(conversationId: string | null) {
           {
             onToolCalls: (calls) => {
               requestedCalls.push(...calls);
+            },
+            // The model has started dictating a file — its arguments are still
+            // arriving, which is the longest part of the wait. Raised here rather than
+            // at execution, which is where the mark used to appear: by then the file
+            // has been written and only the upload is left. Once per pass, so the
+            // release in `finally` balances it however many calls announce themselves.
+            onToolCallStart: (name) => {
+              if (announcedFile || !writesFile(name)) return;
+              announcedFile = true;
+              markGenerating(assistantId, true);
             },
             onPart: (part) => {
               // The first token of EITHER stream ends the agentic-search phase
@@ -714,6 +726,12 @@ export function useChat(conversationId: string | null) {
           activeController = null;
           store.getState().setGenerating(null);
         }
+        // The claim raised by `onToolCallStart` belongs to this pass, so this pass
+        // releases it — every way it can end, including an abort, an error, or a model
+        // that announced a call and then changed its mind. It is a count, so releasing
+        // here cannot take down the claim the directive path is still holding, and
+        // `executeToolCalls` raises its own below with no await in between.
+        if (announcedFile) markGenerating(assistantId, false);
       }
 
       // The agentic step. Outside the try/finally above so the controller for
@@ -754,7 +772,7 @@ export function useChat(conversationId: string | null) {
         });
       }
     },
-    [store, processArtifacts, processPatches, executeToolCalls, toast],
+    [store, processArtifacts, processPatches, executeToolCalls, markGenerating, toast],
   );
 
   /**

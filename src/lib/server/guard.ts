@@ -60,7 +60,13 @@ export async function guard(request: Request, options: GuardOptions): Promise<Gu
     if (!data.user) {
       return {
         ok: false,
-        response: Response.json({ error: 'Sign in to use this feature.' }, { status: 401 }),
+        // `code` so the client can tell this apart from the upstream provider's own
+        // 401 — both arrive at the same call site, and reporting a dead session as a
+        // rejected API key sent people to re-paste a credential that was fine.
+        response: Response.json(
+          { error: 'Sign in to use this feature.', code: 'auth_required' },
+          { status: 401 },
+        ),
       };
     }
     userId = data.user.id;

@@ -134,7 +134,7 @@ export const MessageBubble = memo(function MessageBubble({
   // raises it is the same one `MarkdownRenderer` stops rendering, so the mark stands
   // in for the file's source rather than sitting beside it. `hasFenceTag` is a scan
   // of the message text, run once per streamed frame for the one live message.
-  const executingFile = useChatStore((s) => s.generatingFiles.has(message.id));
+  const executingFile = useChatStore((s) => (s.generatingFiles.get(message.id) ?? 0) > 0);
   const generatingFile =
     executingFile || (message.streaming === true && hasFenceTag(message.content, 'artifact'));
 

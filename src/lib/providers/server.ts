@@ -867,6 +867,22 @@ function providerStream(
         for (const index of [...pendingCalls.keys()]) flushCall(index);
       };
 
+      /**
+       * Tell the client a call has started, once per call.
+       *
+       * `flushCall` above is the only other place a tool call reaches the client, and
+       * it cannot fire until the arguments are complete — which, for a document tool,
+       * is after the whole file has been dictated. This is the same event minus the
+       * arguments, sent the moment the name is known, so the UI can say a file is
+       * being written while it is being written.
+       */
+      const announced = new Set<number>();
+      const announceCall = (index: number, name: string) => {
+        if (!name || announced.has(index)) return;
+        announced.add(index);
+        controller.enqueue(ndjson({ model, tool_call_start: { name }, done: false }));
+      };
+
       /** Anthropic `content_block_stop` — tell the client the block is final. */
       const closeBlock = (index: number) => {
         const kind = blockKinds.get(index);
@@ -964,6 +980,9 @@ function providerStream(
                 name: data.content_block?.name ?? '',
                 args: '',
               });
+              // Anthropic names the tool in the block header, so the client hears
+              // about it before a single argument byte has arrived.
+              announceCall(idx, data.content_block?.name ?? '');
             }
             return;
           }
@@ -1051,6 +1070,7 @@ function providerStream(
               args: part.function?.arguments ?? '',
             });
           }
+          announceCall(idx, pendingCalls.get(idx)?.name ?? '');
         }
         // `finish_reason` was destructured and then never used, which is why
         // `tool_calls` was invisible even when the upstream announced it.

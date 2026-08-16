@@ -79,7 +79,11 @@ export function setProviderConfig(config: {
 }): void {
   apiProvider = config.provider;
   providerApiUrl = config.apiUrl.trim();
-  providerApiKey = config.apiKey.trim();
+  // A key pasted with its header still attached ("Bearer sk-…") would be sent as
+  // `Authorization: Bearer Bearer sk-…` and rejected as invalid, which reads exactly
+  // like a revoked key. The Ollama token field has always been forgiving about this
+  // (see `setApiToken`); there was no reason for this one not to be.
+  providerApiKey = config.apiKey.trim().replace(/^Bearer\s+/i, '');
   providerModel = config.model.trim();
   customProviderProtocol = config.protocol;
 }
@@ -286,14 +290,24 @@ export type ApiErrorKind =
 export class ApiError extends Error {
   kind: ApiErrorKind;
   status?: number;
+  /**
+   * Machine-readable marker from the failing response body, when it had one.
+   *
+   * The one that matters is `auth_required`, which `guard()` sets on its own 401.
+   * Without it, this app's sign-in wall and the upstream provider's rejection are
+   * the same status code arriving at the same place — and the message below blamed
+   * the user's API key for both, sending people to re-paste a key that was fine.
+   */
+  code?: string;
   constructor(
     message: string,
-    opts: { kind: ApiErrorKind; status?: number } = { kind: 'unknown' },
+    opts: { kind: ApiErrorKind; status?: number; code?: string } = { kind: 'unknown' },
   ) {
     super(message);
     this.name = 'ApiError';
     this.kind = opts.kind;
     this.status = opts.status;
+    this.code = opts.code;
   }
 
   static from(err: unknown): ApiError {
@@ -327,8 +341,18 @@ export class ApiError extends Error {
       case 'aborted':
         return 'Generation stopped.';
       case 'http':
+        // This app's own sign-in wall, not the provider's. Checked before the
+        // status, since it arrives as the same 401.
+        if (this.code === 'auth_required') {
+          return 'Your session has expired. Sign in again to keep using the model.';
+        }
         if ((this.status === 401 || this.status === 403) && apiProvider !== 'ollama') {
-          return 'The provider rejected the API key. Check it in Settings → Connection.';
+          // The provider's own words, when it gave any: "Invalid token", "insufficient
+          // balance" and a request id are the difference between knowing what to do
+          // and re-pasting a key that was never the problem.
+          const detail =
+            this.message && this.message !== 'Unauthorized' ? ` — ${this.message}` : '';
+          return `The provider rejected the request${detail}. Check the API key in Settings → Connection.`;
         }
         // A 401/403 straight from the model endpoint is not this app's own
         // sign-in wall — it's the tunnel in front of Ollama asking for its

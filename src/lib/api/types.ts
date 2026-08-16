@@ -123,6 +123,15 @@ export interface ChatStreamChunk {
    * the native function-calling path; the text-directive path leaves this absent.
    */
   tool_calls?: WireToolCall[];
+  /**
+   * One tool call has begun: its name is known, its arguments are still streaming.
+   *
+   * Sent because `tool_calls` above cannot be: the arguments arrive as fragments and
+   * a document tool's argument IS the document, so the completed call lands only
+   * after the model has finished writing the file. That is the entire wait the UI
+   * needs to be able to describe, and without this the turn looks idle throughout it.
+   */
+  tool_call_start?: { name: string };
 }
 
 export interface RawModelDetails {
