@@ -87,11 +87,13 @@ scanned by weight and brightness.
 - Respect `prefers-reduced-motion`, including animation delays. A canvas has to
   opt in itself: both ASCII fields draw one static frame under it, and the
   rotating headline does not rotate at all.
-- Thinking is shown, not spun. The chat's thinking state is the word THINKING at
-  the reading column's full width, masked out of a flowing ASCII field driven by
-  the same preset format as the landing. It appears only while a thinking block is
-  actually streaming; before the first token there is just a caret, because the
-  model may not have thinking enabled at all.
+- Thinking is shown, not spun. While a thinking block streams, that block's own
+  disclosure button _is_ the word THINKING, masked out of a flowing ASCII field
+  driven by the same preset format as the landing. Click it to read the reasoning;
+  it is closed until asked, both while thinking and after. Once the block closes the
+  wordmark is replaced by the one thing left to say — how long it thought. Before
+  the first token there is just a caret, because the model may not have thinking
+  enabled at all.
 
 ## Accessibility floor
 
@@ -112,8 +114,8 @@ scanned by weight and brightness.
 
 2026-08-16 - /chat rebuilt on the same terminal scope: labelled full-width turns
 with no bubbles, a framed input dock, mono chrome, monochrome syntax highlighting,
-and the THINKING wordmark filled with an ASCII flow field for the thinking state
-(`public/thinking-mask.png`, applied as a `mask-image`). Unbounded dropped; `.paper`,
+and the THINKING wordmark filled with an ASCII flow field as the thinking block's
+own disclosure (`public/thinking-mask.png`, applied as a `mask-image`). Unbounded dropped; `.paper`,
 `.badge`, `.status-dot`, `.card`, `.lift` and the max-effort reasoning animations
 removed with their last call sites. No logic changed.
 

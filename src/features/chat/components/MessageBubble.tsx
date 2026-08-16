@@ -14,7 +14,7 @@ import {
   X,
   ChevronDown,
 } from 'lucide-react';
-import type { Message, ThinkingEffort } from '@/types';
+import type { Message } from '@/types';
 import type { Source } from '@/lib/search/types';
 import { Markdown } from '@/components/markdown/Markdown';
 import { BrandMark } from '@/components/BrandMark';
@@ -359,18 +359,15 @@ export const MessageBubble = memo(function MessageBubble({
  */
 function MessageBody({ message }: { message: Message }) {
   const streaming = message.streaming === true;
-  const effort = message.metadata?.effort as ThinkingEffort | undefined;
   const parts = message.parts;
   const lastPart = parts?.[parts.length - 1];
 
-  // Two live states, both derived from what already exists on the message.
-  // `working` is everything before the first text token; `openThinking` narrows it
-  // to "a thinking block is streaming right now".
-  //
-  // Only the second one gets the THINKING wordmark, because only there is the word
-  // true: before the first part arrives the model may not even have thinking
-  // enabled, and the indicator this replaces claimed it either way. That case gets
-  // a bare caret — the same one the composer and the landing use.
+  // `working` is everything before the first text token of a turn. The THINKING
+  // wordmark belongs to a thinking block, so it lives in that block's own panel
+  // head — see ReasoningPanel. What is left here is the case with no block to
+  // attach to: the prompt has gone but nothing has come back, and the model may
+  // not even have thinking enabled. That gets a bare caret, and nothing claims to
+  // be thinking that isn't.
   const working = streaming && lastPart?.kind !== 'text';
   const openThinking = working && lastPart?.kind === 'thinking' && lastPart.endedAt === undefined;
 
@@ -381,7 +378,6 @@ function MessageBody({ message }: { message: Message }) {
           <ReasoningPanel
             text={message.reasoning}
             active={streaming && message.content.length === 0}
-            effort={effort}
             durationMs={message.reasoningTimeMs}
           />
         )}
@@ -389,8 +385,8 @@ function MessageBody({ message }: { message: Message }) {
           <div className={streaming ? 'streaming-caret' : undefined}>
             <Markdown content={message.content} streaming={streaming} />
           </div>
-        ) : streaming ? (
-          <Working thinking={Boolean(message.reasoning)} />
+        ) : streaming && !message.reasoning ? (
+          <WaitingCaret />
         ) : null}
       </>
     );
@@ -418,7 +414,6 @@ function MessageBody({ message }: { message: Message }) {
               key={`t${part.index}-${i}`}
               text={part.text}
               active={streaming && isLast && part.endedAt === undefined}
-              effort={effort}
               durationMs={part.endedAt !== undefined ? part.endedAt - part.startedAt : undefined}
               ordinal={totalThinking > 1 ? thinkingOrdinals.get(i) : undefined}
               interrupted={part.interrupted}
@@ -435,48 +430,44 @@ function MessageBody({ message }: { message: Message }) {
           </div>
         );
       })}
-      {/* Below the live panel rather than above it: with interleaved thinking,
-          "above" would put the field over an answer already delivered. */}
-      {working && <Working thinking={openThinking} />}
+      {/* Only when there is no open thinking block to carry the wordmark. */}
+      {working && !openThinking && <WaitingCaret />}
     </>
   );
 }
 
 /**
- * The gap between a turn starting and its first token of prose.
- *
- * `thinking` is the narrow claim — a thinking block is streaming right now — and
- * it is the only thing that earns the wordmark. Everything else is a caret.
+ * The turn has started and nothing has come back yet — no text, and no thinking
+ * block either. Deliberately says nothing: a label here would have to guess.
  */
-function Working({ thinking }: { thinking: boolean }) {
+function WaitingCaret() {
   return (
-    <div className="mt-4">
-      {thinking ? (
-        <ThinkingField />
-      ) : (
-        <span role="status" aria-label="Working" className="thinking-wait">
-          <span aria-hidden className="term-caret animate-caret-blink" />
-        </span>
-      )}
+    <div className="mt-3">
+      <span role="status" aria-label="Working" className="thinking-wait">
+        <span aria-hidden className="term-caret animate-caret-blink" />
+      </span>
     </div>
   );
 }
 
 /**
- * One thinking block, as an aside rather than a card.
+ * One thinking block. An aside, not a card — and its own disclosure.
  *
- * Auto-expands while that block is the one actively streaming, then collapses. A
- * manual toggle pins the state so auto-collapse cannot yank it shut mid-read.
+ * While the block is live the head *is* the THINKING wordmark, filled with the
+ * flowing ASCII field. Once it closes the wordmark has nothing left to say and is
+ * replaced by the one thing that does: how long it thought. Both states are the
+ * same button, so the reasoning is one click away either way.
  *
- * The mark in the head is the still version of the ASCII field below it: while the
- * model is working the mark moves, and once it stops this is what is left of it.
- * The "max effort" flourish that used to live here — a shimmering gradient label,
- * a glowing border and a pulsing icon — is now one honest word in the label.
+ * Closed until asked, in both states. It used to spring open on its own while a
+ * block streamed, which meant every turn shoved a growing wall of the model's
+ * private notes above the answer you were waiting for.
+ *
+ * The "max effort" flourish that used to live here — a shimmering gradient label, a
+ * glowing border and a pulsing icon — is now one honest word in the label.
  */
 function ReasoningPanel({
   text,
   active,
-  effort,
   durationMs,
   ordinal,
   interrupted,
@@ -485,15 +476,13 @@ function ReasoningPanel({
   text: string;
   /** This specific block is streaming right now. */
   active: boolean;
-  effort?: ThinkingEffort;
   durationMs?: number;
   /** 1-based position among this message's thinking blocks; omitted when there's one. */
   ordinal?: number;
   interrupted?: boolean;
   redacted?: boolean;
 }) {
-  const [manual, setManual] = useState<boolean | null>(null);
-  const open = manual ?? active;
+  const [open, setOpen] = useState(false);
 
   // Duration was declared on the message type and never once written or read.
   // Now it is per block, which is the only place it means anything — and it reads
@@ -509,18 +498,25 @@ function ReasoningPanel({
   return (
     <div className="reason">
       <button
-        onClick={() => setManual(!open)}
+        onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="reason-head focus-ring rounded-sm"
+        aria-label={active ? 'Thinking — show the reasoning' : `${settled} — show the reasoning`}
+        className={cn('focus-ring rounded-sm', active ? 'reason-live' : 'reason-head')}
       >
-        <BrandMark className="h-3.5 w-3.5 shrink-0" />
-        <span className="flex-1 text-left">
-          {active ? (effort === 'max' ? 'thinking harder' : 'thinking') : settled}
-          {ordinal !== undefined && <span className="ml-1.5 tabular-nums">#{ordinal}</span>}
-        </span>
-        <ChevronDown
-          className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')}
-        />
+        {active ? (
+          <ThinkingField />
+        ) : (
+          <>
+            <BrandMark className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 text-left">
+              {settled}
+              {ordinal !== undefined && <span className="ml-1.5 tabular-nums">#{ordinal}</span>}
+            </span>
+            <ChevronDown
+              className={cn('h-3.5 w-3.5 shrink-0 transition-transform', open && 'rotate-180')}
+            />
+          </>
+        )}
       </button>
       <AnimatePresence initial={false}>
         {open && (

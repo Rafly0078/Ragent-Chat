@@ -1249,22 +1249,23 @@ h4 {
   color: rgb(var(--content-subtle));
 }
 
-/* The word THINKING, filled with the flow field.
-   
+/* The live head: the word THINKING, filled with the flow field.
+
    The mask is the wordmark's own silhouette (public/thinking-mask.png, cropped to
-   its ink and flattened to a hard alpha, 9 KB). Doing it here rather than on the
+   its ink and flattened to a hard alpha, 9 KB). Doing it in CSS rather than on the
    canvas is what keeps the letter edges crisp: the browser scales the raster at
    native device resolution and composites it on the GPU, where a per-cell test
-   would have had to choose between whole glyphs and whole letters and a
-   three-cell stroke cannot afford either.
+   would have had to choose between whole glyphs and whole letters, and a stroke
+   three cells wide cannot afford either.
 
-   `aspect-ratio` is the asset's, so the letters are never stretched, and the width
-   is the column's — the flow only resolves as flow while a stroke is ~3 glyph
-   cells across, which at 12:1 means the word has to be as wide as it can get. */
+   280px, which is about one line of text tall at 12:1 — a label in the transcript
+   rather than a banner across it. The glyph size follows that width (see
+   `fontPxFor` in lib/ascii/flow) so the letters keep the same three-and-a-half
+   cells per stroke they had at twice the size. `aspect-ratio` is the asset's own,
+   so they are never stretched. */
 .thinking-mark {
   display: block;
-  width: 100%;
-  max-width: 46rem;
+  width: min(17.5rem, 100%);
 }
 .thinking-canvas {
   display: block;
@@ -1276,6 +1277,21 @@ h4 {
   -webkit-mask-image: url('/thinking-mask.png');
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
+}
+
+/* The wordmark is the disclosure button for the block it belongs to, so it needs
+   to say so without a chevron next to it — a chevron beside a word made of moving
+   glyphs reads as a second, competing control. Dimmed until pointed at instead. */
+.reason-live {
+  display: block;
+  width: 100%;
+  text-align: left;
+  opacity: 0.82;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.reason-live:hover,
+.reason-live:focus-visible {
+  opacity: 1;
 }
 
 /* Before the first part of a turn arrives there is nothing to call thinking — the

@@ -89,20 +89,23 @@ const BASE_FONT_PX = 15;
  *  a 40px stem in an 1826px word. */
 const STROKE_FRACTION = 40 / 1826;
 
-/** How many glyph cells have to span a stroke. Below three, a run of glyphs cannot
- *  state a direction and the letters dissolve into scattered hatching; the word
- *  stops being a word. This is what makes the glyph size follow the box rather than
- *  sit at one value and let a phone break it. */
-const CELLS_PER_STROKE = 3;
+/** How many glyph cells have to span a stroke. Below about three, a run of glyphs
+ *  cannot state a direction and the letters dissolve into scattered hatching; the
+ *  word stops being a word. This is what makes the glyph size follow the box rather
+ *  than sit at one value and let a narrow column break it. At the label width it
+ *  works out to a 3px glyph. */
+const CELLS_PER_STROKE = 3.5;
 
 /** The mono advance, as a fraction of the glyph size. JetBrains Mono is 0.6em, and
  *  the engine measures the real value — this is only for choosing the size. */
 const ADVANCE_RATIO = 0.6;
 
-/** Glyphs this small do not survive a 1x display: at 9px the hinting turns every
- *  stroke into a blob. Rendering the backing store at 2x whatever the screen says
- *  and letting the browser downscale is what keeps them as strokes. */
-const MIN_DPR = 2;
+/** Pinned, not bounded. At the label width the glyphs are 3 CSS pixels, which no
+ *  display can resolve directly — 3x makes that 9 device pixels, which is a real
+ *  stroke, and pinning both ends means a 1x monitor and a 3x phone draw the same
+ *  thing rather than one of them getting mush. */
+const MIN_DPR = 3;
+const MAX_DPR = 3;
 
 /** Row pitch, overriding the engine's default. Slightly squarer than the 1.04 a
  *  density ramp wants: this preset shades by direction, and the taller the cell
@@ -149,11 +152,13 @@ export function flowPreset(source: FlowSource): AsciiPreset {
     baseFontPx: BASE_FONT_PX,
     lineRatio: LINE_RATIO,
     minDpr: MIN_DPR,
+    maxDpr: MAX_DPR,
     rate: UNITS_PER_SEC * source.speed.value,
 
-    /** Three cells across a letter stroke, whatever width the column gave us. At
-     *  the full 740px that lands on the 9px `size` implies; on a 390px phone it
-     *  drops to 5px, which supersampling keeps sharp. */
+    /** Three and a half cells across a letter stroke, whatever width the box gave
+     *  us. At the label width that lands on a 3px glyph; the ceiling is what the
+     *  file's own `size` implies, so the preset can never draw coarser than the
+     *  tool that exported it meant. */
     fontPxFor(width: number) {
       return Math.min(
         BASE_FONT_PX * source.size.value,

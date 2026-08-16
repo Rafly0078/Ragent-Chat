@@ -48,10 +48,12 @@ export interface AsciiPreset {
    *  A preset that shades by glyph *direction* wants squarer cells than one that
    *  shades by weight, or its diagonals read as tally marks rather than as lines. */
   lineRatio?: number;
-  /** A floor on the backing store's scale, for a preset whose glyphs are small
-   *  enough that a 1x display cannot resolve them. Supersampling and letting the
-   *  browser downscale is what keeps them from turning into blobs. */
+  /** Bounds on the backing store's scale. A preset whose glyphs are only a few
+   *  CSS pixels tall has to supersample or a 1x display turns every stroke into a
+   *  blob; pinning both ends makes the glyph render at a known device size
+   *  whatever screen it lands on. Default 1 and MAX_DPR. */
   minDpr?: number;
+  maxDpr?: number;
   /** Phase advance in units per second, already multiplied by the file's `speed`. */
   rate: number;
   /** Per-row hoist, so a preset can compute a row's constants once. Optional. */
@@ -70,8 +72,9 @@ const LINE_RATIO = 1.04;
  *  the second half of a 60fps budget buys nothing visible. */
 const FRAME_MS = 1000 / 30;
 
-/** Glyphs cost fill area quadratically in device pixel ratio, and a field this
- *  faint has no detail worth resolving past 2x. */
+/** Glyphs cost fill area quadratically in device pixel ratio, and a full-bleed
+ *  field has no detail worth resolving past 2x. A preset drawing a few thousand
+ *  cells into a label-sized box can afford to raise it — see `maxDpr`. */
 const MAX_DPR = 2;
 
 /**
@@ -107,16 +110,20 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
   let disposed = false;
 
   const measure = () => {
-    const dpr = Math.min(Math.max(window.devicePixelRatio || 1, preset.minDpr ?? 1), MAX_DPR);
+    const dpr = Math.min(
+      Math.max(window.devicePixelRatio || 1, preset.minDpr ?? 1),
+      preset.maxDpr ?? MAX_DPR,
+    );
     const rect = canvas.getBoundingClientRect();
     grid.width = Math.max(1, Math.round(rect.width));
     grid.height = Math.max(1, Math.round(rect.height));
     canvas.width = Math.round(grid.width * dpr);
     canvas.height = Math.round(grid.height * dpr);
     // After the rect, because a preset is allowed to size its glyphs from it. The
-    // floor is 4 rather than 6: a preset that supersamples (see `minDpr`) draws a
-    // 5px glyph at 10 device pixels, which resolves perfectly well.
-    fontPx = Math.max(4, Math.round(preset.fontPxFor?.(grid.width, grid.height) ?? fixedFontPx));
+    // floor is 2 CSS pixels, which is only usable at all because a preset that goes
+    // that small pins `minDpr`/`maxDpr` and therefore knows the device size it
+    // renders at — 3px at 3x is 9 device pixels, and that resolves fine.
+    fontPx = Math.max(2, Math.round(preset.fontPxFor?.(grid.width, grid.height) ?? fixedFontPx));
     // Sizing the backing store resets every context property, so the transform,
     // the font, the baseline and the fill belong here rather than once at startup.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
