@@ -12,7 +12,6 @@ import {
   Terminal,
   Trash2,
   Upload,
-  Sparkles,
   Smartphone,
   User,
 } from 'lucide-react';
@@ -23,7 +22,8 @@ import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/toast';
 import { useSettings } from '@/lib/store/settings-store';
 import { useChatStore } from '@/lib/store/chat-store';
-import { ACCENT_PRESETS, DEFAULT_SEARCH_MODE } from '@/lib/store/defaults';
+import { DEFAULT_SEARCH_MODE } from '@/lib/store/defaults';
+import { AsciiBand } from '@/components/AsciiBand';
 import type { SearchMode } from '@/types';
 import { useModels } from '@/features/models/use-models';
 import { useHydrated } from '@/lib/hooks/use-hydrated';
@@ -168,10 +168,14 @@ export default function SettingsPage() {
     toast(`Imported ${imported} conversation${imported === 1 ? '' : 's'}`, 'success');
   };
 
-  if (!hydrated) return <div className="min-h-[100dvh]" />;
+  if (!hydrated) return <div className="terminal-field min-h-[100dvh]" />;
 
   return (
-    <>
+    // The same scope `/` and `/chat` use. It wraps `AmbientBackground` as well as
+    // the page, because that component paints the field and reads the tokens from
+    // whatever it is inside — outside the scope it would render warm linen behind a
+    // near-black form.
+    <div className="terminal-field terminal-app">
       <AmbientBackground />
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-5xl flex-col px-4 py-6 sm:py-10">
         {/* The back link is an eyebrow above the title rather than an icon beside
@@ -237,38 +241,17 @@ export default function SettingsPage() {
             {/* Appearance */}
             {active === 'appearance' && (
               <Section icon={Palette} title="Appearance">
+                {/* The accent picker used to live here. Every one of its six presets
+                    was a near-black graphite chosen against warm paper, and the
+                    terminal scope declares `--accent` itself — so on a near-black
+                    field the swatches were invisible AND the choice changed nothing
+                    on any route. A control that cannot be seen and does not act is
+                    worse than no control. */}
                 <Field label="Canvas">
                   <p className="text-sm leading-6 text-content-muted">
-                    One canvas, everywhere: warm paper, graphite ink, and restrained surface depth.
-                    The accent below changes the ink tone without introducing a second visual theme.
+                    One canvas, everywhere: a near-black field, white ink, and hairlines instead of
+                    cards. Colour is reserved for success, warning and error.
                   </p>
-                </Field>
-
-                <Field label="Accent color">
-                  <div className="flex flex-wrap gap-2">
-                    {ACCENT_PRESETS.map((a) => (
-                      <button
-                        key={a.value}
-                        onClick={() => s.setAccent(a.value)}
-                        className={cn(
-                          'flex h-9 items-center gap-2 rounded-xl border px-3 text-sm transition-colors',
-                          s.accent === a.value
-                            ? 'border-border/30 text-content'
-                            : 'border-border/15 text-content-muted',
-                        )}
-                        style={{
-                          boxShadow:
-                            s.accent === a.value ? `0 0 0 2px rgb(${a.rgb} / 0.4)` : undefined,
-                        }}
-                      >
-                        <span
-                          className="h-4 w-4 rounded-full"
-                          style={{ background: `rgb(${a.rgb})` }}
-                        />
-                        {a.name}
-                      </button>
-                    ))}
-                  </div>
                 </Field>
 
                 <ToggleRow
@@ -578,8 +561,12 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   )}
+                  {/* The one wait on this page that is the screen rather than an
+                      aside: until this resolves there is nothing to choose from. */}
                   {modelsLoading && (
-                    <p className="mt-1.5 text-xs text-content-subtle">Loading models…</p>
+                    <div className="mt-2.5 h-12 max-w-xs">
+                      <AsciiBand label="fetching models" />
+                    </div>
                   )}
                   {modelsError && !modelsLoading && (
                     <div className="mt-1.5 flex items-start justify-between gap-3 text-xs text-warning">
@@ -789,20 +776,23 @@ export default function SettingsPage() {
             The ghosted wordmark is the reference's own page-closing device, and
             it earns its place here: it turns the void a two-line panel leaves
             behind into the composed bottom of the page instead of a gap. */}
-        <div className="mt-auto">
-          <div className="pointer-events-none w-full select-none" aria-hidden>
-            <span className="hw-ghost block w-full text-center text-[13vw]">{APP_NAME}</span>
-          </div>
-          <div className="hw-rule flex flex-wrap items-center justify-between gap-x-6 gap-y-2 pt-6">
-            <span className="type-label inline-flex items-center gap-2 text-content-muted">
-              <Sparkles className="h-3.5 w-3.5 text-accent" />
-              {APP_NAME} — local and cloud AI
-            </span>
-            <span className="type-label text-content-subtle">{APP_VERSION}</span>
-          </div>
+        {/* `.hw-ghost` and `.hw-rule` used to be here. Both were deleted from
+            globals.css in an earlier pass and their call sites left behind, so the
+            wordmark had been rendering at full ink at 13vw — a giant grey word
+            across the bottom of the page — and the rule above it had no border at
+            all. It is a status rail now, the same one the landing and the composer
+            close with. */}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-border/15 pt-5">
+          <span className="inline-flex items-center gap-2.5 font-mono text-[0.66rem] uppercase tracking-[0.12em] text-content-subtle">
+            <span className="term-pip" />
+            {APP_NAME.toLowerCase()} — local and cloud
+          </span>
+          <span className="font-mono text-[0.66rem] uppercase tracking-[0.12em] text-content-subtle">
+            {APP_VERSION}
+          </span>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 

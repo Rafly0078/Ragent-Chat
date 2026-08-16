@@ -1,9 +1,9 @@
 'use client';
 
 import { usePathname } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
 import { useAuth } from './AuthProvider';
 import { AuthDialog } from './AuthDialog';
+import { AsciiBand } from '@/components/AsciiBand';
 
 /**
  * Routes that are public by design. The landing page is a marketing surface —
@@ -31,12 +31,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // app) before we actually know whether there's a valid session. Public pages
   // render immediately; they don't depend on the session at all.
   if (auth.enabled && auth.loading && !isPublic) {
+    // The first thing a visitor sees, and for a moment the only thing. It used to
+    // be a 24px spinner alone on an empty field; it is the product's own field now,
+    // on the palette the app is about to appear in.
     return (
-      <div className="flex h-[100dvh] items-center justify-center bg-surface">
-        <Loader2
-          className="h-6 w-6 animate-spin text-content-subtle"
-          aria-label="Checking session"
-        />
+      <div className="terminal-field flex h-[100dvh] items-center justify-center px-6">
+        <div className="h-24 w-full max-w-sm">
+          <AsciiBand label="checking session" />
+        </div>
       </div>
     );
   }

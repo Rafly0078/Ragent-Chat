@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import type { Artifact, ArtifactKind } from '@/lib/tools/types';
+import { AsciiBand } from '@/components/AsciiBand';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils/cn';
@@ -86,6 +87,15 @@ function ArtifactCard({
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  // The veil: an ASCII field over the preview body that holds until the content is
+  // there, then wipes left to right off it. `arrived` is what the content reports;
+  // `swept` is the animation finishing, which is when the layer can go.
+  //
+  // An HTML artifact loads in an iframe and tells us with `onLoad`. Everything else
+  // is a data URL decoded synchronously, so it has already arrived by the time the
+  // modal opens and the veil is purely the reveal.
+  const [arrived, setArrived] = useState(false);
+  const [swept, setSwept] = useState(false);
   const isPreviewable = ['html', 'md', 'txt', 'json', 'xml', 'csv'].includes(artifact.kind);
   const { icon: Icon, tile, label } = kindStyle(artifact.kind);
   const { toast } = useToast();
@@ -129,6 +139,15 @@ function ArtifactCard({
       ? `${decoded.slice(0, MAX_PREVIEW_CHARS)}\n\n… (preview truncated — download to see all of it)`
       : decoded;
   }, [previewOpen, artifact.kind, artifact.url]);
+
+  useEffect(() => {
+    if (!previewOpen) {
+      setArrived(false);
+      setSwept(false);
+      return;
+    }
+    if (artifact.kind !== 'html') setArrived(true);
+  }, [previewOpen, artifact.kind]);
 
   return (
     <>
@@ -243,7 +262,7 @@ function ArtifactCard({
                   >
                     <Icon className="h-4 w-4" />
                   </span>
-                  <p className="truncate text-sm font-medium text-content">{artifact.name}</p>
+                  <p className="truncate font-mono text-[0.8rem] text-content">{artifact.name}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <button
@@ -263,25 +282,40 @@ function ArtifactCard({
                   </button>
                 </div>
               </div>
-              <div className="scrollbar-thin flex-1 overflow-auto bg-surface-mid/30">
-                {artifact.kind === 'html' ? (
-                  // `sandbox` is mandatory here: this is model-authored HTML, and
-                  // for a persisted artifact the signed URL is served from the
-                  // Supabase project origin. Without it, scripts in the file could
-                  // navigate the whole app away (phishing) or open popups.
-                  // `allow-scripts` alone (never with `allow-same-origin`) keeps the
-                  // preview functional while pinning the frame to an opaque origin.
-                  <iframe
-                    src={artifact.url}
-                    sandbox="allow-scripts"
-                    referrerPolicy="no-referrer"
-                    className="h-[70vh] w-full border-0 bg-white"
-                    title={artifact.name}
-                  />
-                ) : (
-                  <pre className="whitespace-pre-wrap p-4 font-mono text-sm text-content">
-                    {textPreview}
-                  </pre>
+              <div className="relative flex min-h-0 flex-1 flex-col">
+                <div className="scrollbar-thin flex-1 overflow-auto bg-surface-mid/30">
+                  {artifact.kind === 'html' ? (
+                    // `sandbox` is mandatory here: this is model-authored HTML, and
+                    // for a persisted artifact the signed URL is served from the
+                    // Supabase project origin. Without it, scripts in the file could
+                    // navigate the whole app away (phishing) or open popups.
+                    // `allow-scripts` alone (never with `allow-same-origin`) keeps the
+                    // preview functional while pinning the frame to an opaque origin.
+                    <iframe
+                      src={artifact.url}
+                      sandbox="allow-scripts"
+                      referrerPolicy="no-referrer"
+                      onLoad={() => setArrived(true)}
+                      // White, and deliberately: this is a document the model wrote
+                      // for a page, not part of this UI. The veil covers the flash
+                      // until it has painted.
+                      className="h-[70vh] w-full border-0 bg-white"
+                      title={artifact.name}
+                    />
+                  ) : (
+                    <pre className="whitespace-pre-wrap p-4 font-mono text-sm text-content">
+                      {textPreview}
+                    </pre>
+                  )}
+                </div>
+
+                {!swept && (
+                  <div
+                    className={cn('artifact-veil', arrived && 'artifact-veil-sweep')}
+                    onAnimationEnd={() => setSwept(true)}
+                  >
+                    <AsciiBand label={arrived ? undefined : 'loading preview'} />
+                  </div>
                 )}
               </div>
             </m.div>

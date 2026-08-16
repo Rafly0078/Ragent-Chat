@@ -73,10 +73,7 @@ const GATE_SCALE = 1.5;
  *  streaks horizontal — which is the direction a word runs anyway. */
 const CROSS_STRETCH = 4;
 
-/** Below this the cell is blank. The silhouette is what shapes this preset now, so
- *  the gate is only here to keep the fill alive: at a three-cell stroke width a
- *  void reads as a chip out of the letter, not as flow. Sparse stipple, no more. */
-const GATE = 0.02;
+/** The width of the fringe slice above whatever gate a shape sets. */
 const FRINGE = 0.06;
 
 /** What `size: 0.6` multiplies at the wordmark's full column width: 9px glyphs on a
@@ -100,19 +97,50 @@ const CELLS_PER_STROKE = 3.5;
  *  the engine measures the real value — this is only for choosing the size. */
 const ADVANCE_RATIO = 0.6;
 
-/** Pinned, not bounded. At the label width the glyphs are 3 CSS pixels, which no
- *  display can resolve directly — 3x makes that 9 device pixels, which is a real
- *  stroke, and pinning both ends means a 1x monitor and a 3x phone draw the same
- *  thing rather than one of them getting mush. */
-const MIN_DPR = 3;
-const MAX_DPR = 3;
+/**
+ * The two shapes this field is used in.
+ *
+ * `wordmark` fills a silhouette, so the mask is what draws the form and the field
+ * only has to be solid: the gate is almost off, the rows overlap, and the glyph
+ * size follows the box so a letter stroke always holds three and a half cells.
+ *
+ * `band` has no silhouette. It is the field itself — what the product shows while
+ * it is working — so it wants the opposite: real voids, airier rows, one glyph size,
+ * and no supersampling to pay for.
+ */
+interface FlowShape {
+  /** Row pitch, as a multiple of the glyph size. */
+  lineRatio: number;
+  /** Cells below this are blank. */
+  gate: number;
+  minDpr: number;
+  maxDpr: number;
+  /** Only the wordmark sizes its glyphs from the box it got. */
+  sized: boolean;
+}
 
-/** Row pitch, overriding the engine's default. Slightly squarer than the 1.04 a
- *  density ramp wants: this preset shades by direction, and the taller the cell
- *  the more a '\' reads as a steep tick with gaps above and below it. Squarer than
- *  this and consecutive rows of '|' merge into solid hatching — the flow stops
- *  reading as lines and starts reading as fur. */
-const LINE_RATIO = 0.62;
+/** Rows overlap and the gate is almost off, because the mask draws the letters and
+ *  a void inside a three-cell stroke reads as a chip out of one. Glyphs are 3 CSS
+ *  pixels at the label width, which no display resolves directly — pinning the
+ *  scale to 3x makes that 9 device pixels, and a 1x monitor and a 3x phone then
+ *  draw the same thing rather than one of them getting mush. */
+const WORDMARK: FlowShape = {
+  lineRatio: 0.62,
+  gate: 0.02,
+  minDpr: 3,
+  maxDpr: 3,
+  sized: true,
+};
+
+/** Airier: the voids are the texture here, since there is no silhouette to carry
+ *  the form. Standard supersampling, because the glyphs are a full 9px. */
+const BAND: FlowShape = {
+  lineRatio: 0.95,
+  gate: 0.42,
+  minDpr: 1,
+  maxDpr: 2,
+  sized: false,
+};
 
 /** A hashed value lattice in [0, 1). */
 function hash(x: number, y: number): number {
@@ -139,7 +167,7 @@ function noise(x: number, y: number): number {
 
 /** One instance drives one canvas — it carries per-row state between the engine's
  *  `row` and `cell` calls. */
-export function flowPreset(source: FlowSource): AsciiPreset {
+function flowIn(source: FlowSource, shape: FlowShape): AsciiPreset {
   const turns = source.scale2.value / TURNS_DIVISOR / source.zoom.value;
 
   // Hoisted by `row`: both are constant across a row, and `vy` costs a divide.
@@ -150,21 +178,22 @@ export function flowPreset(source: FlowSource): AsciiPreset {
     colour: source.color,
     fontScale: source.size.value,
     baseFontPx: BASE_FONT_PX,
-    lineRatio: LINE_RATIO,
-    minDpr: MIN_DPR,
-    maxDpr: MAX_DPR,
+    lineRatio: shape.lineRatio,
+    minDpr: shape.minDpr,
+    maxDpr: shape.maxDpr,
     rate: UNITS_PER_SEC * source.speed.value,
 
     /** Three and a half cells across a letter stroke, whatever width the box gave
      *  us. At the label width that lands on a 3px glyph; the ceiling is what the
      *  file's own `size` implies, so the preset can never draw coarser than the
      *  tool that exported it meant. */
-    fontPxFor(width: number) {
-      return Math.min(
-        BASE_FONT_PX * source.size.value,
-        (width * STROKE_FRACTION) / (CELLS_PER_STROKE * ADVANCE_RATIO),
-      );
-    },
+    fontPxFor: shape.sized
+      ? (width: number) =>
+          Math.min(
+            BASE_FONT_PX * source.size.value,
+            (width * STROKE_FRACTION) / (CELLS_PER_STROKE * ADVANCE_RATIO),
+          )
+      : undefined,
 
     row(row: number, grid: AsciiGrid) {
       // Both axes normalise by the same length, so the field is isotropic: a
@@ -181,8 +210,8 @@ export function flowPreset(source: FlowSource): AsciiPreset {
       // texture; running the gate slower left holes that sat still long enough to
       // look like gaps in the letters rather than like flow.
       const gate = noise(u * GATE_SCALE - phase * 0.6, vy * GATE_SCALE + phase * 0.42);
-      if (gate < GATE) return '';
-      if (gate < GATE + FRINGE) return FAINT;
+      if (gate < shape.gate) return '';
+      if (gate < shape.gate + FRINGE) return FAINT;
 
       // A scalar field mapped to angle, drifting upward. Sampled at a lower
       // frequency than the gate on purpose: the angle is what has to stay
@@ -197,3 +226,9 @@ export function flowPreset(source: FlowSource): AsciiPreset {
     },
   };
 }
+
+/** The masked one: the word THINKING, filled. */
+export const flowPreset = (source: FlowSource) => flowIn(source, WORDMARK);
+
+/** The bare one: a patch of field, for every surface that is waiting on something. */
+export const flowBandPreset = (source: FlowSource) => flowIn(source, BAND);

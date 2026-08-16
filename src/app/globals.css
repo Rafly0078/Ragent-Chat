@@ -192,6 +192,15 @@
   --radius-xl: 4px;
   --radius-2xl: 4px;
 
+  /* The three state colours, re-measured for this ground. The `:root` set was
+     chosen against warm paper: on #101111 that green is 2.4:1 and that red 3.1:1,
+     which is a warning you cannot read. These clear AA comfortably — 9.0, 9.9 and
+     6.8:1 — and they stay the only chroma on the surface, which is what DESIGN.md
+     reserves them for. */
+  --success: 86 200 132;
+  --warning: 232 179 74;
+  --error: 242 116 116;
+
   background-color: rgb(var(--surface));
   color: rgb(var(--content));
 }
@@ -504,13 +513,33 @@ body {
   text-wrap: balance;
 }
 
-/* Mono label: nav items, metadata, buttons, chips. */
+/* Label: nav items, metadata, buttons, chips. */
 .type-label {
   font-family: var(--font-sans);
   letter-spacing: -0.01em;
   font-size: clamp(0.68rem, calc(18 * var(--u)), 0.86rem);
   font-weight: 600;
   line-height: 1.4;
+}
+
+/* Inside the terminal the two shared type roles switch to mono. Two rules rather
+   than an edit at every call site: it brings the settings title, every dialog
+   heading, and every nav label on a dark surface into the same voice as the
+   headline on the landing, and leaves them in Inter on paper.
+
+   Prose deliberately does not follow. Inter still sets everything that is read as
+   a sentence — the model's answer, a section's explanation, a form's help text. */
+.terminal-field .type-display {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.14;
+}
+.terminal-field .type-label {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: lowercase;
 }
 
 h1,
@@ -776,10 +805,13 @@ h4 {
     color: rgb(var(--error));
     border-color: rgb(var(--error) / 0.55);
   }
+  /* `--surface`, not `--night`: filled with the error colour, the label has to be
+     whatever the surface behind it is, and on a near-black field `--night` was ink
+     on ink. */
   .btn-destructive:hover:not(:disabled) {
     background-color: rgb(var(--error));
     border-color: rgb(var(--error));
-    color: rgb(var(--night));
+    color: rgb(var(--surface));
   }
 }
 
@@ -1383,5 +1415,80 @@ h4 {
   }
   50% {
     opacity: 0.25;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   THE WAIT
+
+   One rule for the ASCII in this product: it shows up while the product is
+   working. The wordmark above is the branded case — a thinking block, saying so
+   in its own letters — and this is the bare one, for the surfaces where the wait
+   is the whole screen: the first session check, an artifact preview loading, a
+   model list being fetched.
+
+   It fills whatever box the caller gives it, and it never reserves height of its
+   own, because in two of those three places it is standing in for content that is
+   about to arrive at a known size.
+--------------------------------------------------------------------------- */
+.ascii-band {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  width: 100%;
+  height: 100%;
+}
+.ascii-band-canvas {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  /* Bright enough to be the thing you are looking at, quiet enough not to read as
+     content. The masked wordmark runs at full ink because a silhouette needs its
+     edges; a bare field does not. */
+  opacity: 0.38;
+}
+.ascii-band-label {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: rgb(var(--content-subtle));
+}
+
+/* The veil over an artifact preview. Holds the field while the content loads, then
+   wipes off it left to right — so a document arrives the way the rest of this
+   surface reveals things, rather than snapping in over a white flash.
+
+   `clip-path` rather than a transform, because the layer has to stay put while it
+   uncovers: sliding it would drag the field across the content it is revealing. The
+   global reduced-motion block collapses this to its end frame, and `forwards` plus
+   `onAnimationEnd` is what lets the layer unmount either way. */
+.artifact-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background-color: rgb(var(--surface));
+  /* Stated, not left at `none`. An implicit `from` picks up the computed value, and
+     `none` has no interpolation with an `inset()` — so the animation below ran as a
+     discrete flip at the halfway mark instead of a wipe, which looked exactly like
+     the sweep not being implemented. */
+  clip-path: inset(0 0 0 0);
+}
+.artifact-veil-sweep {
+  pointer-events: none;
+  animation: artifact-sweep 360ms var(--ease-inout) forwards;
+}
+@keyframes artifact-sweep {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 100%);
   }
 }
