@@ -15,6 +15,7 @@ import {
 } from '@/lib/api/config';
 import { streamChat, chat } from '@/lib/api/client';
 import {
+  replayThinking,
   toApiMessages,
   toApiOptions,
   type ApiChatMessage,
@@ -749,18 +750,28 @@ export function useChat(conversationId: string | null) {
         // still, correctly, marked `streaming`.
         store.getState().setGenerating(convoId);
         const results = await executeToolCalls(convoId, assistantId, requestedCalls);
+        const assistantSoFar = store
+          .getState()
+          .conversations.find((c) => c.id === convoId)
+          ?.messages.find((m) => m.id === assistantId);
+        const replayedThinking = replayThinking(assistantSoFar?.parts);
         const nextTurns: ApiChatMessage[] = [
           ...(opts?.extraTurns ?? []),
           // The assistant turn that made the requests. Required: a tool result
           // referencing a call the model never sees is rejected by both APIs.
+          //
+          // Its reasoning goes back with it. A DeepSeek-style gateway rejects the
+          // follow-up otherwise ("the `reasoning_content` in the thinking mode must be
+          // passed back"), which meant a thinking model that generated files ended the
+          // turn on a 400 — with the files already written and nothing to show for it.
+          // Anthropic wants the same thing in its own form: signed blocks, or it
+          // refuses to continue an interleaved-thinking turn at all.
           {
             role: 'assistant',
-            content:
-              store
-                .getState()
-                .conversations.find((c) => c.id === convoId)
-                ?.messages.find((m) => m.id === assistantId)?.content ?? '',
+            content: assistantSoFar?.content ?? '',
             toolCalls: requestedCalls,
+            ...(assistantSoFar?.reasoning ? { reasoning: assistantSoFar.reasoning } : {}),
+            ...(replayedThinking.length ? { thinking: replayedThinking } : {}),
           },
           ...results,
         ];

@@ -2,7 +2,7 @@ import 'server-only';
 
 import type { ExecutorFn } from './index';
 import { stripInline, parseMarkdown, type Block } from '@/lib/documents/markdown';
-import { MIME_BY_KIND, EXT_BY_KIND } from '../types';
+import { MIME_BY_KIND, EXT_BY_KIND, textFileExt } from '../types';
 
 /**
  * Flatten one block to plain lines.
@@ -65,17 +65,25 @@ function emitBlock(b: Block, lines: string[], prefix = ''): void {
 const createTxt: ExecutorFn = async (req) => {
   let text = req.content ?? '';
 
+  // A file the model named `style.css` or `script.js` is code, and code is written
+  // verbatim. The markdown test below is heuristic by necessity, and on source it
+  // guesses wrong in the worst way: `a || b` matches the table pattern, so a
+  // JavaScript file was parsed as markdown and reflowed into prose. A recognised code
+  // extension is not ambiguous, so it settles the question before the guessing starts.
+  const verbatim = textFileExt(req.name) !== null;
+
   // Only strip markdown when the content actually has block structure. The old
   // test (`includes('#') || includes('```') || includes('**')`) fired on any
   // plain-text file that merely mentioned a CSS colour, an issue number or a
   // shell comment — and the paragraph branch joins a block's lines with spaces,
   // so "Ticket #42\nStatus: open" came back as one reflowed line.
   const looksMarkdown =
-    /^\s{0,3}#{1,6}\s/m.test(text) ||
-    /^\s*```/m.test(text) ||
-    /^\s{0,3}([-*+]|\d+[.)])\s/m.test(text) ||
-    /^\s{0,3}>\s/m.test(text) ||
-    /\|.*\|/.test(text);
+    !verbatim &&
+    (/^\s{0,3}#{1,6}\s/m.test(text) ||
+      /^\s*```/m.test(text) ||
+      /^\s{0,3}([-*+]|\d+[.)])\s/m.test(text) ||
+      /^\s{0,3}>\s/m.test(text) ||
+      /\|.*\|/.test(text));
 
   if (looksMarkdown) {
     const blocks = parseMarkdown(text);

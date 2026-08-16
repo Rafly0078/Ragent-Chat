@@ -73,6 +73,21 @@ async function chunks(protocol, events) {
 const indexOfStart = (out) => out.findIndex((c) => c.tool_call_start);
 const indexOfCalls = (out) => out.findIndex((c) => c.tool_calls?.length);
 
+/** Capture the body the proxy POSTS upstream, without caring what comes back. */
+async function sentBody(protocol, messages) {
+  let captured;
+  globalThis.fetch = async (_url, init) => {
+    captured = JSON.parse(init.body);
+    return sse([{ choices: [{ delta: { content: 'ok' } }, { finish_reason: 'stop' }] }]);
+  };
+  const res = await providerChat(
+    { provider: 'custom', baseUrl: 'https://example.com/v1', apiKey: 'k', protocol },
+    { model: 'test-model', messages, stream: true },
+  );
+  await res.text();
+  return captured;
+}
+
 console.log('\n1. openai: the name arrives in the first fragment, the arguments trickle');
 {
   // Exactly the shape an OpenAI-compatible gateway streams for one document tool:
@@ -172,6 +187,48 @@ console.log('\n4. no tools, no noise');
     { choices: [{ finish_reason: 'stop' }] },
   ]);
   eq('nothing announced', out.filter((c) => c.tool_call_start).length, 0);
+}
+
+console.log('\n5. the reasoning goes back with the tool call that produced it');
+{
+  // What the gateway rejected the turn over: "[invalid_request_error] The
+  // `reasoning_content` in the thinking mode must be passed back to the API" — after
+  // the files had already been written, so the work was done and thrown away.
+  const body = await sentBody('openai', [
+    { role: 'user', content: 'build me a landing page' },
+    {
+      role: 'assistant',
+      content: '',
+      reasoning: 'three files, start with the markup',
+      toolCalls: [{ id: 'c1', name: 'create_html', arguments: { name: 'index.html' } }],
+    },
+    { role: 'tool', toolCallId: 'c1', content: 'Created "index.html".' },
+  ]);
+
+  const assistant = body.messages.find((m) => m.role === 'assistant');
+  eq(
+    'reasoning_content is echoed',
+    assistant?.reasoning_content,
+    'three files, start with the markup',
+  );
+  eq('the call is still replayed', assistant?.tool_calls?.[0]?.function?.name, 'create_html');
+  eq(
+    'the tool result keeps its id',
+    body.messages.find((m) => m.role === 'tool')?.tool_call_id,
+    'c1',
+  );
+
+  // Nothing new reaches a provider that never streamed reasoning: a strict endpoint
+  // rejecting an unknown message field is a worse failure than the one being fixed.
+  const plain = await sentBody('openai', [
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: 'hello' },
+  ]);
+  eq(
+    'no reasoning, no field',
+    'reasoning_content' in (plain.messages.find((m) => m.role === 'assistant') ?? {}),
+    false,
+  );
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -20,6 +20,18 @@ export interface ApiChatMessage {
   thinking?: { text: string; signature?: string; redacted?: boolean }[];
   /** Tool calls this assistant turn made. Replayed so the model sees its own request. */
   toolCalls?: WireToolCall[];
+  /**
+   * The assistant's reasoning as plain text, echoed back where the provider demands
+   * it: a DeepSeek-style gateway rejects the turn after a tool call with
+   * "[invalid_request_error] The `reasoning_content` in the thinking mode must be
+   * passed back to the API" — which killed every thinking turn that produced a file,
+   * after the files had already been written.
+   *
+   * Separate from `thinking` above because that carries Anthropic's signed blocks and
+   * a signature-less entry there is worse than none. Only serialized when present, so
+   * a provider that never gave us reasoning never gets the field.
+   */
+  reasoning?: string;
   /** On a `tool` message: which call this is the result of. */
   toolCallId?: string;
   /** On a `tool` message: whether the tool failed, so the model can repair. */
@@ -250,14 +262,7 @@ export function toApiMessages(
     // `reasoning` was simply dropped on every subsequent turn — which made
     // multi-turn interleaved thinking impossible rather than merely lossy.
     // Signature-less blocks are skipped: sending one is worse than sending none.
-    const thinking = (m.parts ?? [])
-      .filter((p): p is Extract<MessagePart, { kind: 'thinking' }> => p.kind === 'thinking')
-      .filter((p) => p.signature !== undefined || p.redacted === true)
-      .map((p) => ({
-        text: p.text,
-        ...(p.signature ? { signature: p.signature } : {}),
-        ...(p.redacted ? { redacted: true } : {}),
-      }));
+    const thinking = replayThinking(m.parts);
 
     out.push({
       role: m.role,
@@ -267,6 +272,27 @@ export function toApiMessages(
     });
   }
   return out;
+}
+
+/**
+ * The thinking blocks of a message, in the form a later turn may replay.
+ *
+ * Shared by `toApiMessages` and the tool loop, which both have to hand a finished
+ * assistant turn back to the model — one from history, one from the pass that just
+ * ran. Only signed (or redacted) blocks survive: Anthropic verifies the signature,
+ * and a block without one is rejected rather than ignored.
+ */
+export function replayThinking(
+  parts: MessagePart[] | undefined,
+): NonNullable<ApiChatMessage['thinking']> {
+  return (parts ?? [])
+    .filter((p): p is Extract<MessagePart, { kind: 'thinking' }> => p.kind === 'thinking')
+    .filter((p) => p.signature !== undefined || p.redacted === true)
+    .map((p) => ({
+      text: p.text,
+      ...(p.signature ? { signature: p.signature } : {}),
+      ...(p.redacted ? { redacted: true } : {}),
+    }));
 }
 
 export function toApiOptions(p: GenerationParams): ChatRequest['options'] {

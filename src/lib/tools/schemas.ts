@@ -93,8 +93,18 @@ export const TOOL_SCHEMAS: Partial<Record<ToolName, JsonSchema>> = {
   create_txt: {
     type: 'object',
     properties: {
-      content: { type: 'string', description: 'The plain-text body, verbatim.' },
-      name: NAME,
+      content: { type: 'string', description: 'The file body, verbatim.' },
+      // Spelled out here rather than only in the tool's description, because this is
+      // the property the model fills in: there is no create_css or create_js, so this
+      // is how a stylesheet or a script gets written, and the extension it is given
+      // decides what the file actually is.
+      name: {
+        type: 'string',
+        description:
+          'Filename including extension. For text formats the extension is honoured — ' +
+          '"style.css", "script.js", "config.yml", "deploy.sh" — so use this tool for a ' +
+          'code or config file and name it accordingly. Anything else becomes .txt.',
+      },
       title: TITLE,
     },
     required: ['content'],

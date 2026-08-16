@@ -227,7 +227,61 @@ export const EXT_BY_KIND: Record<ArtifactKind, string> = {
   zip: 'zip',
 };
 
-const KNOWN_EXT = new RegExp(`\\.(${Object.values(EXT_BY_KIND).join('|')})$`, 'i');
+/**
+ * Plain-text file types the generic writer will produce under their own extension.
+ *
+ * There is no `create_css` or `create_js`, and there shouldn't be: a model asked for
+ * a three-file landing page and reached for `create_txt` three times, which is the
+ * right instinct. What was wrong was the result — `style.css` came back as
+ * `style.css.txt` with `text/plain`, unusable as a stylesheet, and JavaScript
+ * containing `a || b` tripped the markdown detector and was reflowed as prose.
+ *
+ * So the extension the model asks for is honoured, and its media type comes from
+ * here. Deliberately a list rather than "keep whatever was typed": the value reaches
+ * a `Content-Type` header and a `data:` URL, and `name` is model output.
+ */
+export const TEXT_FILE_MIME: Record<string, string> = {
+  css: 'text/css; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  cjs: 'text/javascript; charset=utf-8',
+  jsx: 'text/javascript; charset=utf-8',
+  ts: 'text/plain; charset=utf-8',
+  tsx: 'text/plain; charset=utf-8',
+  svg: 'image/svg+xml; charset=utf-8',
+  scss: 'text/plain; charset=utf-8',
+  less: 'text/plain; charset=utf-8',
+  yml: 'text/plain; charset=utf-8',
+  yaml: 'text/plain; charset=utf-8',
+  toml: 'text/plain; charset=utf-8',
+  ini: 'text/plain; charset=utf-8',
+  env: 'text/plain; charset=utf-8',
+  sh: 'text/x-shellscript; charset=utf-8',
+  py: 'text/x-python; charset=utf-8',
+  rb: 'text/plain; charset=utf-8',
+  go: 'text/plain; charset=utf-8',
+  rs: 'text/plain; charset=utf-8',
+  java: 'text/plain; charset=utf-8',
+  sql: 'text/plain; charset=utf-8',
+  tsv: 'text/tab-separated-values; charset=utf-8',
+  log: 'text/plain; charset=utf-8',
+  conf: 'text/plain; charset=utf-8',
+};
+
+/** The recognised text extension a requested filename carries, if any. */
+export function textFileExt(name: string | undefined): string | null {
+  const ext = (name ?? '')
+    .split(/[/\\]/)
+    .pop()
+    ?.match(/\.([a-z0-9]+)$/i)?.[1]
+    ?.toLowerCase();
+  return ext && ext in TEXT_FILE_MIME ? ext : null;
+}
+
+const KNOWN_EXT = new RegExp(
+  `\\.(${[...Object.values(EXT_BY_KIND), ...Object.keys(TEXT_FILE_MIME)].join('|')})$`,
+  'i',
+);
 
 /**
  * Human title for a generated document.
@@ -242,4 +296,28 @@ export function displayTitle(req: Pick<GenerateRequest, 'title' | 'name'>): stri
   if (explicit) return explicit;
   const fromName = req.name?.trim().replace(KNOWN_EXT, '').trim();
   return fromName || 'Document';
+}
+
+/**
+ * Build a safe filename from the model-supplied `name`.
+ *
+ * `name` used to reach the storage key unmodified, so `"../../x/evil"` produced an
+ * object path containing `..`, and control characters and quotes flowed into the DB
+ * row and any Content-Disposition built from it.
+ *
+ * Only a *known* extension is stripped before `ext` is appended — an earlier
+ * `/\.[^.]+$/` also ate real content ("Q1 2024 sales v1.2" → "Q1 2024 sales v1") —
+ * which also makes passing back the extension the name already carried idempotent:
+ * `("style.css", "css")` → `style.css`, not `style.css.css`.
+ */
+export function safeFilename(raw: string | undefined, ext: string): string {
+  const lastSegment = (raw ?? '').split(/[/\\]/).pop() ?? '';
+  const base = lastSegment
+    .replace(/[\x00-\x1F\x7F"*:<>?|]/g, '_')
+    .replace(/^\.+/, '')
+    .replace(KNOWN_EXT, '')
+    .trim()
+    .slice(0, 100)
+    .trim();
+  return `${base || 'document'}.${ext}`;
 }

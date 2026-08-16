@@ -398,11 +398,25 @@ function openAiBody(connection: ProviderConnection, request: ChatRequest): Recor
       return {
         role: 'assistant' as const,
         content: message.content || null,
+        // A DeepSeek-style gateway rejects this turn outright without the reasoning
+        // it produced alongside the call ("The `reasoning_content` in the thinking
+        // mode must be passed back to the API"), which failed every thinking turn
+        // that generated a file — after the file had been written. Only sent when
+        // the provider actually gave us reasoning, so nothing new reaches an
+        // endpoint that never streamed any.
+        ...(message.reasoning ? { reasoning_content: message.reasoning } : {}),
         tool_calls: message.toolCalls.map((call) => ({
           id: call.id,
           type: 'function' as const,
           function: { name: call.name, arguments: JSON.stringify(call.arguments) },
         })),
+      };
+    }
+    if (message.reasoning && message.role === 'assistant') {
+      return {
+        role: 'assistant' as const,
+        content: message.content,
+        reasoning_content: message.reasoning,
       };
     }
     if (!message.images?.length) return { role: message.role, content: message.content };

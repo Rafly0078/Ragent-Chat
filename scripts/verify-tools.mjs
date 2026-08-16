@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '');
 const require = createRequire(pathToFileURL(`${ROOT}/package.json`).href);
 const jiti = require('jiti')(`${ROOT}/verify.js`, {
-  alias: { '@': `${ROOT}/src` },
+  alias: { '@': `${ROOT}/src`, 'server-only': `${ROOT}/scripts/_empty-module.cjs` },
   interopDefault: true,
   esmResolve: true,
 });
@@ -22,6 +22,8 @@ const { findFences } = jiti(`${ROOT}/src/lib/tools/fences.ts`);
 const { validateGenerateRequest } = jiti(`${ROOT}/src/lib/tools/validate.ts`);
 const { toolDefinitions } = jiti(`${ROOT}/src/lib/tools/schemas.ts`);
 const { TOOLS, writesFile } = jiti(`${ROOT}/src/lib/tools/registry.ts`);
+const { TEXT_FILE_MIME, textFileExt, safeFilename } = jiti(`${ROOT}/src/lib/tools/types.ts`);
+const createTxt = jiti(`${ROOT}/src/lib/tools/executors/txt.ts`);
 const { toApiMessages, ATTACHMENT_INLINE_LIMIT } = jiti(`${ROOT}/src/lib/api/types.ts`);
 
 let pass = 0;
@@ -427,6 +429,52 @@ console.log('\n12. which calls end in a file (drives the GENERATING mark)');
     TOOLS.filter((t) => writesFile(t.name) === (t.category === 'parse')).length,
     0,
   );
+}
+
+console.log('\n13. the generic text writer keeps the extension it was given');
+{
+  // A three-file landing page comes back as three create_txt calls, because there is
+  // no create_css or create_js. `style.css.txt` served as text/plain is not a
+  // stylesheet, so the requested extension decides the file's type.
+  eq('css is recognised', textFileExt('style.css'), 'css');
+  eq('js is recognised', textFileExt('assets/script.js'), 'js');
+  eq('a path is reduced to its last segment', textFileExt('../../etc/init.sh'), 'sh');
+  eq('no extension means the default', textFileExt('index'), null);
+  eq('a document extension is not a text one', textFileExt('report.pdf'), null);
+  eq('an unknown extension is refused', textFileExt('payload.exe'), null);
+  eq(
+    'every recognised extension has a media type',
+    Object.keys(TEXT_FILE_MIME).every((k) => !!TEXT_FILE_MIME[k]),
+    true,
+  );
+  eq('css maps to a stylesheet type', TEXT_FILE_MIME.css.startsWith('text/css'), true);
+
+  // The reflow that made this urgent: `a || b` matches the markdown table pattern,
+  // so a JavaScript file was parsed as prose and rewritten.
+  const js = 'const ok = a || b;\n\n#main {\n  - not a list\n}\n';
+  const asCode = await createTxt({ tool: 'create_txt', name: 'script.js', content: js });
+  eq('code is written byte for byte', asCode.buffer.toString('utf-8'), js);
+
+  const doc = '# Title\n\nSome prose.\n\n- one\n- two\n';
+  const asDoc = await createTxt({ tool: 'create_txt', name: 'notes', content: doc });
+  eq('a document is still flattened', asDoc.buffer.toString('utf-8').includes('TITLE'), true);
+
+  // What produced `style.css.txt`: the extension was not on the strip list, so it
+  // survived into the base and `.txt` was appended after it.
+  eq('the kept extension is not doubled', safeFilename('style.css', 'css'), 'style.css');
+  eq('a bare name still gets one', safeFilename('index', 'txt'), 'index.txt');
+  eq(
+    'a document extension is replaced, not stacked',
+    safeFilename('report.md', 'pdf'),
+    'report.pdf',
+  );
+  eq(
+    'traversal cannot reach the storage key',
+    safeFilename('../../etc/passwd', 'txt'),
+    'passwd.txt',
+  );
+  eq('control characters are neutralised', safeFilename('a b"c.js', 'js'), 'a_b_c.js');
+  eq('an empty name has a fallback', safeFilename('   ', 'txt'), 'document.txt');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import { getExecutor, isTextOutput } from '@/lib/tools/executors';
 import { sourceMetadata } from '@/lib/tools/executors/edit-artifact';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { EXT_BY_KIND, type Artifact, type ToolName } from '@/lib/tools/types';
+import {
+  EXT_BY_KIND,
+  TEXT_FILE_MIME,
+  safeFilename,
+  textFileExt,
+  type Artifact,
+  type ToolName,
+} from '@/lib/tools/types';
 import { uid } from '@/lib/utils/id';
 import { getTool } from '@/lib/tools/registry';
 import { validateGenerateRequest } from '@/lib/tools/validate';
@@ -28,29 +35,6 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024;
  * ~5MB quota and killed persistence for the whole session.
  */
 const MAX_INLINE_BYTES = 1_200_000;
-
-const KNOWN_EXT = new RegExp(`\\.(${Object.values(EXT_BY_KIND).join('|')})$`, 'i');
-
-/**
- * Build a safe filename from the model-supplied `name`.
- *
- * `name` reached the storage key unmodified, so `"../../x/evil"` produced an
- * object path containing `..`, and control characters / quotes flowed into the
- * DB row and any Content-Disposition built from it. Only a *known* artifact
- * extension is stripped — the old `/\.[^.]+$/` also ate real content
- * ("Q1 2024 sales v1.2" → "Q1 2024 sales v1").
- */
-function safeFilename(raw: string | undefined, ext: string): string {
-  const lastSegment = (raw ?? '').split(/[/\\]/).pop() ?? '';
-  const base = lastSegment
-    .replace(/[\x00-\x1F\x7F"*:<>?|]/g, '_')
-    .replace(/^\.+/, '')
-    .replace(KNOWN_EXT, '')
-    .trim()
-    .slice(0, 100)
-    .trim();
-  return `${base || 'document'}.${ext}`;
-}
 
 /**
  * POST /api/tools/execute — Execute a tool (generate a document).
@@ -119,11 +103,17 @@ export async function POST(request: Request): Promise<Response> {
     }
 
     const artifactId = uid();
-    const ext = result.ext;
+    // A generic text file keeps the extension the model asked for: `create_txt` is
+    // the only writer for a stylesheet or a script, and returning `style.css.txt`
+    // as `text/plain` made those files useless for the thing they were asked for.
+    // Other kinds ignore the request — a PDF is a PDF whatever the name claims.
+    const keptExt = result.ext === EXT_BY_KIND.txt ? textFileExt(body.name ?? body.title) : null;
+    const ext = keptExt ?? result.ext;
     // `filename`/`version` may be overridden by the executor: `edit_artifact`
     // produces revision N+1 of an existing document and keeps its name, neither
     // of which the model supplied.
     const filename = result.filename ?? safeFilename(body.name ?? body.title, ext);
+    const mime = keptExt ? TEXT_FILE_MIME[keptExt]! : result.mime;
     const version = result.version ?? 1;
     const storagePath = `${userId}/${artifactId}/${filename}`;
 
@@ -131,7 +121,7 @@ export async function POST(request: Request): Promise<Response> {
       id: artifactId,
       kind: result.kind,
       name: filename,
-      mimeType: result.mime,
+      mimeType: mime,
       size: result.buffer.length,
       version,
       createdAt: Date.now(),
@@ -146,7 +136,7 @@ export async function POST(request: Request): Promise<Response> {
       const { error: uploadErr } = await supabase.storage
         .from(bucket)
         .upload(storagePath, result.buffer, {
-          contentType: result.mime,
+          contentType: mime,
           upsert: false,
         });
 
@@ -201,7 +191,7 @@ export async function POST(request: Request): Promise<Response> {
           user_id: userId,
           kind: result.kind,
           name: filename,
-          mime_type: result.mime,
+          mime_type: mime,
           size_bytes: result.buffer.length,
           bucket,
           storage_path: storagePath,
@@ -276,7 +266,7 @@ export async function POST(request: Request): Promise<Response> {
           { status: 413 },
         );
       }
-      artifact.url = `data:${result.mime};base64,${result.buffer.toString('base64')}`;
+      artifact.url = `data:${mime};base64,${result.buffer.toString('base64')}`;
     }
 
     return NextResponse.json({ artifact }, { status: 200 });

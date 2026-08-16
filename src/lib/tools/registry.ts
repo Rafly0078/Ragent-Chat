@@ -83,7 +83,10 @@ export const TOOLS: ToolMeta[] = [
   {
     name: 'create_txt',
     label: 'Text',
-    description: 'Generate a plain-text file.',
+    description:
+      'Generate a plain-text file. Also the writer for code and config — name it ' +
+      '"style.css", "script.js", "config.yml" and the extension is kept, so a ' +
+      'multi-file website is this tool called once per file.',
     category: 'document',
     produces: 'txt',
     server: true,
