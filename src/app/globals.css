@@ -1249,30 +1249,42 @@ h4 {
   color: rgb(var(--content-subtle));
 }
 
-/* The ASCII flow, and the word for what it is doing. Side by side rather than
-   stacked: a transcript is scarce vertically, and the label reads as a caption
-   to the mark either way. */
-.thinking-field {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+/* The word THINKING, filled with the flow field.
+   
+   The mask is the wordmark's own silhouette (public/thinking-mask.png, cropped to
+   its ink and flattened to a hard alpha, 9 KB). Doing it here rather than on the
+   canvas is what keeps the letter edges crisp: the browser scales the raster at
+   native device resolution and composites it on the GPU, where a per-cell test
+   would have had to choose between whole glyphs and whole letters and a
+   three-cell stroke cannot afford either.
+
+   `aspect-ratio` is the asset's, so the letters are never stretched, and the width
+   is the column's — the flow only resolves as flow while a stroke is ~3 glyph
+   cells across, which at 12:1 means the word has to be as wide as it can get. */
+.thinking-mark {
+  display: block;
+  width: 100%;
+  max-width: 46rem;
 }
 .thinking-canvas {
   display: block;
-  flex: none;
-  width: 84px;
-  height: 84px;
+  width: 100%;
+  aspect-ratio: 1536 / 127;
+  mask-image: url('/thinking-mask.png');
+  mask-size: 100% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-image: url('/thinking-mask.png');
+  -webkit-mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
 }
-@media (min-width: 640px) {
-  .thinking-canvas {
-    width: 104px;
-    height: 104px;
-  }
-}
-.thinking-label {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.14em;
+
+/* Before the first part of a turn arrives there is nothing to call thinking — the
+   model may not even have thinking enabled — so this is the neutral one: the same
+   block caret the composer and the landing use, on its own. */
+.thinking-wait {
+  display: inline-flex;
+  align-items: center;
+  height: 1.5rem;
   color: rgb(var(--content-muted));
 }
 

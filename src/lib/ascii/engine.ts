@@ -11,9 +11,11 @@
  * All of that lives here. A preset supplies only the maths: what character, if
  * any, belongs in a cell at a moment in time.
  *
- * The two presets are different enough in kind that this seam is worth it — one
- * is a radial density ramp, the other a directional vector field with a clip —
- * and they still agree on every line of the machinery.
+ * The two presets are different enough in kind that this seam is worth it — one is
+ * a radial density ramp, the other a directional vector field — and they still agree
+ * on every line of the machinery. Silhouettes are deliberately not part of it: the
+ * one preset that has a logo mask is masked in CSS, where the browser scales and
+ * composites a raster at native resolution for free.
  */
 
 /** The grid a preset is sampled on. Rebuilt on every resize. Sizes are CSS px. */
@@ -37,6 +39,11 @@ export interface AsciiPreset {
    *  used, so the absolute scale is this renderer's to choose — and the choice is
    *  per preset: `size: 1.65` and `size: 0.6` are three octaves apart. */
   baseFontPx?: number;
+  /** Overrides the glyph size entirely, from the box the canvas actually got.
+   *  For a preset whose silhouette has thin features, one fixed size means the
+   *  features dissolve on a narrow screen: the glyph has to shrink with the box so
+   *  the same number of cells keeps spanning them. Called on every measure. */
+  fontPxFor?(width: number, height: number): number;
   /** Row pitch as a multiple of the glyph size. Defaults to LINE_RATIO.
    *  A preset that shades by glyph *direction* wants squarer cells than one that
    *  shades by weight, or its diagonals read as tally marks rather than as lines. */
@@ -51,11 +58,6 @@ export interface AsciiPreset {
   row?(row: number, grid: AsciiGrid, phase: number): void;
   /** The glyph for one cell. '' or ' ' leaves it blank. */
   cell(col: number, row: number, grid: AsciiGrid, phase: number): string;
-  /** Clips the glyph pass, for a preset whose file sets `logoMask: true`. Returns
-   *  undefined when that flag is off, which is how the flag is honoured. */
-  clip?(grid: AsciiGrid): Path2D | undefined;
-  /** Drawn after the glyphs and outside the clip, so it can stroke the boundary. */
-  overlay?(ctx: CanvasRenderingContext2D, grid: AsciiGrid, phase: number): void;
 }
 
 /** What `fontScale` multiplies when a preset does not name its own base. */
@@ -82,7 +84,8 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
   const ctx = canvas.getContext('2d');
   if (!ctx) return () => {};
 
-  const fontPx = Math.max(6, Math.round((preset.baseFontPx ?? BASE_FONT_PX) * preset.fontScale));
+  const fixedFontPx = Math.round((preset.baseFontPx ?? BASE_FONT_PX) * preset.fontScale);
+  let fontPx = fixedFontPx;
 
   // One static frame instead of a loop. The reduced-motion block in globals.css
   // can only reach CSS animation; a canvas has to opt in itself.
@@ -97,7 +100,6 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
 
   const grid: AsciiGrid = { width: 0, height: 0, cols: 0, rows: 0, cellW: 0, cellH: 0 };
 
-  let clipPath: Path2D | undefined;
   let raf = 0;
   let lastFrame = 0;
   let originAt = 0;
@@ -111,6 +113,10 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
     grid.height = Math.max(1, Math.round(rect.height));
     canvas.width = Math.round(grid.width * dpr);
     canvas.height = Math.round(grid.height * dpr);
+    // After the rect, because a preset is allowed to size its glyphs from it. The
+    // floor is 4 rather than 6: a preset that supersamples (see `minDpr`) draws a
+    // 5px glyph at 10 device pixels, which resolves perfectly well.
+    fontPx = Math.max(4, Math.round(preset.fontPxFor?.(grid.width, grid.height) ?? fixedFontPx));
     // Sizing the backing store resets every context property, so the transform,
     // the font, the baseline and the fill belong here rather than once at startup.
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -124,19 +130,11 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
     grid.cellH = fontPx * (preset.lineRatio ?? LINE_RATIO);
     grid.cols = Math.ceil(grid.width / grid.cellW);
     grid.rows = Math.ceil(grid.height / grid.cellH);
-    // Built once per layout rather than once per frame: the path only depends on
-    // the grid, and a Path2D allocation 30 times a second is pure garbage.
-    clipPath = preset.clip?.(grid);
   };
 
   const draw = (seconds: number) => {
     const phase = seconds * preset.rate;
     ctx.clearRect(0, 0, grid.width, grid.height);
-
-    if (clipPath) {
-      ctx.save();
-      ctx.clip(clipPath);
-    }
 
     for (let r = 0; r < grid.rows; r++) {
       preset.row?.(r, grid, phase);
@@ -161,9 +159,6 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
       }
       if (run) ctx.fillText(run, runAt * grid.cellW, y);
     }
-
-    if (clipPath) ctx.restore();
-    preset.overlay?.(ctx, grid, phase);
   };
 
   const frame = (now: number) => {

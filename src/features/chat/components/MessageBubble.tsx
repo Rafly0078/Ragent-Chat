@@ -363,14 +363,16 @@ function MessageBody({ message }: { message: Message }) {
   const parts = message.parts;
   const lastPart = parts?.[parts.length - 1];
 
-  // The live states the ASCII field covers, both derived from what already
-  // exists on the message. `working` is everything before the first text token;
-  // `openThinking` narrows it to "a thinking block is streaming right now",
-  // which is the only case where the honest word is "thinking" — the indicator
-  // this replaces said it either way.
+  // Two live states, both derived from what already exists on the message.
+  // `working` is everything before the first text token; `openThinking` narrows it
+  // to "a thinking block is streaming right now".
+  //
+  // Only the second one gets the THINKING wordmark, because only there is the word
+  // true: before the first part arrives the model may not even have thinking
+  // enabled, and the indicator this replaces claimed it either way. That case gets
+  // a bare caret — the same one the composer and the landing use.
   const working = streaming && lastPart?.kind !== 'text';
   const openThinking = working && lastPart?.kind === 'thinking' && lastPart.endedAt === undefined;
-  const fieldLabel = openThinking ? (effort === 'max' ? 'thinking harder' : 'thinking') : 'working';
 
   if (!parts?.length) {
     return (
@@ -388,9 +390,7 @@ function MessageBody({ message }: { message: Message }) {
             <Markdown content={message.content} streaming={streaming} />
           </div>
         ) : streaming ? (
-          <div className="mt-3">
-            <ThinkingField label={message.reasoning ? 'thinking' : 'working'} />
-          </div>
+          <Working thinking={Boolean(message.reasoning)} />
         ) : null}
       </>
     );
@@ -437,12 +437,28 @@ function MessageBody({ message }: { message: Message }) {
       })}
       {/* Below the live panel rather than above it: with interleaved thinking,
           "above" would put the field over an answer already delivered. */}
-      {working && (
-        <div className="mt-3">
-          <ThinkingField label={fieldLabel} />
-        </div>
-      )}
+      {working && <Working thinking={openThinking} />}
     </>
+  );
+}
+
+/**
+ * The gap between a turn starting and its first token of prose.
+ *
+ * `thinking` is the narrow claim — a thinking block is streaming right now — and
+ * it is the only thing that earns the wordmark. Everything else is a caret.
+ */
+function Working({ thinking }: { thinking: boolean }) {
+  return (
+    <div className="mt-4">
+      {thinking ? (
+        <ThinkingField />
+      ) : (
+        <span role="status" aria-label="Working" className="thinking-wait">
+          <span aria-hidden className="term-caret animate-caret-blink" />
+        </span>
+      )}
+    </div>
   );
 }
 

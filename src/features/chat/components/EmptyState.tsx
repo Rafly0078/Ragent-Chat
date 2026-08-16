@@ -38,10 +38,7 @@ export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
         at.
       </p>
 
-      <ul
-        className="enter mt-9 border-t border-border/15"
-        style={{ animationDelay: '200ms' }}
-      >
+      <ul className="enter mt-9 border-t border-border/15" style={{ animationDelay: '200ms' }}>
         {PROMPT_SUGGESTIONS.map((s, i) => (
           <li key={s.title}>
             <button

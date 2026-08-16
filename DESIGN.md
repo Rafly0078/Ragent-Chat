@@ -16,17 +16,18 @@ motion. Product proof comes from real chat surfaces, not decorative dashboards.
 
 ## Type
 
-- Display: Unbounded. Hero headlines, product name, major statements.
-- Interface: Inter. Navigation, body, controls, message copy, settings.
-- Mono: JetBrains Mono. Model names, code, technical metadata.
+Two families. Unbounded is gone: it was the display face for a wordmark and two
+headings, and both terminal surfaces set their display type in mono instead.
 
-Do not use Inter for hero-scale display. Keep display headlines under three lines
-at common desktop widths.
+- Interface: Inter. Prose, message copy, settings, controls.
+- Mono: JetBrains Mono. Display type, rails, labels, model names, code, and
+  anything the user typed.
 
-The landing page is the one exception: it is a terminal surface, and its display
-type is JetBrains Mono at negative tracking. Unbounded over an ASCII wave reads
-as two unrelated pages. Prose there is still Inter — mono is for the headline,
-the rails and the buttons, not for the sentence a visitor actually reads.
+On `/` and `/chat` the split is a rule, not a preference: mono is what the machine
+and the operator say, Inter is what is being read. So the headline, the rails, the
+buttons, the sidebar and your own echoed prompt are mono; the model's answer and
+the one lede paragraph are Inter. Keep display headlines under three lines at
+common desktop widths.
 
 ## Palette
 
@@ -41,15 +42,23 @@ Color creates hierarchy through tonal contrast, borders, and shadows. No purple,
 blue, rainbow, neon, or decorative gradients. State colors remain reserved for
 success, warning, and error feedback.
 
-Two scoped inversions re-point the same tokens rather than introducing colours:
-`.paper` (ink on warm white) and `.terminal-field` (white on `#101111`, the
-landing page only, taken from the ASCII preset it sits behind).
+One scoped inversion re-points the same tokens rather than introducing colours:
+`.terminal-field`, white on `#101111`, taken from the ASCII preset it sits behind.
+It carries `/` and `/chat`; `/settings` and the document exports stay on paper.
+Inside that scope the radius scale flattens to 2-4px, which is what makes the
+shared primitives — `.popover`, `.input`, the `.btn` scale, the modal, the toast —
+come out square without a second definition. Syntax highlighting is re-mapped onto
+the three content tiers there too: hue is not a signal in this product, so code is
+scanned by weight and brightness.
 
 ## Shape and elevation
 
-- Radius scale: 4 / 6 / 10 / 14 / 20 / 28px.
-- Cards: one framed surface, no cards inside cards beyond a purposeful well.
-- Shadows: tinted graphite, low opacity, short travel.
+- Radius scale: 4 / 6 / 10 / 14 / 20 / 28px on paper, flattened to 2 / 3 / 4px
+  inside `.terminal-field`.
+- Cards: one framed surface, no cards inside cards beyond a purposeful well. On
+  the terminal there are no cards at all — a hairline and a label do that work.
+- Shadows: tinted graphite, low opacity, short travel. They carry nothing on a
+  near-black field, so the terminal surfaces lean on borders instead.
 - Functional borders: stronger than decorative rules.
 
 ## Layout
@@ -64,6 +73,10 @@ landing page only, taken from the ASCII preset it sits behind).
   composition stops being possible and clipping would hide the only action.
 - Landing composition stays left-led and asymmetric: type in the left column,
   the ASCII field lit on the right.
+- The chat transcript has no bubbles. A turn is a labelled band — speaker, a
+  hairline across the rest of the column, the time — and the body runs the full
+  measure, so code, tables and generated documents are not paying for a border.
+  Your own turn is echoed behind a `>`; the model's is bare.
 
 ## Motion
 
@@ -72,8 +85,13 @@ landing page only, taken from the ASCII preset it sits behind).
 - Interactive motion uses the shared spring easing tokens.
 - Streaming state remains visible and cancellable.
 - Respect `prefers-reduced-motion`, including animation delays. A canvas has to
-  opt in itself: the landing field draws one static frame under it, and the
+  opt in itself: both ASCII fields draw one static frame under it, and the
   rotating headline does not rotate at all.
+- Thinking is shown, not spun. The chat's thinking state is the word THINKING at
+  the reading column's full width, masked out of a flowing ASCII field driven by
+  the same preset format as the landing. It appears only while a thinking block is
+  actually streaming; before the first token there is just a caret, because the
+  model may not have thinking enabled at all.
 
 ## Accessibility floor
 
@@ -91,6 +109,13 @@ landing page only, taken from the ASCII preset it sits behind).
 - No emoji or raster UI icons.
 
 ## Last updated
+
+2026-08-16 - /chat rebuilt on the same terminal scope: labelled full-width turns
+with no bubbles, a framed input dock, mono chrome, monochrome syntax highlighting,
+and the THINKING wordmark filled with an ASCII flow field for the thinking state
+(`public/thinking-mask.png`, applied as a `mask-image`). Unbounded dropped; `.paper`,
+`.badge`, `.status-dot`, `.card`, `.lift` and the max-effort reasoning animations
+removed with their last call sites. No logic changed.
 
 2026-08-16 - landing page rebuilt from scratch as a single non-scrolling terminal
 screen: scoped `.terminal-field` palette, mono display type, an ASCII ripple
