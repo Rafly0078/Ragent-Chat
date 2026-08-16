@@ -36,9 +36,9 @@ const RAIL_ON_PHONE = 3;
  * height, because at that point the one-screen composition is no longer
  * possible and clipping would hide the only action on the page.
  *
- * `.terminal-field` re-points the palette tokens at a near-black field, the same
- * way `.paper` does for the inverted panels elsewhere. Everything inside
- * re-grounds on its own because components read `rgb(var(--content))` and
+ * `.terminal-field` re-points the palette tokens at a near-black field, and
+ * everything inside re-grounds on its own because components read
+ * `rgb(var(--content))` and
  * `--border` rather than literals — including `Kbd`, which is borrowed from the
  * chat UI and needs no dark variant.
  *

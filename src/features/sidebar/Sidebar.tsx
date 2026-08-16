@@ -106,12 +106,14 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 
   const content = (
     <div className="flex h-full flex-col">
-      {/* Header — logo, wordmark, and on mobile the close affordance. */}
-      <div className="flex items-center gap-2.5 px-4 pb-3.5 pt-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md border border-accent/25 bg-accent/10 text-accent">
-          <BrandMark className="h-5 w-5" />
-        </div>
-        <span className="type-brand flex-1 text-[1.05rem] leading-none text-content">Ragent</span>
+      {/* Header — the mark, the wordmark, and on mobile the close affordance. The
+          mark is bare now: a tinted rounded tile around it was the one piece of
+          chrome on this surface that existed only to hold a logo. */}
+      <div className="flex items-center gap-2.5 px-[var(--term-gutter)] pb-3 pt-4">
+        <BrandMark className="h-[1.15rem] w-[1.15rem] shrink-0 text-content" />
+        <span className="flex-1 font-mono text-[0.82rem] tracking-[0.14em] text-content">
+          ragent
+        </span>
         {isMobile && (
           <button
             onClick={onClose}
@@ -123,31 +125,37 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
         )}
       </div>
 
-      {/* The sidebar's single accented action. */}
-      <div className="px-4">
-        <button onClick={onNewChat} className="btn-primary btn-lg w-full">
-          <Plus className="h-4 w-4" /> New chat
+      {/* The sidebar's single action. Bordered rather than filled: a full-width
+          inverse-video bar was the brightest thing on the screen, above the
+          transcript it exists to add to. It inverts on hover, which is how the
+          rest of this surface says "this one". */}
+      <div className="px-[var(--term-gutter)]">
+        <button
+          onClick={onNewChat}
+          className="term-btn term-btn-ghost focus-ring h-10 w-full justify-start"
+        >
+          <Plus className="h-4 w-4" /> new chat
         </button>
       </div>
 
       {/* Search. The chip advertises the shortcut that actually focuses this
           field (Ctrl/Cmd+F in use-keyboard-shortcuts) — it hides while typing so
           it never sits under the clear button. */}
-      <div className="px-4 pb-2 pt-3.5">
+      <div className="px-[var(--term-gutter)] pb-2 pt-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-content-subtle" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-subtle" />
           <input
             id="sidebar-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search chats…"
+            placeholder="search"
             aria-label="Search conversations"
-            className="input h-9 pl-9 pr-14 text-sm"
+            className="input h-9 pl-8 pr-14 font-mono text-[0.8rem]"
           />
           {query ? (
             <button
               onClick={() => setQuery('')}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-content-subtle transition-colors duration-fast hover:text-content"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-1 text-content-subtle transition-colors duration-fast hover:text-content"
               aria-label="Clear search"
             >
               <X className="h-3.5 w-3.5" />
@@ -166,14 +174,14 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
             first client render, so rendering this straight from persisted state
             produced a server/client mismatch in guest-only deployments. */}
         {hydrated && rows.length === 0 && (
-          <p className="px-3 py-8 text-center text-sm text-content-subtle">
-            No conversations yet. Start a new chat to begin.
+          <p className="px-3 py-8 font-mono text-xs leading-6 text-content-subtle">
+            no conversations yet.
+            <br />
+            start one above.
           </p>
         )}
         {hydrated && rows.length > 0 && pinned.length === 0 && groups.length === 0 && (
-          <p className="px-3 py-8 text-center text-sm text-content-subtle">
-            No chats match “{query}”.
-          </p>
+          <p className="px-3 py-8 font-mono text-xs text-content-subtle">no match for “{query}”</p>
         )}
 
         {pinned.length > 0 && (
@@ -206,13 +214,17 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="border-border/12 border-t px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <Link href="/settings" className="btn-ghost btn-md w-full justify-start gap-2.5">
-          <Settings2 className="h-4 w-4" /> Settings
+      {/* Footer. The default-model line is the sidebar's status rail: the same
+          mono micro-caps the top bar and the composer report state in. */}
+      <div className="border-border/12 border-t px-[var(--term-gutter)] pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5">
+        <Link
+          href="/settings"
+          className="term-btn term-btn-ghost focus-ring h-9 w-full justify-start border-transparent px-2"
+        >
+          <Settings2 className="h-4 w-4" /> settings
         </Link>
-        <p className="type-label mt-2 truncate px-2 text-content-subtle">
-          {defaultModel ? `Default: ${defaultModel}` : 'Private by design'}
+        <p className="mt-2 truncate px-2 font-mono text-[0.64rem] uppercase tracking-[0.12em] text-content-subtle">
+          {defaultModel ? `default · ${defaultModel}` : 'private by design'}
         </p>
       </div>
     </div>
@@ -290,7 +302,9 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-2">
-      <p className="type-label px-3 pb-1.5 pt-2.5 text-content-subtle">{title}</p>
+      <p className="px-2 pb-1.5 pt-3 font-mono text-[0.62rem] uppercase tracking-[0.16em] text-content-subtle">
+        {title}
+      </p>
       <div className="space-y-px">{children}</div>
     </div>
   );

@@ -261,7 +261,9 @@ export function ChatInput({
               >
                 <Command className="h-4 w-4 text-accent" />
                 <span className="font-mono text-sm text-content">{c.command}</span>
-                <span className="truncate text-xs text-content-muted">{c.description}</span>
+                <span className="truncate font-mono text-xs text-content-subtle">
+                  {c.description}
+                </span>
               </button>
             ))}
           </m.div>
@@ -274,16 +276,13 @@ export function ChatInput({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          /* The dock is where the light lands: a raised block that warms and
-             glows as soon as focus enters it. That glow is spent in exactly two
-             places in the product — here and on the hovered primary button — so
-             "the thing you type into" is always the brightest surface on screen.
-             The old dock was a 2px full-opacity white rule, which read as a
-             wireframe rather than a surface. */
-          'border-border/22 relative rounded-xl border bg-surface-raised p-2 shadow-raised',
-          'transition-[border-color,box-shadow] duration-base ease-out',
-          'focus-within:border-accent/55 focus-within:shadow-glow',
-          dragging && 'border-accent/70 shadow-glow',
+          /* A framed input, not a raised card. One hairline that brightens when
+             focus enters it — the glow this replaces was a warm-lamp device, and
+             on a near-black field a 34px shadow reads as smudge while the border
+             does the work. Square, because the whole surface is. */
+          'relative border border-border/25 bg-surface-raised p-1.5',
+          'transition-colors duration-base ease-out focus-within:border-accent/60',
+          dragging && 'border-accent/70',
         )}
       >
         {/* Drag overlay */}
@@ -293,9 +292,11 @@ export function ChatInput({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="bg-accent/12 absolute inset-0 z-10 flex items-center justify-center rounded-xl backdrop-blur-[2px]"
+              className="absolute inset-0 z-10 flex items-center justify-center bg-surface/80 backdrop-blur-[2px]"
             >
-              <p className="type-label text-accent">Drop files to attach</p>
+              <p className="font-mono text-[0.7rem] uppercase tracking-[0.14em] text-content">
+                drop to attach
+              </p>
             </m.div>
           )}
         </AnimatePresence>
@@ -308,7 +309,7 @@ export function ChatInput({
               return (
                 <div
                   key={a.id}
-                  className="group/att relative flex items-center gap-2 rounded-lg border border-border/20 bg-border/5 py-1 pl-1 pr-2 text-xs"
+                  className="group/att relative flex items-center gap-2 rounded-sm border border-border/20 bg-border/5 py-1 pl-1 pr-2 font-mono text-xs"
                 >
                   {preview ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -344,8 +345,9 @@ export function ChatInput({
                 aria-expanded={menuOpen}
                 className={cn(
                   'focus-ring relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-fast disabled:opacity-40',
+                  // Inverse video for "on", the way a terminal marks a selection.
                   menuOpen
-                    ? 'bg-accent/15 text-accent'
+                    ? 'bg-accent text-accent-fg'
                     : 'text-content-muted hover:bg-border/10 hover:text-content',
                 )}
               >
@@ -459,24 +461,35 @@ export function ChatInput({
             }}
           />
 
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={onKeyDown}
-            onPaste={onPaste}
-            disabled={disabled}
-            rows={1}
-            placeholder={disabled ? 'Select model to start' : 'Message...'}
-            aria-label="Message input"
-            // The cap lives in one place. The autosize effect clamps
-            // `scrollHeight` to MAX_TEXTAREA_PX, and the element needs the same
-            // ceiling in CSS so the box scrolls instead of growing — a literal
-            // `max-h-[220px]` here meant editing the constant silently left the
-            // two disagreeing.
-            style={{ maxHeight: MAX_TEXTAREA_PX }}
-            className="scrollbar-thin composer-field flex-1 resize-none bg-transparent px-1 py-2.5 leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
-          />
+          {/* The prompt sigil, aligned to the first line rather than to the box,
+              so it stays put as the field grows. Same `>` the transcript echoes
+              your turn behind. */}
+          <div className="flex min-w-0 flex-1 items-start gap-1.5 self-stretch">
+            <span
+              aria-hidden
+              className="term-prompt select-none py-2.5 font-mono text-[0.9rem] leading-6"
+            >
+              &gt;
+            </span>
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              onKeyDown={onKeyDown}
+              onPaste={onPaste}
+              disabled={disabled}
+              rows={1}
+              placeholder={disabled ? 'select a model to start' : 'message'}
+              aria-label="Message input"
+              // The cap lives in one place. The autosize effect clamps
+              // `scrollHeight` to MAX_TEXTAREA_PX, and the element needs the same
+              // ceiling in CSS so the box scrolls instead of growing — a literal
+              // `max-h-[220px]` here meant editing the constant silently left the
+              // two disagreeing.
+              style={{ maxHeight: MAX_TEXTAREA_PX }}
+              className="scrollbar-thin composer-field w-full flex-1 resize-none bg-transparent py-2.5 leading-6 text-content outline-none placeholder:text-content-subtle disabled:opacity-50"
+            />
+          </div>
 
           {/* Thinking toggle + effort selector */}
           <div ref={effortRef} className="relative shrink-0">
@@ -505,7 +518,7 @@ export function ChatInput({
                 className={cn(
                   'focus-ring relative flex h-11 w-11 items-center justify-center rounded-md transition-colors duration-fast disabled:cursor-not-allowed disabled:opacity-40',
                   thinking.enabled
-                    ? 'bg-accent/15 text-accent'
+                    ? 'bg-accent text-accent-fg'
                     : 'text-content-muted hover:bg-border/10 hover:text-content',
                 )}
               >
@@ -588,28 +601,27 @@ export function ChatInput({
         </div>
       </div>
 
-      {/* Composer metadata. Mono caps, because this is chrome reporting state —
-          as a sentence in body type, "Text model" read as a stray caption. */}
-      <div className="mt-2 flex items-center justify-between gap-3 px-1">
-        <span className="flex min-w-0 items-center gap-2">
+      {/* Composer status line. Mono, lowercase, one row — the same rail language
+          the top bar and the landing use, because this is chrome reporting state
+          rather than a caption. */}
+      <div className="mt-2 flex items-center justify-between gap-3 font-mono text-[0.66rem] uppercase tracking-[0.12em]">
+        <span className="flex min-w-0 items-center gap-2.5">
           {searchMode !== 'off' && (
-            <span className="type-label inline-flex items-center gap-1.5 text-accent">
-              <Globe className="h-3 w-3" /> Web · {searchMode}
+            <span className="inline-flex items-center gap-1.5 text-content-muted">
+              <Globe className="h-3 w-3" /> web/{searchMode}
             </span>
           )}
           {thinking.enabled && !thinkingUnsupported && (
-            <span className="type-label inline-flex items-center gap-1.5 text-accent">
-              <Brain className="h-3 w-3" /> Thinking · {thinking.effort}
+            <span className="inline-flex items-center gap-1.5 text-content-muted">
+              <Brain className="h-3 w-3" /> thinking/{thinking.effort}
             </span>
           )}
-          <span className="type-label truncate text-content-subtle">
-            {visionCapable ? 'Vision · images supported' : 'Text only'}
+          <span className="truncate text-content-subtle">
+            {visionCapable ? 'vision · images ok' : 'text only'}
           </span>
         </span>
         {showTokenCounter && value.trim() && (
-          <span className="type-label shrink-0 tabular-nums text-content-subtle">
-            ~{tokenCount} tokens
-          </span>
+          <span className="shrink-0 tabular-nums text-content-subtle">~{tokenCount} tokens</span>
         )}
       </div>
 

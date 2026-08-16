@@ -6,7 +6,6 @@ import {
   Check,
   Copy,
   Download,
-  MessageSquare,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -90,43 +89,35 @@ export const ChatListItem = memo(function ChatListItem({
     // frame.
     <div
       className={cn(
-        'group/item relative flex items-center gap-1 rounded py-1 pl-3 pr-1 text-sm transition-colors',
+        'group/item relative flex items-center gap-1 rounded-sm py-1 pl-4 pr-1 font-mono text-[0.8rem] transition-colors',
         'motion-safe:animate-fade-in',
         // Skip layout/paint for rows scrolled out of the list — but never while
         // this row's menu is open, since the containment it implies would clip
         // the popover hanging below the row.
         !menuOpen && 'cv-row',
         active
-          ? 'bg-accent/14 text-content'
-          : 'text-content-muted hover:bg-border/[0.06] hover:text-content',
+          ? 'bg-border/[0.09] text-content'
+          : 'text-content-muted hover:bg-border/[0.05] hover:text-content',
       )}
     >
-      {/* Active state is a 2px accent rail down the leading edge, not a border
-          box. It survives at any row height, never shifts the text, and reads
-          instantly down a long list — a full outline on every row turns the
-          sidebar into a ladder. */}
+      {/* The active row is marked the way a terminal marks a selection: a caret in
+          the gutter. A tinted fill plus an accent rail was two signals for one
+          state, and on a near-black field the fill was the louder of them. */}
       <span
         aria-hidden
         className={cn(
-          'absolute inset-y-1 left-0 w-[2px] rounded-full transition-colors',
-          active ? 'bg-accent' : 'bg-transparent',
+          'absolute left-0 top-1/2 -translate-y-1/2 text-[0.8rem] leading-none transition-opacity',
+          active ? 'text-content opacity-100' : 'opacity-0',
         )}
-      />
+      >
+        &gt;
+      </span>
       <button
         onClick={() => onSelect(id)}
-        className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 text-left"
+        className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
         aria-current={active}
       >
-        {pinned ? (
-          <Pin className="h-3.5 w-3.5 shrink-0 text-accent" />
-        ) : (
-          <MessageSquare
-            className={cn(
-              'h-3.5 w-3.5 shrink-0 transition-colors',
-              active ? 'text-accent' : 'opacity-55',
-            )}
-          />
-        )}
+        {pinned && <Pin className="h-3 w-3 shrink-0 opacity-70" />}
         {editing ? (
           <input
             ref={inputRef}

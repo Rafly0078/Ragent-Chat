@@ -204,21 +204,19 @@ function StatusBadge({
      so the fill was doing nothing and the amber pair was off-system besides.
      Every state still pairs its colour with an icon or a dot, so none of them
      depends on colour alone. */
-  const base = 'badge badge-outline';
+  const base = 'term-chip';
 
   if (state.phase === 'running') {
     return (
       <span className={cn(base, 'text-accent')}>
-        <span className="status-dot status-running" aria-hidden /> Running… {state.iteration}/
-        {state.maxIterations}
+        <span className="term-run" aria-hidden /> Running… {state.iteration}/{state.maxIterations}
       </span>
     );
   }
   if (state.phase === 'healing') {
     return (
       <span className={cn(base, 'text-accent')}>
-        <span className="status-dot status-running" aria-hidden /> Fixing… {state.iteration}/
-        {state.maxIterations}
+        <span className="term-run" aria-hidden /> Fixing… {state.iteration}/{state.maxIterations}
       </span>
     );
   }

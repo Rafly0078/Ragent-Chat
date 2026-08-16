@@ -83,7 +83,13 @@ export function MessageList({ conversation, generating, actions }: Props) {
         aria-live="polite"
         aria-label="Conversation messages"
       >
-        <div className="pb-4 pt-2">
+        {/* One growing child, and only one. `useAutoScroll` attaches its
+            ResizeObserver to `el.children` once at mount, so a second direct
+            child here — a sticky date header, a sentinel, the thinking field
+            hoisted out of its turn — is never observed, and content that grows
+            without changing `scrollDep` silently detaches the view from the
+            bottom again. */}
+        <div className="pb-6 pt-3">
           {settledRows}
           {last && (
             <Row

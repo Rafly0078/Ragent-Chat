@@ -3,57 +3,70 @@
 import { PROMPT_SUGGESTIONS } from '@/lib/store/defaults';
 import { BrandMark } from '@/components/BrandMark';
 
+/**
+ * The state a new conversation opens in.
+ *
+ * The suggestions used to be a two-column grid with the first card spanning two
+ * rows, which only resolved cleanly at exactly three entries — with the four in
+ * `PROMPT_SUGGESTIONS` it produced a third row holding one orphan and one hole.
+ * A single-column list is right for a transcript anyway: it is the same
+ * hairline-separated rhythm the turns above it will have, and it works at any
+ * count.
+ */
 export function EmptyState({ onPick }: { onPick: (prompt: string) => void }) {
   return (
-    <div className="chat-container relative flex min-h-full flex-col justify-center py-12 text-left sm:py-16">
-      <div className="lamp-pool left-0 top-4 h-64 w-[min(34rem,90%)] opacity-70" />
-
-      <div
-        className="enter relative z-10 mb-7 flex h-12 w-12 items-center justify-center rounded-md bg-accent text-accent-fg"
+    <div className="chat-container relative flex min-h-full flex-col justify-center py-12 sm:py-16">
+      <span
+        className="enter flex items-center gap-2.5 font-mono text-[0.66rem] uppercase tracking-[0.16em] text-content-subtle"
         style={{ animationDelay: '40ms' }}
       >
-        <BrandMark className="h-6 w-6" />
-      </div>
+        <BrandMark className="h-3.5 w-3.5" /> new session
+      </span>
 
       <h1
-        className="type-mega enter relative z-10 max-w-[12ch] text-[clamp(2rem,5.5vw,3.6rem)] text-content"
+        className="enter mt-5 font-mono text-[clamp(1.5rem,4vw,2.3rem)] font-semibold leading-[1.15] tracking-[-0.03em] text-content"
         style={{ animationDelay: '90ms' }}
       >
-        Start with a clear question.
+        ask it something.
       </h1>
+
       <p
-        className="enter relative z-10 mt-5 max-w-[52ch] text-[0.95rem] leading-7 text-content-muted"
+        className="enter mt-4 max-w-[54ch] text-[0.95rem] leading-7 text-content-muted"
         style={{ animationDelay: '140ms' }}
       >
-        Your models, on your machine. Choose a starting point or write your own.
+        Local Ollama or the cloud key you choose. Every prompt goes only to the backend you point it
+        at.
       </p>
 
-      <div className="border-border/16 relative z-10 mt-10 grid gap-0 border-y sm:grid-cols-[1.1fr_0.9fr] sm:gap-x-8">
+      <ul
+        className="enter mt-9 border-t border-border/15"
+        style={{ animationDelay: '200ms' }}
+      >
         {PROMPT_SUGGESTIONS.map((s, i) => (
-          <button
-            key={s.title}
-            onClick={() => onPick(s.prompt)}
-            className={`enter border-border/12 focus-ring group flex min-h-[5.5rem] items-start gap-4 border-b py-5 text-left transition-colors duration-fast hover:bg-content/[0.035] sm:last:border-b-0 ${
-              i === 0
-                ? 'sm:row-span-2 sm:min-h-[11rem] sm:flex-col sm:justify-end sm:border-b-0 sm:border-r sm:pr-8'
-                : 'sm:pl-1'
-            }`}
-            style={{ animationDelay: `${190 + i * 60}ms` }}
-          >
-            <span className="numeral shrink-0 text-content-subtle">
-              {String(i + 1).padStart(2, '0')}
-            </span>
-            <span className="min-w-0">
-              <span className="type-display block text-[1.05rem] text-content transition-colors duration-fast group-hover:text-accent">
-                {s.title}
+          <li key={s.title}>
+            <button
+              onClick={() => onPick(s.prompt)}
+              className="focus-ring group flex w-full items-baseline gap-4 border-b border-border/15 py-3.5 text-left transition-colors duration-fast hover:bg-border/[0.05]"
+            >
+              <span className="shrink-0 font-mono text-[0.68rem] tabular-nums text-content-subtle">
+                {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="mt-1.5 block text-sm leading-5 text-content-muted">
-                {s.subtitle}
+              <span className="min-w-0 flex-1">
+                <span className="block font-mono text-[0.85rem] text-content">{s.title}</span>
+                <span className="mt-1 block text-sm leading-5 text-content-muted">
+                  {s.subtitle}
+                </span>
               </span>
-            </span>
-          </button>
+              <span
+                aria-hidden
+                className="shrink-0 text-content-subtle opacity-0 transition-opacity duration-fast group-hover:opacity-100"
+              >
+                &rarr;
+              </span>
+            </button>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }

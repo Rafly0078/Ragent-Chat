@@ -53,8 +53,8 @@ const config: Config = {
         error: 'rgb(var(--error) / <alpha-value>)',
       },
       fontFamily: {
-        /** Unbounded — used only for brand and hero-scale display type. */
-        display: ['var(--font-display)', 'Georgia', 'serif'],
+        // Two families. The display face went with the last `.type-mega`: mono is
+        // the display voice on both the landing and the chat now.
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'monospace'],
       },
@@ -103,16 +103,10 @@ const config: Config = {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.15' },
         },
-        // Streaming placeholder: transform-only sweep, no layout.
-        scan: {
-          '0%': { transform: 'translateX(-100%)' },
-          '100%': { transform: 'translateX(300%)' },
-        },
       },
       animation: {
         'fade-in': 'fade-in var(--dur) var(--ease-out) both',
         'caret-blink': 'caret-blink 1.1s steps(2, start) infinite',
-        scan: 'scan 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite',
       },
     },
   },

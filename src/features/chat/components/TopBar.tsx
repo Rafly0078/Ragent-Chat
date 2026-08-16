@@ -77,7 +77,13 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
   };
 
   return (
-    <header className="glass sticky top-0 z-30 flex items-center gap-1.5 px-2 py-2.5 sm:gap-2 sm:px-4">
+    // A rail, not a nav. `sticky` is inert here — the nearest scroll container is
+    // the app shell, which is `overflow-hidden` and never scrolls — so this is
+    // honestly static, with a hairline under it doing the separating that
+    // `.glass`'s fill and blur used to. The `z-30` stays: it is the stacking
+    // context that keeps this bar's own dropdown, the model list and every
+    // tooltip in the right order relative to the rest of the ladder.
+    <header className="relative z-30 flex flex-none items-center gap-1.5 border-b border-border/15 bg-surface-mid/60 px-[var(--term-gutter)] py-2 sm:gap-2">
       <Tooltip label="Toggle sidebar" side="bottom">
         <button
           onClick={onToggleSidebar}
@@ -93,10 +99,14 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
 
       <ModelSelector value={conversation.model} onChange={(m) => setModel(conversation.id, m)} />
 
-      {/* The session title is the navbar's one piece of content, so it gets the
-          display face and nothing competes with it at this size. */}
+      {/* The session title is the rail's one piece of content. Mono at rail scale
+          rather than display type: it sits between a model chip and a row of
+          icons, and at 17px in a display face it was competing with the
+          transcript below it. */}
       <div className="ml-1.5 hidden min-w-0 flex-1 sm:block">
-        <p className="type-display truncate text-[1.0625rem] text-content">{conversation.title}</p>
+        <p className="truncate font-mono text-[0.8rem] tracking-[0.04em] text-content-muted">
+          {conversation.title}
+        </p>
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-1 sm:flex-none">

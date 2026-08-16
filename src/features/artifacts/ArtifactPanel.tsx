@@ -135,7 +135,10 @@ function ArtifactCard({
       <m.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="group/art card lift flex items-center gap-3 p-3 hover:border-accent/40 sm:p-3.5"
+        /* A framed row, not a lifting card. `.card` + `.lift` were built to rise
+           toward a warm lamp; on a near-black field the shadow is invisible and
+           the 2px travel just wobbles. The border does the work. */
+        className="group/art flex items-center gap-3 border border-border/20 bg-surface-raised p-3 transition-colors duration-fast hover:border-accent/45 sm:p-3.5"
       >
         {/* File-type tile */}
         <div className={cn('flex h-12 w-12 shrink-0 items-center justify-center rounded-md', tile)}>
@@ -157,7 +160,7 @@ function ArtifactCard({
                 side="top"
                 label="Not saved to the cloud yet. Download it now — it is gone once the page closes."
               >
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600">
+                <span className="inline-flex items-center gap-1 rounded-sm border border-warning/40 px-1.5 py-0.5 font-mono text-warning">
                   <AlertTriangle className="h-3 w-3" />
                   Temporary
                 </span>

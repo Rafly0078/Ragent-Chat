@@ -1,27 +1,18 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono, Unbounded } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { SITE_URL } from '@/lib/app-meta';
 
-// Three families, but only Inter earns a full variable axis — it sets nearly
-// every string in the app. The other two are pinned to the weights actually
-// referenced, which makes next/font ship those static instances instead of the
-// whole axis: `--font-display` is only ever used at 600 (`.type-brand`,
-// `.type-mega`, `.numeral`) and mono at 400/600. On a phone that is the
-// difference between three variable files blocking first text and one.
+// Two families, and both are used on every route. Unbounded was the display face
+// and it is gone: the landing rebuild took `.ghost-word`, and the chat rebuild
+// took `.type-brand`, `.type-mega` and `.numeral` — mono is the display voice on
+// both surfaces now. It had been preloaded on every route to serve two headings.
 //
-// The landing page is set entirely in mono and Inter now, so `display` is a
-// preload that page never spends — it is loaded here because the chat empty
-// state and the sidebar brand do need it on their first paint.
-const display = Unbounded({
-  subsets: ['latin'],
-  weight: ['600'],
-  variable: '--font-display',
-  display: 'swap',
-});
-
+// Inter earns the full variable axis, since it sets every run of prose. Mono is
+// pinned to the two weights actually referenced, which makes next/font ship
+// those static instances instead of the whole axis.
 const sans = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
@@ -92,7 +83,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
       <body className="min-h-[100dvh] bg-surface text-content antialiased">
         <ServiceWorkerRegister />
         <Providers>{children}</Providers>

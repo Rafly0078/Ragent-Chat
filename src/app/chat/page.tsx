@@ -86,7 +86,17 @@ export default function HomePage() {
   });
 
   return (
-    <>
+    // The terminal palette, scoped to this route the way `.terminal-field` is
+    // scoped to the landing. It wraps everything rather than just the shell
+    // because `AmbientBackground`, `OfflineBanner` and `CommandPalette` are
+    // siblings of it, and outside the scope they would read `:root`'s paper
+    // tokens — the page's own backdrop included.
+    //
+    // It has to stay a plain div. No transform, filter, backdrop-filter, contain
+    // or will-change here or on anything above the two dialogs inside ChatView:
+    // nothing in this tree is portalled, so they escape their flex column only
+    // because no ancestor creates a containing block.
+    <div className="terminal-field terminal-app">
       <AmbientBackground />
       <OfflineBanner />
 
@@ -119,6 +129,6 @@ export default function HomePage() {
         onClose={() => setPaletteOpen(false)}
         onNewChat={newChat}
       />
-    </>
+    </div>
   );
 }

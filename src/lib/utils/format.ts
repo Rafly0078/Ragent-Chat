@@ -73,6 +73,18 @@ export function relativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
+/**
+ * Wall-clock time for a message's rail: `14:02`.
+ *
+ * 24-hour and zero-padded whatever the locale, because the rail is a fixed-width
+ * mono column — `2:02 PM` is three glyphs wider than `14:02`, which would give
+ * every turn's hairline a different length.
+ */
+export function clockTime(ts: number): string {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 /** Group conversations into human date buckets for the sidebar. */
 export function dateBucket(ts: number): string {
   const now = new Date();
