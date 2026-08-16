@@ -28,7 +28,8 @@ const SandboxPanel = lazy(() =>
   import('@/features/sandbox/SandboxPanel').then((m) => ({ default: m.SandboxPanel })),
 );
 import { extractWebSource } from '@/lib/sandbox/compose';
-import { ThinkingField } from './ThinkingField';
+import { AsciiWordmark } from '@/components/AsciiWordmark';
+import { useChatStore } from '@/lib/store/chat-store';
 import { attachmentPreview } from '@/lib/utils/files';
 import { clockTime, formatDuration, formatNumber } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
@@ -122,6 +123,10 @@ export const MessageBubble = memo(function MessageBubble({
   // once, so the absence of sources reads as a decision rather than a failure.
   const searchSkipped = message.metadata?.searchSkipped === true;
   const searchSkipReason = message.metadata?.searchSkipReason as string | undefined;
+  // A tool is writing a file for this turn. Session state rather than metadata (see
+  // `generatingFiles` in the store), so it is read from the store rather than off
+  // the message: a boolean selector re-renders this bubble only when it flips.
+  const generatingFile = useChatStore((s) => s.generatingFiles.has(message.id));
 
   // Only the newest message plays the entrance animation. Animating every turn
   // on mount means a 50-message conversation fires 50 simultaneous transitions
@@ -257,6 +262,17 @@ export const MessageBubble = memo(function MessageBubble({
           </div>
         ) : (
           <MessageBody message={message} />
+        )}
+
+        {/* A side effect of the turn rather than the turn itself: it goes directly
+            under the answer, where the text stopped, rather than below the metrics
+            row — a live mark under a turn's footer reads as an afterthought. Smaller
+            than the thinking mark for the same reason: it does not out-rank what it
+            is a footnote to. */}
+        {generatingFile && (
+          <div className="mt-4">
+            <AsciiWordmark variant="generating" label="Generating a file" />
+          </div>
         )}
 
         {/* Sandbox: run + auto-fix the message's web code. */}
@@ -504,7 +520,7 @@ function ReasoningPanel({
         className={cn('focus-ring rounded-sm', active ? 'reason-live' : 'reason-head')}
       >
         {active ? (
-          <ThinkingField />
+          <AsciiWordmark variant="thinking" label="Thinking" />
         ) : (
           <>
             <BrandMark className="h-3.5 w-3.5 shrink-0" />

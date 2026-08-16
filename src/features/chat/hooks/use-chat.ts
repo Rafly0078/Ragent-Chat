@@ -26,7 +26,7 @@ import { uid } from '@/lib/utils/id';
 import { detectArtifacts, hasCompleteDirective } from '@/lib/tools/detect';
 import { enrichPatches, extractCodeBlocks } from '@/lib/tools/patch';
 import { toolDefinitions } from '@/lib/tools/schemas';
-import { getTool, isToolName } from '@/lib/tools/registry';
+import { getTool, isToolName, writesFile } from '@/lib/tools/registry';
 import { getClientExecutor } from '@/lib/tools/client';
 import type { Artifact, GenerateRequest } from '@/lib/tools/types';
 import { searchWeb } from '@/lib/search/client';
@@ -109,6 +109,19 @@ export function useChat(conversationId: string | null) {
   const overBudgetWarned = useRef<string | null>(null);
   const { toast } = useToast();
 
+  /**
+   * Mark a message as producing a file right now.
+   *
+   * Both artifact paths raise it — a directive in the finished content, and a tool
+   * call mid-turn — because from the reader's side they are the same wait: the answer
+   * has stopped and a file has not appeared yet. It is session state rather than
+   * message data, for the reason `generatingFiles` gives in the store.
+   */
+  const markGenerating = useCallback(
+    (messageId: string, on: boolean) => store.getState().setGeneratingFile(messageId, on),
+    [store],
+  );
+
   /** Detect artifact directives in a completed message and execute them. */
   const processArtifacts = useCallback(
     async (convoId: string, messageId: string, content: string) => {
@@ -117,13 +130,32 @@ export function useChat(conversationId: string | null) {
       // Avoid double-execution if already in progress
       if (executingRef.current.has(messageId)) return;
       executingRef.current.add(messageId);
+      markGenerating(messageId, true);
+
+      // The ordered `parts` are what the body actually renders once a message has
+      // them; `content` is the flattened mirror. Stripping only the mirror left the
+      // directive on screen — and a surviving fence is, by construction, one that
+      // failed to parse, so `ArtifactDirectiveNotice` reported "File wasn't created"
+      // beside a file that had just been created. Same strip, per text part; a part
+      // that was nothing but the directive goes with it.
+      const before = store
+        .getState()
+        .conversations.find((c) => c.id === convoId)
+        ?.messages.find((m) => m.id === messageId)?.parts;
+      const cleanedParts = before
+        ?.map((part) =>
+          part.kind === 'text' ? { ...part, text: detectArtifacts(part.text).cleaned } : part,
+        )
+        .filter((part) => part.kind !== 'text' || part.text !== '');
 
       try {
         // Strip artifact blocks from displayed content. Keep the original so we
         // can put it back if execution fails — otherwise a failed directive (e.g.
         // an unregistered tool) leaves a permanently blank message, since the
         // content was often ENTIRELY the artifact block ("return only the file").
-        store.getState().updateMessage(convoId, messageId, { content: cleaned });
+        store
+          .getState()
+          .updateMessage(convoId, messageId, { content: cleaned, parts: cleanedParts });
 
         const results = await Promise.allSettled(
           requests.map(async (req) => {
@@ -171,8 +203,9 @@ export function useChat(conversationId: string | null) {
         if (artifacts.length === 0) {
           // Every directive failed — the stripped content would otherwise be gone
           // for good. Restore the raw message so the user still sees the code, and
-          // surface why (the failure is silent server-side otherwise).
-          store.getState().updateMessage(convoId, messageId, { content });
+          // surface why (the failure is silent server-side otherwise). Both the
+          // ordered parts and the mirror, since the body renders the former.
+          store.getState().updateMessage(convoId, messageId, { content, parts: before });
           toast(`Couldn't generate the file: ${failures[0]}`, 'error');
         } else {
           // PARTIAL failure. This branch didn't exist: the restore-and-toast was
@@ -184,11 +217,14 @@ export function useChat(conversationId: string | null) {
           toast(`${n} of ${results.length} files couldn't be generated: ${failures[0]}`, 'error');
         }
       } finally {
-        // Must always clear, or a message that threw here can never retry.
+        // Must always clear, or a message that threw here can never retry — and the
+        // mark has to come down on the failure path too, or a message that could not
+        // produce its file would claim to be producing it forever.
         executingRef.current.delete(messageId);
+        markGenerating(messageId, false);
       }
     },
-    [store, toast],
+    [store, toast, markGenerating],
   );
 
   /**
@@ -216,7 +252,16 @@ export function useChat(conversationId: string | null) {
 
       const { content: enriched, applied } = enrichPatches(content, priorCode);
       if (applied && enriched !== content) {
-        store.getState().updateMessage(convoId, messageId, { content: enriched });
+        // The ordered parts too, not just the flattened mirror: they are what the
+        // body renders, so enriching only `content` left PatchBlock reading the
+        // original fence and rendering no diff. Same reason as the artifact strip
+        // above. Per part, since a fence lives inside one text block.
+        const parts = convo.messages[idx]?.parts?.map((part) =>
+          part.kind === 'text'
+            ? { ...part, text: enrichPatches(part.text, priorCode).content }
+            : part,
+        );
+        store.getState().updateMessage(convoId, messageId, { content: enriched, parts });
       }
     },
     [store],
@@ -242,101 +287,112 @@ export function useChat(conversationId: string | null) {
       messageId: string,
       calls: WireToolCall[],
     ): Promise<ApiChatMessage[]> => {
-      const settled = await Promise.allSettled(
-        calls.map(async (call): Promise<{ artifact?: Artifact; text?: string }> => {
-          const request = {
-            ...call.arguments,
-            tool: call.name,
-            conversationId: convoId,
-            messageId,
-          };
+      // Only the calls that end in a file. `fetch_url` and `run_js` arrive here too,
+      // and a mark reading GENERATING over a page fetch states something untrue.
+      const writing = calls.some((call) => writesFile(call.name));
+      if (writing) markGenerating(messageId, true);
+      try {
+        const settled = await Promise.allSettled(
+          calls.map(async (call): Promise<{ artifact?: Artifact; text?: string }> => {
+            const request = {
+              ...call.arguments,
+              tool: call.name,
+              conversationId: convoId,
+              messageId,
+            };
 
-          // Client-side tools never touch the network. `run_js` is the reason
-          // `ToolMeta.server` exists as a discriminator rather than documentation:
-          // running model-authored code on the server would be arbitrary RCE, so
-          // it runs in an origin-isolated iframe in this tab instead.
-          if (isToolName(call.name) && getTool(call.name)?.server === false) {
-            const exec = await getClientExecutor(call.name);
-            if (!exec) throw new Error(`No client executor for "${call.name}".`);
-            return exec(request as GenerateRequest);
-          }
-
-          const res = await fetch('/api/tools/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request),
-          });
-          if (!res.ok) {
-            let detail = `Tool execution failed (${res.status}).`;
-            try {
-              const body = (await res.json()) as { error?: string };
-              if (body.error) detail = body.error;
-            } catch {
-              /* non-JSON error body */
+            // Client-side tools never touch the network. `run_js` is the reason
+            // `ToolMeta.server` exists as a discriminator rather than documentation:
+            // running model-authored code on the server would be arbitrary RCE, so
+            // it runs in an origin-isolated iframe in this tab instead.
+            if (isToolName(call.name) && getTool(call.name)?.server === false) {
+              const exec = await getClientExecutor(call.name);
+              if (!exec) throw new Error(`No client executor for "${call.name}".`);
+              return exec(request as GenerateRequest);
             }
-            throw new Error(detail);
-          }
-          // Two result shapes: a generated file, or text for the model (a read
-          // tool such as `fetch_url`).
-          return (await res.json()) as { artifact?: Artifact; text?: string };
-        }),
-      );
 
-      const produced: Artifact[] = [];
-      const turns: ApiChatMessage[] = [];
-      settled.forEach((result, i) => {
-        const call = calls[i]!;
-        if (result.status === 'fulfilled') {
-          const { artifact, text } = result.value;
-          if (artifact) {
-            produced.push(artifact);
+            const res = await fetch('/api/tools/execute', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(request),
+            });
+            if (!res.ok) {
+              let detail = `Tool execution failed (${res.status}).`;
+              try {
+                const body = (await res.json()) as { error?: string };
+                if (body.error) detail = body.error;
+              } catch {
+                /* non-JSON error body */
+              }
+              throw new Error(detail);
+            }
+            // Two result shapes: a generated file, or text for the model (a read
+            // tool such as `fetch_url`).
+            return (await res.json()) as { artifact?: Artifact; text?: string };
+          }),
+        );
+
+        const produced: Artifact[] = [];
+        const turns: ApiChatMessage[] = [];
+        settled.forEach((result, i) => {
+          const call = calls[i]!;
+          if (result.status === 'fulfilled') {
+            const { artifact, text } = result.value;
+            if (artifact) {
+              produced.push(artifact);
+              turns.push({
+                role: 'tool',
+                toolCallId: call.id,
+                // The id is here so `edit_artifact` is reachable at all — without
+                // it the model has no handle on what it just produced and can only
+                // regenerate the whole document.
+                content:
+                  `Created "${artifact.name}" (${artifact.mimeType}, ${artifact.size} bytes, ` +
+                  `id ${artifact.id}, version ${artifact.version}). It is attached to this ` +
+                  `message and downloadable by the user — do not repeat its contents in your ` +
+                  `reply. To change it later, call edit_artifact with that id rather than ` +
+                  `generating it again.`,
+              });
+              return;
+            }
             turns.push({
               role: 'tool',
               toolCallId: call.id,
-              // The id is here so `edit_artifact` is reachable at all — without
-              // it the model has no handle on what it just produced and can only
-              // regenerate the whole document.
-              content:
-                `Created "${artifact.name}" (${artifact.mimeType}, ${artifact.size} bytes, ` +
-                `id ${artifact.id}, version ${artifact.version}). It is attached to this ` +
-                `message and downloadable by the user — do not repeat its contents in your ` +
-                `reply. To change it later, call edit_artifact with that id rather than ` +
-                `generating it again.`,
+              content: text ?? '(the tool returned nothing)',
             });
             return;
           }
+          const message =
+            result.reason instanceof Error ? result.reason.message : 'Tool execution failed.';
           turns.push({
             role: 'tool',
             toolCallId: call.id,
-            content: text ?? '(the tool returned nothing)',
+            toolError: true,
+            content: `Error: ${message}`,
           });
-          return;
-        }
-        const message =
-          result.reason instanceof Error ? result.reason.message : 'Tool execution failed.';
-        turns.push({
-          role: 'tool',
-          toolCallId: call.id,
-          toolError: true,
-          content: `Error: ${message}`,
         });
-      });
 
-      if (produced.length > 0) {
-        const msg = store
-          .getState()
-          .conversations.find((c) => c.id === convoId)
-          ?.messages.find((m) => m.id === messageId);
-        if (msg) {
-          const existing = (msg.metadata?.artifacts as Artifact[]) ?? [];
-          store.getState().updateMessage(convoId, messageId, {
-            metadata: { ...msg.metadata, artifacts: [...existing, ...produced] },
-          });
+        if (produced.length > 0) {
+          const msg = store
+            .getState()
+            .conversations.find((c) => c.id === convoId)
+            ?.messages.find((m) => m.id === messageId);
+          if (msg) {
+            const existing = (msg.metadata?.artifacts as Artifact[]) ?? [];
+            store.getState().updateMessage(convoId, messageId, {
+              metadata: { ...msg.metadata, artifacts: [...existing, ...produced] },
+            });
+          }
         }
+        return turns;
+      } finally {
+        // In a `finally` for the same reason the directive path's clear is: this
+        // throwing anywhere above would otherwise leave the message saying a file
+        // was coming, with nothing left running to say otherwise.
+        if (writing) markGenerating(messageId, false);
       }
-      return turns;
     },
-    [store],
+    [store, markGenerating],
   );
 
   /** Core streaming routine: streams into an existing assistant message id. */

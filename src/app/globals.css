@@ -1281,39 +1281,55 @@ h4 {
   color: rgb(var(--content-subtle));
 }
 
-/* The live head: the word THINKING, filled with the flow field.
+/* A wordmark filled with the flow field.
 
-   The mask is the wordmark's own silhouette (public/thinking-mask.png, cropped to
-   its ink and flattened to a hard alpha, 9 KB). Doing it in CSS rather than on the
-   canvas is what keeps the letter edges crisp: the browser scales the raster at
-   native device resolution and composites it on the GPU, where a per-cell test
-   would have had to choose between whole glyphs and whole letters, and a stroke
-   three cells wide cannot afford either.
+   The mask is the mark's own silhouette (public/*-mask.png, cropped to its ink and
+   flattened to a hard alpha, 7-9 KB each). Doing it in CSS rather than on the canvas
+   is what keeps the letter edges crisp: the browser scales the raster at native
+   device resolution and composites it on the GPU, where a per-cell test would have
+   had to choose between whole glyphs and whole letters, and a stroke three cells wide
+   cannot afford either.
 
-   280px, which is about one line of text tall at 12:1 — a label in the transcript
-   rather than a banner across it. The glyph size follows that width (see
-   `fontPxFor` in lib/ascii/flow) so the letters keep the same three-and-a-half
-   cells per stroke they had at twice the size. `aspect-ratio` is the asset's own,
-   so they are never stretched. */
-.thinking-mark {
+   The width sets everything else. The glyph size follows it (see `fontPxFor` in
+   lib/ascii/flow) so a letter stroke keeps the same few cells at any size, and
+   `aspect-ratio` is each asset's own so the letters are never stretched.
+
+     thinking    280px, about one line of text tall — a label in the transcript
+     generating  224px and shorter still: it reports on a side effect of a turn,
+                 not on the turn itself, so it should not out-rank the answer
+
+*/
+.ascii-wordmark {
   display: block;
+}
+.ascii-wordmark.is-thinking {
   width: min(17.5rem, 100%);
 }
-.thinking-canvas {
+.ascii-wordmark.is-generating {
+  width: min(14rem, 100%);
+}
+.ascii-wordmark-canvas {
   display: block;
   width: 100%;
-  aspect-ratio: 1536 / 127;
-  mask-image: url('/thinking-mask.png');
   mask-size: 100% 100%;
   mask-repeat: no-repeat;
-  -webkit-mask-image: url('/thinking-mask.png');
   -webkit-mask-size: 100% 100%;
   -webkit-mask-repeat: no-repeat;
 }
+.is-thinking .ascii-wordmark-canvas {
+  aspect-ratio: 1536 / 127;
+  mask-image: url('/thinking-mask.png');
+  -webkit-mask-image: url('/thinking-mask.png');
+}
+.is-generating .ascii-wordmark-canvas {
+  aspect-ratio: 1536 / 93;
+  mask-image: url('/generating-mask.png');
+  -webkit-mask-image: url('/generating-mask.png');
+}
 
-/* The wordmark is the disclosure button for the block it belongs to, so it needs
-   to say so without a chevron next to it — a chevron beside a word made of moving
-   glyphs reads as a second, competing control. Dimmed until pointed at instead. */
+/* The thinking wordmark is the disclosure button for the block it belongs to, so it
+   needs to say so without a chevron next to it — a chevron beside a word made of
+   moving glyphs reads as a second, competing control. Dimmed until pointed at. */
 .reason-live {
   display: block;
   width: 100%;

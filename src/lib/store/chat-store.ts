@@ -28,6 +28,18 @@ interface ChatState {
   activeId: string | null;
   /** Conversation id currently generating (null when idle). */
   generatingId: string | null;
+  /**
+   * Message ids that have a tool writing a file for them right now.
+   *
+   * Deliberately here rather than on the message's own `metadata`, which is where
+   * the neighbouring live-status flags (`searching`, `searchPhase`) live: metadata
+   * is persisted — to localStorage by `partialize` below and to Postgres by
+   * `messageToRow` — so a tab closed mid-write would come back to a message
+   * claiming forever that a file was on its way, with nothing left running to
+   * take the claim down. Top-level session state cannot outlive the session:
+   * `partialize` names what is saved, and this is not in it.
+   */
+  generatingFiles: Set<string>;
   searchQuery: string;
   recentModels: string[];
 
@@ -71,6 +83,8 @@ interface ChatState {
   truncateFrom: (convoId: string, msgId: string, inclusive: boolean) => void;
 
   setGenerating: (id: string | null) => void;
+  /** Raise or lower the file-writing mark on one message. */
+  setGeneratingFile: (msgId: string, on: boolean) => void;
   setSearchQuery: (q: string) => void;
   pushRecentModel: (model: string) => void;
 
@@ -401,6 +415,7 @@ export const useChatStore = create<ChatState>()(
       conversations: [],
       activeId: null,
       generatingId: null,
+      generatingFiles: new Set<string>(),
       searchQuery: '',
       recentModels: [],
 
@@ -596,6 +611,19 @@ export const useChatStore = create<ChatState>()(
         })),
 
       setGenerating: (generatingId) => set({ generatingId }),
+
+      // Returns the state untouched when the flag already reads that way: every
+      // MessageBubble subscribes to this set, and a tool loop that raises the mark
+      // per call would otherwise re-render the whole transcript per call.
+      setGeneratingFile: (msgId, on) =>
+        set((s) => {
+          if (s.generatingFiles.has(msgId) === on) return s;
+          const generatingFiles = new Set(s.generatingFiles);
+          if (on) generatingFiles.add(msgId);
+          else generatingFiles.delete(msgId);
+          return { generatingFiles };
+        }),
+
       setSearchQuery: (searchQuery) => set({ searchQuery }),
 
       pushRecentModel: (model) =>

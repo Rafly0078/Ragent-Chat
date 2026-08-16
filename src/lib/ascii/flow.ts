@@ -17,10 +17,10 @@ import type { AsciiPreset, AsciiGrid } from './engine';
  *   speed     how fast the field drifts
  *   color     the one fill; `colorMode: 'solid'` means there is no second
  *
- * `logoMask: true` is honoured, but not here: the silhouette is the THINKING
- * wordmark, a raster, and a raster silhouette is a `mask-image` rather than a
- * `Path2D`. The browser scales and composites it for free at native resolution,
- * so `ThinkingField` applies it in CSS and this file only has to fill the box.
+ * `logoMask: true` is honoured, but not here: the silhouette is a wordmark, a
+ * raster, and a raster silhouette is a `mask-image` rather than a `Path2D`. The
+ * browser scales and composites it for free at native resolution, so
+ * `AsciiWordmark` applies it in CSS and this file only has to fill the box.
  *
  * `logoSize` and `rotation` carry no meaning at this call site — the canvas *is*
  * the wordmark's box, so there is nothing for a logo scale to scale inside, and a
@@ -82,16 +82,25 @@ const FRINGE = 0.06;
  *  this renderer's to pick. */
 const BASE_FONT_PX = 15;
 
-/** A letter stroke, as a fraction of the wordmark's width — measured off the asset:
- *  a 40px stem in an 1826px word. */
-const STROKE_FRACTION = 40 / 1826;
+/** A letter stem, as a fraction of the cap height, in the geometric face these
+ *  wordmarks are set in. Measured on THINKING — a 40px stem on a 151px cap — and it
+ *  holds on GENERATING too, which is why the stroke width can be derived from a
+ *  mark's aspect ratio rather than measured per asset: a 12:1 word and a 16.5:1 word
+ *  of the same weight differ only in how much width that cap height is spread over. */
+const STEM_PER_CAP = 0.27;
 
-/** How many glyph cells have to span a stroke. Below about three, a run of glyphs
- *  cannot state a direction and the letters dissolve into scattered hatching; the
- *  word stops being a word. This is what makes the glyph size follow the box rather
- *  than sit at one value and let a narrow column break it. At the label width it
- *  works out to a 3px glyph. */
-const CELLS_PER_STROKE = 3.5;
+/** What a mark needs to say about itself for the field to fit inside its letters. */
+export interface MarkGeometry {
+  /** The silhouette's width divided by its height. */
+  aspect: number;
+  /** Glyph cells that have to span a letter stroke. Below about three, a run of
+   *  glyphs cannot state a direction and the letters dissolve into scattered
+   *  hatching — the word stops being a word. */
+  cells: number;
+  /** Pinned supersample. The glyphs here are 2-3 CSS pixels; this is what decides
+   *  how many device pixels each one actually gets. */
+  dpr: number;
+}
 
 /** The mono advance, as a fraction of the glyph size. JetBrains Mono is 0.6em, and
  *  the engine measures the real value — this is only for choosing the size. */
@@ -115,22 +124,23 @@ interface FlowShape {
   gate: number;
   minDpr: number;
   maxDpr: number;
-  /** Only the wordmark sizes its glyphs from the box it got. */
-  sized: boolean;
+  /** Set only for a masked mark: it sizes its glyphs from the box it got, so a
+   *  letter stroke holds the same number of cells at any width. */
+  mark?: MarkGeometry;
 }
 
 /** Rows overlap and the gate is almost off, because the mask draws the letters and
- *  a void inside a three-cell stroke reads as a chip out of one. Glyphs are 3 CSS
- *  pixels at the label width, which no display resolves directly — pinning the
- *  scale to 3x makes that 9 device pixels, and a 1x monitor and a 3x phone then
- *  draw the same thing rather than one of them getting mush. */
-const WORDMARK: FlowShape = {
+ *  a void inside a three-cell stroke reads as a chip out of one. The glyphs are 2-3
+ *  CSS pixels, which no display resolves directly — the mark's own pinned
+ *  supersample is what makes them real strokes, and pinning both ends means a 1x
+ *  monitor and a 3x phone draw the same thing rather than one getting mush. */
+const wordmarkShape = (mark: MarkGeometry): FlowShape => ({
   lineRatio: 0.62,
   gate: 0.02,
-  minDpr: 3,
-  maxDpr: 3,
-  sized: true,
-};
+  minDpr: mark.dpr,
+  maxDpr: mark.dpr,
+  mark,
+});
 
 /** Airier: the voids are the texture here, since there is no silhouette to carry
  *  the form. Standard supersampling, because the glyphs are a full 9px. */
@@ -139,7 +149,6 @@ const BAND: FlowShape = {
   gate: 0.42,
   minDpr: 1,
   maxDpr: 2,
-  sized: false,
 };
 
 /** A hashed value lattice in [0, 1). */
@@ -183,16 +192,15 @@ function flowIn(source: FlowSource, shape: FlowShape): AsciiPreset {
     maxDpr: shape.maxDpr,
     rate: UNITS_PER_SEC * source.speed.value,
 
-    /** Three and a half cells across a letter stroke, whatever width the box gave
-     *  us. At the label width that lands on a 3px glyph; the ceiling is what the
-     *  file's own `size` implies, so the preset can never draw coarser than the
-     *  tool that exported it meant. */
-    fontPxFor: shape.sized
-      ? (width: number) =>
-          Math.min(
-            BASE_FONT_PX * source.size.value,
-            (width * STROKE_FRACTION) / (CELLS_PER_STROKE * ADVANCE_RATIO),
-          )
+    /** The mark's cells-per-stroke, whatever width the box gave us. The ceiling is
+     *  what the file's own `size` implies, so the field can never draw coarser than
+     *  the tool that exported it meant. */
+    fontPxFor: shape.mark
+      ? (width: number) => {
+          const mark = shape.mark!;
+          const stroke = (width / mark.aspect) * STEM_PER_CAP;
+          return Math.min(BASE_FONT_PX * source.size.value, stroke / (mark.cells * ADVANCE_RATIO));
+        }
       : undefined,
 
     row(row: number, grid: AsciiGrid) {
@@ -227,8 +235,10 @@ function flowIn(source: FlowSource, shape: FlowShape): AsciiPreset {
   };
 }
 
-/** The masked one: the word THINKING, filled. */
-export const flowPreset = (source: FlowSource) => flowIn(source, WORDMARK);
+/** The masked one: a wordmark, filled. The caller supplies the mark's geometry
+ *  because the CSS that applies its silhouette is where the asset lives. */
+export const flowPreset = (source: FlowSource, mark: MarkGeometry) =>
+  flowIn(source, wordmarkShape(mark));
 
 /** The bare one: a patch of field, for every surface that is waiting on something. */
 export const flowBandPreset = (source: FlowSource) => flowIn(source, BAND);

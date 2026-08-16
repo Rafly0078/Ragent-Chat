@@ -21,6 +21,7 @@ const { detectPatches, applyPatch } = jiti(`${ROOT}/src/lib/tools/patch.ts`);
 const { findFences } = jiti(`${ROOT}/src/lib/tools/fences.ts`);
 const { validateGenerateRequest } = jiti(`${ROOT}/src/lib/tools/validate.ts`);
 const { toolDefinitions } = jiti(`${ROOT}/src/lib/tools/schemas.ts`);
+const { TOOLS, writesFile } = jiti(`${ROOT}/src/lib/tools/registry.ts`);
 const { toApiMessages, ATTACHMENT_INLINE_LIMIT } = jiti(`${ROOT}/src/lib/api/types.ts`);
 
 let pass = 0;
@@ -401,6 +402,29 @@ console.log('\n11. edit_artifact');
     'but is NOT reachable through the text directive — it has no artifact id there',
     detectArtifacts([`${F}artifact`, 'tool: edit_artifact', '---', 'x', F].join('\n')).requests
       .length,
+    0,
+  );
+}
+
+console.log('\n12. which calls end in a file (drives the GENERATING mark)');
+{
+  // The mark says a file is being written, and every tool call — read or write —
+  // arrives at the same call site, so this predicate is what keeps it honest.
+  for (const name of ['create_pdf', 'create_md', 'zip_project']) {
+    eq(`${name} writes a file`, writesFile(name), true);
+  }
+  eq(
+    'edit_artifact writes one too, despite having no constant `produces`',
+    writesFile('edit_artifact'),
+    true,
+  );
+  for (const name of ['fetch_url', 'run_js', 'read_attachment']) {
+    eq(`${name} only returns text`, writesFile(name), false);
+  }
+  eq('an unknown name claims nothing', writesFile('not_a_tool'), false);
+  eq(
+    'every tool is on one side or the other',
+    TOOLS.filter((t) => writesFile(t.name) === (t.category === 'parse')).length,
     0,
   );
 }

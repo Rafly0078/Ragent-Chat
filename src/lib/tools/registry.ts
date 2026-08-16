@@ -170,3 +170,19 @@ export function getTool(name: string): ToolMeta | undefined {
 export function isToolName(name: string): name is ToolName {
   return BY_NAME.has(name as ToolName);
 }
+
+/**
+ * Whether a call to this tool ends in a file the user can download.
+ *
+ * `produces` cannot answer this on its own: `edit_artifact` writes a file and has no
+ * constant kind to declare (see its entry above). What the read tools have in common
+ * is the `parse` category — they hand text back to the model and leave nothing
+ * behind — so everything else here writes something.
+ *
+ * The UI asks before it says a file is being generated, because `fetch_url` reading
+ * a page and `create_pdf` writing one arrive at the same call site.
+ */
+export function writesFile(name: string): boolean {
+  const tool = getTool(name);
+  return !!tool && tool.category !== 'parse';
+}
