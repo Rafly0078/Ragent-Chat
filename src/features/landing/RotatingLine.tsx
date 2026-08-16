@@ -30,7 +30,7 @@ const PHRASES = [
   'on your terms.',
 ] as const;
 
-const HOLD_MS = 1300;
+const HOLD_MS = 2100;
 const DECODE_MS = 240;
 
 /** Resampled on this beat rather than every frame: at 60fps a per-frame reroll
