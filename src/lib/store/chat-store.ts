@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, type PersistStorage, type StorageValue } from 'zustand/middleware';
+import { persist } from 'zustand/middleware';
 import type {
   Conversation,
   ConversationSummary,
@@ -12,8 +12,7 @@ import type {
 } from '@/types';
 import { SEARCH_MODES } from '@/types';
 import { uid } from '@/lib/utils/id';
-import { notify } from '@/components/ui/toast';
-import { browserStorage } from './storage';
+import { chatStorage } from './chat-persistence';
 import { sealed, seedParts, withParts, type PartDelta } from './message-parts';
 export type { PartDelta } from './message-parts';
 import {
@@ -98,183 +97,6 @@ interface ChatState {
 
 function touch(convo: Conversation): Conversation {
   return { ...convo, updatedAt: Date.now() };
-}
-
-/**
- * Strip the heavy, reconstructable parts of a persisted snapshot so the part the
- * user can't get back — the conversation text — still fits in localStorage.
- *
- * The bytes that blow the ~5MB quota are always the same two things: base64
- * image attachments, and `data:` URLs for artifacts generated in guest mode.
- * Both are dropped here; message content, titles and params are untouched.
- */
-function slimSnapshot(json: string): string | null {
-  try {
-    const parsed = JSON.parse(json) as {
-      state?: { conversations?: Conversation[] };
-    };
-    const conversations = parsed.state?.conversations;
-    if (!Array.isArray(conversations)) return null;
-
-    for (const convo of conversations) {
-      for (const msg of convo.messages ?? []) {
-        if (msg.attachments) {
-          msg.attachments = msg.attachments.map((att) => ({
-            ...att,
-            base64: undefined,
-            previewUrl: undefined,
-          }));
-        }
-        const artifacts = msg.metadata?.artifacts;
-        if (Array.isArray(artifacts)) {
-          msg.metadata = {
-            ...msg.metadata,
-            artifacts: artifacts.map((a) => {
-              const art = a as { url?: string };
-              return typeof art.url === 'string' && art.url.startsWith('data:')
-                ? { ...art, url: undefined }
-                : art;
-            }),
-          };
-        }
-      }
-    }
-    return JSON.stringify(parsed);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * A localStorage wrapper that coalesces writes. During streaming the store is
- * updated once per animation frame; without this, `persist` would write the
- * entire conversation set to localStorage ~60 times a second, driving RAM and
- * GC pressure through the roof (and hanging the tab) on long chats. Writes are
- * deferred and only the latest value is flushed, at most once per `delayMs`.
- *
- * This is a `PersistStorage`, NOT a `StateStorage` behind `createJSONStorage`,
- * and that distinction is the whole point. `createJSONStorage` runs
- * `JSON.stringify` in its own `setItem` — i.e. BEFORE handing the value down
- * here — so wrapping it only ever deferred the `localStorage.setItem` call. The
- * serialization itself (a full clone of state plus a stringify of every
- * conversation, every message, and every base64 image still in memory) still
- * happened on every frame; one 500 KB attachment in history was 20-40 ms of
- * main-thread work per frame on a phone, by itself. Taking the raw object here
- * and stringifying inside `flush` is what actually moves that cost off the hot
- * path: once per second instead of once per frame.
- *
- * The flush runs inside a timer, i.e. outside any caller's try/catch, so a
- * `QuotaExceededError` used to escape as an unhandled exception AND leave
- * `timer` pinned non-null — after which the `if (timer) return` guard turned
- * every later write into a silent no-op and the whole session stopped
- * persisting. Now a failed write degrades to a slimmed snapshot and tells the
- * user, and the timer state is always reset.
- *
- * `pagehide` (not `beforeunload`) does the final flush: mobile browsers freeze
- * or discard a backgrounded tab without ever firing `beforeunload`, which meant
- * losing up to `delayMs` of the conversation.
- */
-/**
- * Typed against `unknown` rather than the persisted slice on purpose: this
- * wrapper never inspects the value, it only defers serializing it, and the
- * `persist` middleware's own PersistedState generic widens to `unknown` here
- * anyway (the `migrate` below can return the raw persisted blob).
- */
-function throttledStorage(delayMs: number): PersistStorage<unknown> {
-  const storage = browserStorage();
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let pendingKey: string | null = null;
-  let pendingValue: StorageValue<unknown> | null = null;
-  /** Set once a full write has failed — keep writing the slim form after that. */
-  let degraded = false;
-  let warned = false;
-
-  const tryWrite = (key: string, value: string): boolean => {
-    try {
-      storage.setItem(key, value);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const flush = () => {
-    const key = pendingKey;
-    const value = pendingValue;
-    // Reset first: whatever happens below, the next setItem must be able to
-    // schedule a fresh flush.
-    pendingKey = null;
-    pendingValue = null;
-    timer = null;
-    if (key === null || value === null) return;
-
-    // The one stringify, once per flush window rather than once per frame.
-    let json: string;
-    try {
-      json = JSON.stringify(value);
-    } catch {
-      return;
-    }
-
-    if (!degraded && tryWrite(key, json)) return;
-
-    const slim = slimSnapshot(json);
-    if (slim && tryWrite(key, slim)) {
-      if (!degraded) {
-        degraded = true;
-        console.warn(
-          '[chat-store] localStorage quota exceeded — persisting without image ' +
-            'attachments and inline file data. Message text is unaffected.',
-        );
-        notify(
-          'Local storage is full. Chats are still saved, but attached images and ' +
-            'generated files are no longer kept across reloads — delete some old chats to free space.',
-          'error',
-        );
-      }
-      return;
-    }
-
-    if (!warned) {
-      warned = true;
-      console.error('[chat-store] Could not persist chats to localStorage.');
-      notify('Could not save chats locally — storage is full. Delete some old chats.', 'error');
-    }
-  };
-
-  if (typeof window !== 'undefined') {
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flush();
-    });
-  }
-
-  return {
-    getItem: (key: string) => {
-      const raw = storage.getItem(key);
-      if (typeof raw !== 'string') return null;
-      try {
-        return JSON.parse(raw) as StorageValue<unknown>;
-      } catch {
-        return null;
-      }
-    },
-    setItem: (key: string, value: StorageValue<unknown>) => {
-      pendingKey = key;
-      pendingValue = value;
-      if (timer) return;
-      timer = setTimeout(flush, delayMs);
-    },
-    removeItem: (key: string) => {
-      pendingKey = null;
-      pendingValue = null;
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
-      }
-      storage.removeItem(key);
-    },
-  };
 }
 
 export function makeConversation(
@@ -643,7 +465,7 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'ollama-webui:chats',
-      storage: throttledStorage(1000),
+      storage: chatStorage(1000),
       version: 6,
       migrate: (persisted: unknown, version: number) => {
         if (!persisted || typeof persisted !== 'object') return persisted;

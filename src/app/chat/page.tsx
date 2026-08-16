@@ -11,7 +11,7 @@ import { CommandPalette } from '@/features/command/CommandPalette';
 import { EmptyState } from '@/features/chat/components/EmptyState';
 import { useChatStore } from '@/lib/store/chat-store';
 import { useSettings } from '@/lib/store/settings-store';
-import { useHydrated } from '@/lib/hooks/use-hydrated';
+import { useChatHydrated, useHydrated } from '@/lib/hooks/use-hydrated';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { useKeyboardShortcuts } from '@/lib/hooks/use-keyboard-shortcuts';
 import { apiConfigured } from '@/lib/api/config';
@@ -19,6 +19,8 @@ import { MessageSkeleton } from '@/components/ui/skeleton';
 
 export default function HomePage() {
   const hydrated = useHydrated();
+  /** The store, not React. See the effect below. */
+  const chatsLoaded = useChatHydrated();
   const isMobile = useIsMobile();
 
   // Primitives only. Selecting `s.conversations` here meant this component —
@@ -58,15 +60,20 @@ export default function HomePage() {
   // create one so the fully-wired ChatView (whose EmptyState actually sends the
   // picked prompt) renders — the bare page-level EmptyState below can only start
   // a blank chat and would silently drop the prompt text the user clicked.
+  //
+  // Gated on the STORE having loaded, not just on React having mounted. The snapshot
+  // comes out of IndexedDB now, so "no conversations" is true for a few frames on
+  // every single load — acting on it there greeted returning users with a spurious
+  // empty "New chat" (and, once signed in, synced it to the cloud).
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !chatsLoaded) return;
     if (!apiConfigured()) return;
     if (conversationCount === 0) {
       newChat();
       return;
     }
     if (!activeId && firstConversationId) setActive(firstConversationId);
-  }, [hydrated, activeId, conversationCount, firstConversationId, setActive, newChat]);
+  }, [hydrated, chatsLoaded, activeId, conversationCount, firstConversationId, setActive, newChat]);
 
   const focusSearch = useCallback(() => {
     setSidebarOpen(true);
@@ -104,7 +111,7 @@ export default function HomePage() {
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} onNewChat={newChat} />
 
         <main className="relative flex min-w-0 flex-1 flex-col">
-          {!hydrated ? (
+          {!hydrated || !chatsLoaded ? (
             <div className="flex-1 pt-10">
               <MessageSkeleton />
               <MessageSkeleton />

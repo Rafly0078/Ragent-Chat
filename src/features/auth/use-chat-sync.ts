@@ -11,9 +11,10 @@
  *  - Guest / unconfigured: no-op. The store's localStorage persistence stands.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Conversation } from '@/types';
 import { useChatStore } from '@/lib/store/chat-store';
+import { useChatHydrated } from '@/lib/hooks/use-hydrated';
 import { notify } from '@/components/ui/toast';
 import { useAuth } from './AuthProvider';
 import {
@@ -23,6 +24,17 @@ import {
 } from '@/lib/services/conversations.service';
 
 const DEBOUNCE_MS = 800;
+/** After a failure, before trying the same write again. */
+const RETRY_MS = 4000;
+/** Consecutive failed flushes before the user hears about it. One failure is a
+ *  network blip, a token being refreshed, a server restarting — all of which the
+ *  retry below fixes silently, and none of which deserve a toast that says a chat
+ *  might not be saved. */
+const FAILURES_BEFORE_REPORTING = 2;
+/** Stop retrying after this many in a row: past here it is not a blip, and a flush
+ *  every few seconds against a server that is refusing us helps nobody. The next
+ *  store change arms a fresh attempt regardless. */
+const MAX_RETRIES = 5;
 
 /**
  * Merge remote and local conversations, newest `updatedAt` wins per id.
@@ -60,8 +72,17 @@ function mergeConversations(
 
 export function useChatSync(): void {
   const { user, isAuthenticated, isGuest, loading } = useAuth();
+  /**
+   * Local hydration is asynchronous now that the snapshot lives in IndexedDB, and the
+   * merge below reads local state: run it too early and it sees an empty store, pushes
+   * nothing up, and then `importConversations(merged, true)` replaces whatever
+   * hydration was about to deliver with the remote set — losing every local-only chat
+   * on a slow read.
+   */
+  const localReady = useChatHydrated();
+
   // Sync for any real session (authenticated OR anonymous guest with a row).
-  const active = Boolean(user) && !loading;
+  const active = Boolean(user) && !loading && localReady;
   const userId = user?.id ?? null;
 
   // Snapshot of what we believe is persisted, keyed by id → updatedAt.
@@ -74,12 +95,26 @@ export function useChatSync(): void {
   const flushing = useRef(false);
   const dirty = useRef(false);
   const errorReported = useRef(false);
+  /** Failed flushes in a row. Reset by the first success. */
+  const failures = useRef(0);
+  /** Bumped to re-enter the hydrate effect after a failed load. */
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const reportError = (err: unknown, what: string) => {
     console.warn(`[chat-sync] ${what} failed:`, err);
-    if (errorReported.current) return;
+    failures.current += 1;
+    if (errorReported.current || failures.current < FAILURES_BEFORE_REPORTING) return;
     errorReported.current = true;
     notify('Could not sync your chats to the cloud. They are still saved on this device.', 'error');
+  };
+
+  /** A write went through. Anything we said about being unable to sync is now false,
+   *  so take it back rather than leaving a stale warning as the last word. */
+  const reportRecovered = () => {
+    failures.current = 0;
+    if (!errorReported.current) return;
+    errorReported.current = false;
+    notify('Back in sync — your chats reached the cloud.', 'success');
   };
 
   // Initial hydrate on (re)login.
@@ -88,6 +123,7 @@ export function useChatSync(): void {
     if (hydratedFor.current === userId) return;
 
     let cancelled = false;
+    let retry: ReturnType<typeof setTimeout> | null = null;
     (async () => {
       try {
         const remote = await loadConversations();
@@ -105,6 +141,7 @@ export function useChatSync(): void {
         // wrote local state over the remote rows it had never read.
         hydratedFor.current = userId;
         hydrated.current = true;
+        reportRecovered();
 
         for (const c of toPush) {
           if (cancelled) return;
@@ -118,13 +155,20 @@ export function useChatSync(): void {
         hydratedFor.current = null;
         hydrated.current = false;
         reportError(err, 'load');
+        // A failed load is the one failure nothing else recovers from: no writes are
+        // allowed until it succeeds, and the effect only re-runs when the session
+        // changes. Bump the attempt counter to re-enter it under our own steam.
+        if (!cancelled && failures.current <= MAX_RETRIES) {
+          retry = setTimeout(() => setLoadAttempt((n) => n + 1), RETRY_MS);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
     };
-  }, [active, userId]);
+  }, [active, userId, loadAttempt]);
 
   // Reset hydration state when the user changes / signs out.
   useEffect(() => {
@@ -155,6 +199,7 @@ export function useChatSync(): void {
         return;
       }
       flushing.current = true;
+      let failed = false;
 
       try {
         const convos = useChatStore.getState().conversations;
@@ -177,6 +222,7 @@ export function useChatSync(): void {
             await saveConversation(c, userId);
             known.set(c.id, c.updatedAt);
           } catch (err) {
+            failed = true;
             reportError(err, `save ${c.id}`);
           }
         }
@@ -185,15 +231,22 @@ export function useChatSync(): void {
             await deleteRemote(id);
             known.delete(id);
           } catch (err) {
+            failed = true;
             reportError(err, `delete ${id}`);
           }
         }
+        // Nothing to do also counts: a flush with no changes proves nothing about
+        // the connection, so only an actual write clears a reported failure.
+        if (!failed && (changed.length > 0 || removed.length > 0)) reportRecovered();
       } finally {
         flushing.current = false;
-        // If the store changed during the flush, schedule another one.
-        if (dirty.current && !cancelled) {
+        // Re-run if the store changed during the flush, or if a write failed and is
+        // still worth another go — the ids that failed are simply not in `known`, so
+        // the next pass picks them up again with no extra bookkeeping.
+        const retry = failed && failures.current <= MAX_RETRIES;
+        if ((dirty.current || retry) && !cancelled) {
           dirty.current = false;
-          timer.current = setTimeout(flush, DEBOUNCE_MS);
+          timer.current = setTimeout(flush, retry ? RETRY_MS : DEBOUNCE_MS);
         }
       }
     };
