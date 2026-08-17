@@ -45,8 +45,12 @@ const MAX_RETRIES = 5;
  * too, and guest history was only migrated when the account had *zero* remote
  * conversations, so signing in with any existing cloud chat silently discarded
  * every local one.
+ *
+ * "Newest wins" is per conversation, but NOT per field: the remote projection is
+ * lossy, so a winning remote copy is merged over the local one rather than
+ * substituted for it. See the `else` branch.
  */
-function mergeConversations(
+export function mergeConversations(
   remote: Conversation[],
   local: Conversation[],
 ): { merged: Conversation[]; toPush: Conversation[] } {
@@ -63,6 +67,30 @@ function mergeConversations(
     } else if (c.updatedAt > r.updatedAt) {
       byId.set(c.id, c);
       toPush.push(c);
+    } else {
+      // The remote copy is newer — and for a synced conversation it always is, since
+      // the `conversations_updated_at` trigger rewrites `updated_at` on every upsert.
+      // Taking it wholesale is what destroyed history: the row projection carries no
+      // `attachments` (nothing writes `public.attachments`) and there is no
+      // `search_mode` column, so every reload of a signed-in session replaced the
+      // transcript with an attachment-free copy — the thumbnails and the extracted
+      // document text vanished, the blob sweep in chat-persistence then deleted the
+      // payloads because the snapshot no longer mentioned them, and the chat's
+      // web-search choice reverted to `auto`.
+      //
+      // A field the remote copy cannot represent is not the remote copy saying that
+      // field is empty, so carry those across. Everything the row CAN represent still
+      // comes from remote, which is what winning the merge means.
+      const localMsgs = new Map(c.messages.map((m) => [m.id, m]));
+      byId.set(c.id, {
+        ...r,
+        searchMode: r.searchMode ?? c.searchMode,
+        messages: r.messages.map((m) => {
+          if (m.attachments) return m;
+          const attachments = localMsgs.get(m.id)?.attachments;
+          return attachments ? { ...m, attachments } : m;
+        }),
+      });
     }
   }
 
@@ -71,7 +99,7 @@ function mergeConversations(
 }
 
 export function useChatSync(): void {
-  const { user, isAuthenticated, isGuest, loading } = useAuth();
+  const { user, loading } = useAuth();
   /**
    * Local hydration is asynchronous now that the snapshot lives in IndexedDB, and the
    * merge below reads local state: run it too early and it sees an empty store, pushes
@@ -130,9 +158,19 @@ export function useChatSync(): void {
         if (cancelled) return;
 
         const local = useChatStore.getState().conversations;
+        const keepActive = useChatStore.getState().activeId;
         const { merged, toPush } = mergeConversations(remote, local);
 
         useChatStore.getState().importConversations(merged, true);
+        // `importConversations` selects the newest conversation, which is what the
+        // file-import caller wants and what a hydrate must not do: the user was
+        // already reading something (restored from IndexedDB a few hundred ms
+        // earlier, and there is no per-chat route to fall back on), and they watched
+        // the app jump to a different chat once this resolved — with any text they
+        // had typed meanwhile still in the composer, now aimed at the wrong chat.
+        if (keepActive && merged.some((c) => c.id === keepActive)) {
+          useChatStore.getState().setActive(keepActive);
+        }
         persisted.current = new Map(merged.map((c) => [c.id, c.updatedAt]));
 
         // Mark hydrated BEFORE pushing so a concurrent flush isn't blocked, but
@@ -170,15 +208,17 @@ export function useChatSync(): void {
     };
   }, [active, userId, loadAttempt]);
 
-  // Reset hydration state when the user changes / signs out.
+  // Reset hydration state whenever the identity changes — a sign-out, but also a
+  // switch straight from one account to another. Keyed on the id because it used to
+  // key on `!user`: an A→B switch left `hydrated` true and `persisted` holding A's
+  // ids, so a flush was permitted for B before B's rows had ever been read, and it
+  // diffed B's session against A's bookkeeping.
   useEffect(() => {
-    if (!user) {
-      hydratedFor.current = null;
-      hydrated.current = false;
-      persisted.current = new Map();
-      errorReported.current = false;
-    }
-  }, [user, isAuthenticated, isGuest]);
+    hydratedFor.current = null;
+    hydrated.current = false;
+    persisted.current = new Map();
+    errorReported.current = false;
+  }, [userId]);
 
   // Debounced diff-sync on store changes.
   useEffect(() => {

@@ -179,15 +179,20 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
    *  Dropped only after the first successful write, so an interrupted migration
    *  leaves the old copy exactly where it was. */
   let migratedFrom: string | null = null;
+  /** Set once the IndexedDB snapshot has been retired in favour of a localStorage
+   *  one, so it is attempted only once per session. */
+  let idbSnapshotDropped = false;
   let degraded = false;
   let warned = false;
 
-  const writeLocal = (key: string, value: StorageValue<unknown>): void => {
+  /** Reports whether the snapshot landed: the fallback below only retires the
+   *  IndexedDB copy once there is a localStorage one to replace it with. */
+  const writeLocal = (key: string, value: StorageValue<unknown>): boolean => {
     let json: string;
     try {
       json = JSON.stringify(value);
     } catch {
-      return;
+      return false;
     }
     const tryWrite = (payload: string) => {
       try {
@@ -197,7 +202,7 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
         return false;
       }
     };
-    if (!degraded && tryWrite(json)) return;
+    if (!degraded && tryWrite(json)) return true;
 
     const slim = slimSnapshot(json);
     if (slim && tryWrite(slim)) {
@@ -213,14 +218,34 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
           'error',
         );
       }
-      return;
+      return true;
     }
     if (!warned) {
       warned = true;
       console.error('[chat-store] Could not persist chats locally.');
       notify('Could not save chats locally — storage is full. Delete some old chats.', 'error');
     }
+    return false;
   };
+
+  /**
+   * Write to localStorage instead, and retire the IndexedDB snapshot it supersedes.
+   *
+   * Dropping it is the whole point: `getItem` prefers IndexedDB whenever it can read
+   * it, and `idbBroken` is module state that starts false again on the next load — so
+   * the record left behind here was served on reload as if nothing had happened, and
+   * every chat written after the failure went with it, right after the user was told
+   * they were still being saved.
+   *
+   * Only once the local write has landed, or a browser refusing both stores would be
+   * left with neither.
+   */
+  const writeFallback = (key: string, value: StorageValue<unknown>): void => {
+    if (!writeLocal(key, value) || idbSnapshotDropped) return;
+    idbSnapshotDropped = true;
+    void idbDelete(SNAPSHOT_STORE, key).catch(() => {});
+  };
+
   /** Schedule a flush unless one is already pending. */
   function arm(): void {
     if (timer === null) timer = setTimeout(() => void flush(), delayMs);
@@ -228,8 +253,12 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
 
   async function flush(): Promise<void> {
     // A flush that lands while one is in flight would write the same snapshot twice
-    // and, worse, race the blob bookkeeping. Re-arm instead.
+    // and, worse, race the blob bookkeeping. Re-arm instead — releasing this timer
+    // first, since it is the one that just fired and `arm` no-ops while it is still
+    // recorded here. Left in place, nothing scheduled a flush again for the rest of
+    // the session: not this call, and not the recovery `arm` in the `finally` below.
     if (flushing) {
+      timer = null;
       arm();
       return;
     }
@@ -255,7 +284,7 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
     flushing = true;
     try {
       if (idbBroken) {
-        writeLocal(key, value);
+        writeFallback(key, value);
         lastWritten = state;
         return;
       }
@@ -287,7 +316,7 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
         // genuinely full rather than that we picked too small a box.
         console.warn('[chat-store] IndexedDB write failed — falling back:', err);
         idbBroken = true;
-        writeLocal(key, value);
+        writeFallback(key, value);
         lastWritten = state;
       }
     } finally {
@@ -379,7 +408,21 @@ export function chatStorage(delayMs: number): PersistStorage<unknown> {
         timer = null;
       }
       window.localStorage.removeItem(key);
-      if (!idbBroken) void idbDelete(SNAPSHOT_STORE, key).catch(() => {});
+      // Unconditionally, and NOT gated on `idbBroken`: this is what sign-out calls
+      // to make sure the next account on this browser does not inherit the previous
+      // one's chats, and `idbBroken` only means *our last write* failed — a snapshot
+      // written before that is still there, and `idbBroken` starts false again on
+      // the next load, at which point `getItem` would happily serve it. The catch is
+      // already here for the case where the store really is unusable.
+      void idbDelete(SNAPSHOT_STORE, key).catch(() => {});
+      // The attachment blobs too: they are the actual image bytes and extracted
+      // document text. Nothing references them once the snapshot is gone, so the
+      // next flush's sweep would collect them — but "eventually, if this browser
+      // is used again" is not good enough for data the previous account owned.
+      void idbKeys(ATTACHMENT_STORE)
+        .then((ids) => Promise.all(ids.map((id) => idbDelete(ATTACHMENT_STORE, id))))
+        .catch(() => {});
+      knownBlobs = new Set();
     },
   };
 }

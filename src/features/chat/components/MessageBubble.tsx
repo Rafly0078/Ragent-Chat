@@ -110,7 +110,15 @@ export const MessageBubble = memo(function MessageBubble({
   // Web-search status/citations ride on metadata (set by useChat), so no new
   // Message field is needed. `searching` is true only while the query is in
   // flight; `sources` persists after it resolves.
-  const searching = message.metadata?.searching === true;
+  //
+  // Gated on `streaming` as well, because metadata is persisted — to IndexedDB
+  // every second and to `messages.metadata` in Postgres — and nothing that ends a
+  // turn is guaranteed to run. A tab closed during the planner round trip wrote
+  // the flag and never took it down, so the message came back claiming forever
+  // that a search was in flight: a pulsing status line, and no action row. The
+  // store now scrubs the flag on the way in, and this covers the rows that were
+  // written before it did.
+  const searching = message.streaming === true && message.metadata?.searching === true;
   const sources = (message.metadata?.sources as Source[] | undefined) ?? [];
   // Agentic search phase: deciding → planning → searching. Drives the status
   // line so the user sees the model plan and then search, not one opaque
@@ -569,7 +577,10 @@ function ReasoningPanel({
                 active && 'scrollbar-thin max-h-56 overflow-y-auto',
               )}
             >
-              {redacted && !text ? (
+              {/* `redacted` alone, not `redacted && !text`: the block now carries the
+                  provider's encrypted payload as its text so a later turn can replay
+                  it, and that string is base64, not reasoning anyone can read. */}
+              {redacted ? (
                 <span className="italic">
                   The provider returned this reasoning encrypted, so there is nothing to show.
                 </span>

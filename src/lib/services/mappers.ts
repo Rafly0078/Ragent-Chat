@@ -182,6 +182,13 @@ export function rowToMessage(row: MessageRow): Message {
     // it in metadata too would show every generated file twice.
     metadata: safeMetadata(row.metadata),
     error: row.error ?? undefined,
+    // No `attachments`: `messageToRow` has nowhere to put them (the bytes belong
+    // in the `uploads` bucket and nothing writes `public.attachments`), so a row
+    // can only ever say "unknown" about them, never "none". `mergeConversations`
+    // grafts the local ones back on when this copy wins a merge — without that,
+    // every reload of a signed-in session stripped the images and the extracted
+    // document text out of the transcript, and the IndexedDB sweep then deleted
+    // the payloads for good.
   };
 }
 
@@ -209,6 +216,13 @@ export function rowToArtifact(row: ArtifactRow): Artifact {
   };
 }
 
+/**
+ * `searchMode` is absent on purpose: there is no `search_mode` column, so the row
+ * cannot carry the per-chat web-search choice. `mergeConversations` keeps the local
+ * value when the remote copy wins the merge — without that, a chat the user set to
+ * `off` came back as `auto` on the next load (sanitizeConversations fills the gap
+ * with the default) and the next turn went to the planner and out to the web.
+ */
 export function conversationToRow(
   convo: Conversation,
   userId: string,
@@ -237,7 +251,18 @@ export function messageToRow(
   // Strip `artifacts`: they have their own table (written by /api/tools/execute)
   // and loadConversations re-attaches them, so keeping a copy here would show
   // every generated file twice.
-  const { artifacts: _artifacts, ...metadata } = msg.metadata ?? {};
+  //
+  // Strip `searching`/`searchPhase` too: they are live status, not history. A tab
+  // closed or backgrounded during the planner round trip flushed them to the row,
+  // nothing was left running to take them down, and the message then claimed on
+  // every later load that a web search was still in flight. The search *results* —
+  // `sources`, `searchContext`, `plannedQueries`, `searchSkipped` — stay.
+  const {
+    artifacts: _artifacts,
+    searching: _searching,
+    searchPhase: _searchPhase,
+    ...metadata
+  } = msg.metadata ?? {};
   return {
     id: msg.id,
     conversation_id: convoId,

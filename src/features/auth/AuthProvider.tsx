@@ -45,6 +45,62 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Which non-anonymous account the locally cached chats belong to.
+ *
+ * Mirrored to localStorage because the identity can change while this tab isn't
+ * running — a refresh token revoked by a password change, a sign-out in another tab
+ * — and the store's persist key (`ollama-webui:chats`) is a single global one with
+ * no user in it.
+ */
+const CHAT_OWNER_KEY = 'ollama-webui:chat-owner';
+
+function readChatOwner(): string | null {
+  try {
+    return window.localStorage.getItem(CHAT_OWNER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeChatOwner(id: string | null): void {
+  try {
+    if (id) window.localStorage.setItem(CHAT_OWNER_KEY, id);
+    else window.localStorage.removeItem(CHAT_OWNER_KEY);
+  } catch {
+    /* storage unavailable — the in-tab ref below still catches a live switch */
+  }
+}
+
+/**
+ * Drop the locally cached chats, on the way out of an account by any route.
+ *
+ * Only the explicit `signOut()` used to do this, so a session that ended any other
+ * way left the previous user's conversations in `ollama-webui:chats`; the next
+ * person to sign in on the same browser had them merged into — and uploaded to —
+ * THEIR account. Cross-account disclosure plus permanent contamination.
+ */
+function clearCachedChats(): void {
+  const clear = () => {
+    try {
+      useChatStore.persist.clearStorage();
+    } catch {
+      /* storage unavailable — the state reset below still applies */
+    }
+    useChatStore.setState({ conversations: [], activeId: null, generatingId: null });
+  };
+  clear();
+  writeChatOwner(null);
+  // The snapshot lives in IndexedDB, so hydration is a round trip that can still be
+  // in flight here — on a cold load, a session read that resolves first would have
+  // its clear undone moments later by the previous user's chats arriving.
+  if (useChatStore.persist.hasHydrated()) return;
+  const stop = useChatStore.persist.onFinishHydration(() => {
+    stop();
+    clear();
+  });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const enabled = supabaseConfigured();
   const [loading, setLoading] = useState(enabled);
@@ -59,9 +115,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Track which user we've already backfilled a profile for, so onAuthStateChange
   // firing repeatedly (token refresh, tab focus) doesn't re-hit the DB each time.
   const ensuredFor = useRef<string | null>(null);
+  /** The account the cached chats belong to, for this tab. Backed by localStorage. */
+  const chatOwner = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
+
+    /**
+     * The local chat cache belongs to one account, so drop it the moment the
+     * authenticated identity moves off that account — a sign-out here, a sign-out in
+     * another tab, a revoked token, or a different account signing in. Runs before
+     * `setUser`, so the store is already empty when `useChatSync` re-runs for the new
+     * id and cannot push the previous user's chats into the new user's rows.
+     *
+     * Only a non-anonymous id is ever recorded as the owner, which is what keeps the
+     * deliberate guest → account migration working: a guest never owned the cache, so
+     * its chats still merge upward on sign-in.
+     */
+    const noteIdentity = (next: User | null) => {
+      const owner = chatOwner.current ?? readChatOwner();
+      if (owner && next?.id !== owner) {
+        clearCachedChats();
+        chatOwner.current = null;
+      }
+      if (next && !next.is_anonymous) {
+        chatOwner.current = next.id;
+        writeChatOwner(next.id);
+      }
+    };
 
     // Self-heal a missing profile row on sign-in (see ensureProfile). Fire and
     // forget — never block auth on it, and swallow errors so a transient DB
@@ -90,12 +171,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const { data } = await supabase.auth.getSession();
       if (!active) return;
+      noteIdentity(data.session?.user ?? null);
       setSession(data.session);
       setUser(data.session?.user ?? null);
       maybeEnsureProfile(data.session?.user ?? null);
       setLoading(false);
 
       const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+        noteIdentity(next?.user ?? null);
         setSession(next);
         setUser(next?.user ?? null);
         maybeEnsureProfile(next?.user ?? null);
@@ -175,18 +258,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const supabase = supabaseRef.current;
     if (!supabase) return { error: 'Auth is not configured.' };
     const { error } = await supabase.auth.signOut();
-    // Clear the local chat cache on the way out. Sign-out used to leave the
-    // previous user's conversations in localStorage under
-    // `ollama-webui:chats`; the next person to sign in on the same browser had
-    // them merged into — and uploaded to — THEIR account. Cross-account
-    // disclosure plus permanent contamination. Runs even if signOut errored,
-    // since the intent to leave is explicit.
-    try {
-      useChatStore.persist.clearStorage();
-    } catch {
-      /* storage unavailable — the state reset below still applies */
-    }
-    useChatStore.setState({ conversations: [], activeId: null, generatingId: null });
+    // Runs even if signOut errored, since the intent to leave is explicit. The auth
+    // event does this too, via `noteIdentity` — this is the one path that must not
+    // depend on the event arriving.
+    clearCachedChats();
+    chatOwner.current = null;
     return { error: error?.message ?? null };
   }, []);
 

@@ -140,6 +140,12 @@ function sanitizeMessage(raw: unknown): Message | null {
     createdAt: typeof m.createdAt === 'number' ? m.createdAt : Date.now(),
     // Never restore a "still streaming" flag from a file — nothing is streaming.
     streaming: false,
+    // Nor the live search flags, which ride on `metadata` and are persisted with
+    // it: a row written while a query was still in flight carries them, and the
+    // cloud hydrate comes through here too, so they came back on every device.
+    ...(m.metadata?.searching === true
+      ? { metadata: { ...m.metadata, searching: false, searchPhase: undefined } }
+      : {}),
     attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
     // Ordered segments arrive from an untrusted export file, and the renderer
     // switches on `kind` and does arithmetic on `endedAt - startedAt`. A bad
@@ -236,6 +242,61 @@ export function sanitizeConversations(raw: unknown): Conversation[] {
   }
 
   return out;
+}
+
+/**
+ * The summary a conversation still has once the message at `removedIndex` — and,
+ * for a truncation, everything after it — is gone.
+ *
+ * `summary.text` is frozen prose written from those messages, and `toApiMessages`
+ * prepends it on every later turn whether or not the marker message is still
+ * there. So a message the user deleted (a requirement they retracted, say)
+ * disappeared from the transcript and from every export while the model kept
+ * being handed it inside the memory, with nothing on screen to show for it — and
+ * a truncation past the marker left the summary being sent beside the whole
+ * un-sliced history. `clearMessages` already drops it for the same reason.
+ */
+function summaryAfterRemoval(
+  c: Conversation,
+  removedIndex: number,
+): ConversationSummary | undefined {
+  const upTo = c.summary?.upToMessageId;
+  if (upTo === undefined || removedIndex === -1) return c.summary;
+  const cut = c.messages.findIndex((m) => m.id === upTo);
+  return cut !== -1 && removedIndex <= cut ? undefined : c.summary;
+}
+
+/**
+ * A message as it should read when it comes off disk rather than off a stream.
+ *
+ * `streaming` and the `searching`/`searchPhase` pair on `metadata` describe work
+ * that belonged to the session that wrote them, and both sit inside the persisted
+ * slice — a flush runs about once a second during a turn, and `pagehide` runs one
+ * more. A tab killed mid-turn therefore came back to a message that was in flight
+ * forever: a blinking caret, a pulsing "searching the web", no metrics, and
+ * `showActions` false — which hides Delete too, so the only way to be rid of it
+ * was to delete the whole conversation.
+ *
+ * Done here, on the way in, rather than at each write site: nothing that ends a
+ * turn can be relied on to run, so the read is the only place that knows for
+ * certain that nothing is streaming.
+ *
+ * An unclosed thinking block is sealed at its own `startedAt`, not at now, the way
+ * a live seal would: the gap between the two is a reload, not reasoning, and
+ * billing it as reasoning writes a multi-day `reasoningTimeMs` into the message.
+ */
+function settled(m: Message): Message {
+  if (m.streaming !== true && m.metadata?.searching !== true) return m;
+  const last = m.parts?.[m.parts.length - 1];
+  const base =
+    last?.kind === 'thinking' && last.endedAt === undefined ? sealed(m, true, last.startedAt) : m;
+  return {
+    ...base,
+    streaming: false,
+    ...(base.metadata
+      ? { metadata: { ...base.metadata, searching: false, searchPhase: undefined } }
+      : {}),
+  };
 }
 
 export const useChatStore = create<ChatState>()(
@@ -421,11 +482,15 @@ export const useChatStore = create<ChatState>()(
 
       deleteMessage: (convoId, msgId) =>
         set((s) => ({
-          conversations: s.conversations.map((c) =>
-            c.id === convoId
-              ? touch({ ...c, messages: c.messages.filter((m) => m.id !== msgId) })
-              : c,
-          ),
+          conversations: s.conversations.map((c) => {
+            if (c.id !== convoId) return c;
+            const idx = c.messages.findIndex((m) => m.id === msgId);
+            return touch({
+              ...c,
+              messages: c.messages.filter((m) => m.id !== msgId),
+              summary: summaryAfterRemoval(c, idx),
+            });
+          }),
         })),
 
       truncateFrom: (convoId, msgId, inclusive) =>
@@ -435,7 +500,11 @@ export const useChatStore = create<ChatState>()(
             const idx = c.messages.findIndex((m) => m.id === msgId);
             if (idx === -1) return c;
             const end = inclusive ? idx : idx + 1;
-            return touch({ ...c, messages: c.messages.slice(0, end) });
+            return touch({
+              ...c,
+              messages: c.messages.slice(0, end),
+              summary: summaryAfterRemoval(c, end),
+            });
           }),
         })),
 
@@ -469,7 +538,17 @@ export const useChatStore = create<ChatState>()(
         if (incoming.length === 0) return 0;
         set((s) => ({
           conversations: replace ? incoming : [...incoming, ...s.conversations],
-          activeId: incoming[0]?.id ?? s.activeId,
+          // A replace keeps the conversation being read unless it is not in the
+          // incoming set. The one caller that replaces is the cloud hydrate, and
+          // its list is sorted newest-first, so taking `incoming[0]` outright
+          // bounced the user off the chat they had open onto the most recently
+          // updated one — a second after the page had already rendered it, with
+          // whatever was typed still sitting in the composer.
+          activeId: replace
+            ? incoming.some((c) => c.id === s.activeId)
+              ? s.activeId
+              : (incoming[0]?.id ?? null)
+            : (incoming[0]?.id ?? s.activeId),
         }));
         return incoming.length;
       },
@@ -557,6 +636,22 @@ export const useChatStore = create<ChatState>()(
         activeId: s.activeId,
         recentModels: s.recentModels,
       }),
+      // Runs once per load, on top of the default shallow merge, to take down the
+      // live-status flags the snapshot may have been written in the middle of —
+      // see `settled`. `migrate` cannot do this: it is only called when the stored
+      // version differs from the current one, so it does not run at all on a
+      // normal load. Untouched messages and conversations keep their identity,
+      // which is every message on almost every load.
+      merge: (persisted, current) => {
+        const next = { ...current, ...(persisted as Partial<ChatState> | undefined) };
+        return {
+          ...next,
+          conversations: (next.conversations ?? []).map((c) => {
+            const messages = (c.messages ?? []).map(settled);
+            return messages.every((m, i) => m === c.messages[i]) ? c : { ...c, messages };
+          }),
+        };
+      },
     },
   ),
 );

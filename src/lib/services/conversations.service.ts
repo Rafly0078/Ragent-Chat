@@ -150,21 +150,40 @@ export async function loadConversations(): Promise<Conversation[]> {
 }
 
 /**
+ * `updated_at` for a conversation row that exists only so its messages have
+ * something to point at. See `saveConversation`: the real timestamp is written
+ * last, so a row still holding this one is a save that did not finish, and the
+ * merge on the next load treats the local copy as the newer one — it wins, and the
+ * write is retried — instead of letting a half-written remote copy replace it.
+ */
+const UNWRITTEN_AT = new Date(0).toISOString();
+
+/**
  * Upsert a conversation and reconcile its message set. We must NOT delete-all
  * then re-insert: `artifacts.message_id` references `messages(id)` with
  * `on delete set null`, so wiping messages on every debounced sync would orphan
  * every generated file (its message_id becomes NULL and the file no longer
  * shows up on reload). Message ids are stable, so instead we upsert the current
  * messages by id and delete only the ones that were actually removed.
+ *
+ * Order matters as much as content — the conversation row is written last. See the
+ * final upsert.
  */
 export async function saveConversation(convo: Conversation, userId: string): Promise<void> {
   const supabase = await loadSupabaseBrowser();
   if (!supabase) return;
 
-  const { error: convoErr } = await supabase
-    .from('conversations')
-    .upsert(conversationToRow(convo, userId), { onConflict: 'id' });
-  if (convoErr) throw new Error(convoErr.message);
+  const row = conversationToRow(convo, userId);
+
+  // All this does is make sure the row EXISTS, because `messages.conversation_id`
+  // references it. `ignoreDuplicates` is ON CONFLICT DO NOTHING: it never updates a
+  // row that is already there, so it cannot fire the `updated_at` trigger.
+  if (convo.messages.length > 0) {
+    const { error: seedErr } = await supabase
+      .from('conversations')
+      .upsert({ ...row, updated_at: UNWRITTEN_AT }, { onConflict: 'id', ignoreDuplicates: true });
+    if (seedErr) throw new Error(seedErr.message);
+  }
 
   // Delete by explicit id list, derived from what actually exists remotely.
   //
@@ -213,11 +232,25 @@ export async function saveConversation(convo: Conversation, userId: string): Pro
           .from('messages')
           .upsert(legacy, { onConflict: 'id' });
         if (retryErr) throw new Error(retryErr.message);
-        return;
+      } else {
+        throw new Error(upsertErr.message);
       }
-      throw new Error(upsertErr.message);
     }
   }
+
+  // The conversation row goes last, now that its messages are actually there.
+  //
+  // It used to go first, and the `conversations_updated_at` trigger rewrites
+  // `updated_at` to now() on every update — so a messages write that then failed (a
+  // flaky connection, an RLS rejection, a body too large for a big paste, the tab
+  // closing after the first request landed) left a remote copy NEWER than local but
+  // missing the turn. The next load's merge handed that copy the win and the turn was
+  // destroyed locally too, moments after a toast promised it was "still saved on this
+  // device". Written here, `updated_at` moving means the whole conversation landed.
+  const { error: convoErr } = await supabase
+    .from('conversations')
+    .upsert(row, { onConflict: 'id' });
+  if (convoErr) throw new Error(convoErr.message);
 }
 
 /** Logged once per session, not once per debounced flush. */
