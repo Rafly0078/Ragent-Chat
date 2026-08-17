@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@/lib/utils/cn';
 
 /** Labeled range slider with live value + numeric input for precision. */
@@ -26,18 +27,52 @@ export function Slider({
    *  slider; `label` is still used for the accessible names. */
   hideLabel?: boolean;
 }) {
+  /**
+   * What the box currently reads while it is being edited, `null` when it is
+   * simply showing `value`.
+   *
+   * The box used to clamp on every keystroke. Typing "8192" into a min-512 field
+   * committed 512 on the first digit, and because React rewrites a number
+   * input's DOM value whenever it disagrees with the prop, the caret ended up
+   * after "512" and the rest of the digits produced 131072. A decimal was worse:
+   * a number input reports `value === ''` for the incomplete "0.", so the point
+   * was swallowed and 0.9 landed as 1.
+   */
+  const [draft, setDraft] = useState<string | null>(null);
   const pct = ((value - min) / (max - min)) * 100;
+
+  const commit = () => {
+    if (draft === null) return;
+    const typed = Number(draft);
+    // An emptied or unparseable box is an abandoned edit rather than a request
+    // for `min`, so the live value goes back instead of a new one going out.
+    if (draft.trim() !== '' && Number.isFinite(typed)) onChange(clamp(typed, min, max));
+    setDraft(null);
+  };
+
   return (
     <div className="space-y-2">
       <div className={cn('flex items-center', hideLabel ? 'justify-end' : 'justify-between')}>
         {!hideLabel && <label className="text-sm font-medium text-content">{label}</label>}
         <input
           type="number"
-          value={value}
+          value={draft ?? value}
           min={min}
           max={max}
           step={step}
-          onChange={(e) => onChange(clamp(Number(e.target.value), min, max))}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            // Only a finished, in-range number goes to the caller; half-typed
+            // text stays local until blur or Enter clamps it.
+            const typed = Number(e.target.value);
+            if (e.target.value !== '' && Number.isFinite(typed) && typed >= min && typed <= max) {
+              onChange(typed);
+            }
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+          }}
           // 16px on touch so focusing it doesn't trigger iOS zoom (the box grows
           // to h-9 to fit); back to the dense 28px/12px chip on pointer devices.
           className="input h-9 w-24 px-2 py-0 text-right tabular-nums [@media(hover:hover)]:h-7 [@media(hover:hover)]:w-20 [@media(hover:hover)]:text-xs"
@@ -50,7 +85,12 @@ export function Slider({
         min={min}
         max={max}
         step={step}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          // The range is the authority once it moves: a box left mid-edit would
+          // otherwise keep showing text the thumb has already contradicted.
+          setDraft(null);
+          onChange(Number(e.target.value));
+        }}
         aria-label={label}
         className={cn(
           'h-1.5 w-full cursor-pointer appearance-none rounded-full outline-none',

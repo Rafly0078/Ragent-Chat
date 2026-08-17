@@ -31,6 +31,13 @@ interface Props {
 /** Cap on the inline text preview so a huge CSV/JSON can't lock up the main thread. */
 const MAX_PREVIEW_CHARS = 200_000;
 
+/** Trim a preview body to the cap, saying where it stops. */
+function capPreview(text: string): string {
+  return text.length > MAX_PREVIEW_CHARS
+    ? `${text.slice(0, MAX_PREVIEW_CHARS)}\n\n… (preview truncated — download to see all of it)`
+    : text;
+}
+
 /** Click a temporary anchor to save `url` as `filename`. */
 function triggerDownload(url: string, filename: string): void {
   const a = document.createElement('a');
@@ -91,11 +98,13 @@ function ArtifactCard({
   // there, then wipes left to right off it. `arrived` is what the content reports;
   // `swept` is the animation finishing, which is when the layer can go.
   //
-  // An HTML artifact loads in an iframe and tells us with `onLoad`. Everything else
-  // is a data URL decoded synchronously, so it has already arrived by the time the
-  // modal opens and the veil is purely the reveal.
+  // An HTML artifact loads in an iframe and tells us with `onLoad`. A data: URL is
+  // decoded synchronously, so there the veil is purely the reveal. A persisted
+  // artifact's text is a fetch, and reports when the body lands.
   const [arrived, setArrived] = useState(false);
   const [swept, setSwept] = useState(false);
+  /** Body read from a signed URL for the text preview. Null until it lands. */
+  const [fetchedText, setFetchedText] = useState<string | null>(null);
   const isPreviewable = ['html', 'md', 'txt', 'json', 'xml', 'csv'].includes(artifact.kind);
   const { icon: Icon, tile, label } = kindStyle(artifact.kind);
   const { toast } = useToast();
@@ -132,22 +141,63 @@ function ArtifactCard({
   // it used to run inline in JSX — i.e. on every re-render of the open modal,
   // including each animation frame. Memoized and capped.
   const textPreview = useMemo(() => {
-    if (!previewOpen || artifact.kind === 'html') return '';
-    if (!artifact.url?.startsWith('data:')) return 'No preview available for this format.';
-    const decoded = decodePreview(artifact.url);
-    return decoded.length > MAX_PREVIEW_CHARS
-      ? `${decoded.slice(0, MAX_PREVIEW_CHARS)}\n\n… (preview truncated — download to see all of it)`
-      : decoded;
-  }, [previewOpen, artifact.kind, artifact.url]);
+    if (!previewOpen || artifact.kind === 'html' || !artifact.url) return '';
+    // A cloud-persisted artifact carries a signed https URL and never a data: one,
+    // so insisting on `data:` here answered "no preview available" for every
+    // artifact a signed-in user ever generated. The effect below fetches those;
+    // until it lands the body is empty and the veil is still over it.
+    if (!artifact.url.startsWith('data:')) return fetchedText ?? '';
+    return capPreview(decodePreview(artifact.url));
+  }, [previewOpen, artifact.kind, artifact.url, fetchedText]);
 
   useEffect(() => {
     if (!previewOpen) {
       setArrived(false);
       setSwept(false);
+      setFetchedText(null);
       return;
     }
-    if (artifact.kind !== 'html') setArrived(true);
-  }, [previewOpen, artifact.kind]);
+    if (artifact.kind !== 'html' && artifact.url?.startsWith('data:')) setArrived(true);
+  }, [previewOpen, artifact.kind, artifact.url]);
+
+  // The text body of a persisted artifact — the same cross-origin fetch the
+  // Download button already makes against this URL. Aborted when the modal closes
+  // or the panel re-signs the URL, so a slow read can't overwrite the body with a
+  // stale one.
+  useEffect(() => {
+    const url = artifact.url;
+    if (!previewOpen || artifact.kind === 'html' || !url || url.startsWith('data:')) return;
+    const controller = new AbortController();
+    fetch(url, { signal: controller.signal })
+      .then((res) => (res.ok ? res.text() : Promise.reject(new Error(`HTTP ${res.status}`))))
+      .then((text) => {
+        setFetchedText(capPreview(text));
+        setArrived(true);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        // Lift the veil either way, or a dead signed URL leaves the reader
+        // watching a loading field forever.
+        setFetchedText('Preview unavailable — the link may have expired. Reload the page.');
+        setArrived(true);
+      });
+    return () => controller.abort();
+  }, [previewOpen, artifact.kind, artifact.url]);
+
+  // Escape reached the global shortcut handler, which reads it as "stop
+  // generating": dismissing this preview during a reply aborted the reply and left
+  // the modal open. Stopped at `document` the way modal.tsx does it, which is what
+  // keeps it off the window listener.
+  useEffect(() => {
+    if (!previewOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setPreviewOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [previewOpen]);
 
   return (
     <>

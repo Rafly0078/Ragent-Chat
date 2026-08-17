@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ModelInfo } from '@/types';
 import { fetchModels } from '@/lib/api/client';
 import {
@@ -24,6 +24,52 @@ interface ModelsState {
 // Module-level cache so switching routes doesn't refetch every mount.
 let cache: ModelInfo[] | null = null;
 let ownerCache: boolean | null = null;
+
+/**
+ * The requests in flight, not just their results.
+ *
+ * `if (!cache)` only dedupes a *resolved* cache, so ChatView and the picker —
+ * which mount in the same commit on /chat — each fired their own /api/models,
+ * /api/model-labels and is-owner round trip at the user's own server.
+ *
+ * Neither shared request takes a caller's AbortSignal, deliberately: one
+ * component unmounting must not cancel the fetch another is waiting on. For the
+ * owner check that also retires the old hazard where `fetchIsOwner` swallowed the
+ * AbortError as `false` and cached "not the owner" for the rest of the session.
+ */
+let inflight: Promise<ModelInfo[]> | null = null;
+let ownerInflight: Promise<boolean> | null = null;
+
+function loadOnce(): Promise<ModelInfo[]> {
+  if (!inflight) {
+    // The raw list and the curated labels in parallel; a labels failure must not
+    // block models (the picker just shows raw names).
+    const pending: Promise<ModelInfo[]> = Promise.all([fetchModels(), fetchModelLabels()])
+      .then(([list, labels]) => applyLabels(list, labels))
+      // Cleared only if it is still the current request: a reload replaces
+      // `inflight`, and the superseded one must not clear its successor.
+      .finally(() => {
+        if (inflight === pending) inflight = null;
+      });
+    inflight = pending;
+  }
+  return inflight;
+}
+
+function checkOwnerOnce(): Promise<boolean> {
+  if (!ownerInflight) {
+    const pending: Promise<boolean> = fetchIsOwner()
+      .then((v) => {
+        ownerCache = v;
+        return v;
+      })
+      .finally(() => {
+        if (ownerInflight === pending) ownerInflight = null;
+      });
+    ownerInflight = pending;
+  }
+  return ownerInflight;
+}
 
 // Bumped on every cache write so components reading the cache synchronously can
 // re-render when it fills. Without this, anything resolved from `getCachedModel`
@@ -76,8 +122,13 @@ export function getCachedModel(name: string): ModelInfo | undefined {
 
 /**
  * Overlay owner-curated labels onto the raw model list: rename via
- * `display_name`, drop entries flagged `hidden`, and re-sort so curated models
+ * `display_name`, flag the ones marked `hidden`, and re-sort so curated models
  * lead (by sort_order, then label). Models without a label keep their raw name.
+ *
+ * A hidden model is flagged here, not dropped. Dropping it took it away from the
+ * owner too — and the editor that can un-hide one is only reachable from that
+ * model's own row in the picker, so "Hide from list" was a door that locked behind
+ * you and only a DELETE against `model_labels` reopened.
  */
 function applyLabels(models: ModelInfo[], labels: ModelLabel[]): ModelInfo[] {
   if (labels.length === 0) return models;
@@ -85,19 +136,23 @@ function applyLabels(models: ModelInfo[], labels: ModelLabel[]): ModelInfo[] {
   const out: ModelInfo[] = [];
   for (const model of models) {
     const label = byName.get(model.name);
-    if (label?.hidden) continue;
     if (label) {
       out.push({
         ...model,
         label: label.displayName,
         customLabel: true,
         description: label.description ?? undefined,
+        hidden: label.hidden,
       });
     } else {
       out.push(model);
     }
   }
   out.sort((a, b) => {
+    // Hidden entries sink to the end. They are only in this list for the owner,
+    // and the picker auto-selects `models[0]` — which must never be a model the
+    // owner has taken out of circulation.
+    if (Boolean(a.hidden) !== Boolean(b.hidden)) return a.hidden ? 1 : -1;
     const la = byName.get(a.name);
     const lb = byName.get(b.name);
     const oa = la?.sortOrder ?? Number.MAX_SAFE_INTEGER;
@@ -116,7 +171,7 @@ export function useModels(): ModelsState {
   /** Only the newest load may clear `loading` or write results. */
   const generation = useRef(0);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
+  const load = useCallback(async () => {
     const gen = ++generation.current;
     if (!apiConfigured()) {
       const provider = getApiProvider();
@@ -131,11 +186,8 @@ export function useModels(): ModelsState {
     setLoading(true);
     setError(null);
     try {
-      // Fetch the raw list and the curated labels in parallel; a labels failure
-      // must not block models (the picker just shows raw names).
-      const [list, labels] = await Promise.all([fetchModels(signal), fetchModelLabels(signal)]);
+      const merged = await loadOnce();
       if (gen !== generation.current) return;
-      const merged = applyLabels(list, labels);
       setCache(merged);
       setModels(merged);
     } catch (err) {
@@ -151,24 +203,15 @@ export function useModels(): ModelsState {
   }, []);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    if (!cache) void load(ctrl.signal);
-    if (ownerCache === null) {
-      void fetchIsOwner(ctrl.signal).then((v) => {
-        // `fetchIsOwner` swallows AbortError and returns false, so an unmount
-        // before the request settled used to cache `false` permanently — the
-        // owner's rename controls then never appeared again until a full reload.
-        if (ctrl.signal.aborted) return;
-        ownerCache = v;
-        setIsOwner(v);
-      });
-    }
-    return () => ctrl.abort();
+    if (!cache) void load();
+    if (ownerCache === null) void checkOwnerOnce().then((v) => setIsOwner(v));
   }, [load]);
 
   useEffect(() => {
     const onConfigChanged = () => {
       setCache(null);
+      // The list in flight was fetched against the old configuration.
+      inflight = null;
       setModels([]);
       void load();
     };
@@ -179,12 +222,22 @@ export function useModels(): ModelsState {
   const reload = useCallback(() => {
     setCache(null);
     ownerCache = null;
+    // Otherwise Reload would resolve from the request it is meant to replace.
+    inflight = null;
+    ownerInflight = null;
     void load();
-    void fetchIsOwner().then((v) => {
-      ownerCache = v;
-      setIsOwner(v);
-    });
+    void checkOwnerOnce().then((v) => setIsOwner(v));
   }, [load]);
 
-  return { models, loading, error, isOwner, reload };
+  /**
+   * Hidden models stay loaded but are shown only to the owner — the one user who
+   * can un-hide them, and the one who used to lose the row (and with it the
+   * editor) the instant they flipped the switch.
+   */
+  const visible = useMemo(
+    () => (isOwner ? models : models.filter((model) => !model.hidden)),
+    [models, isOwner],
+  );
+
+  return { models: visible, loading, error, isOwner, reload };
 }

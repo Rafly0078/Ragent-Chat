@@ -122,14 +122,27 @@ function ChatViewInner({
     [conversation.id, deleteMessage, editUserMessage, regenerate, continueGeneration, toast],
   );
 
-  // Collect all artifacts from all assistant messages in this conversation
-  const allArtifacts: Artifact[] = useMemo(
-    () =>
-      conversation.messages
-        .filter((m) => m.role === 'assistant' && !m.streaming)
-        .flatMap((m) => (m.metadata?.artifacts as Artifact[]) ?? []),
-    [conversation.messages],
-  );
+  // Every artifact this conversation has produced, kept as one element.
+  //
+  // `conversation.messages` is a new array on every streamed frame, so keying on
+  // it meant the whole history was re-filtered and re-flatMapped ~60x/sec — and
+  // the panel got a new `artifacts` array each time. `ArtifactPanel` is not
+  // memoized, so it and its N cards (each with their own state and signed-URL
+  // effects) re-rendered for tokens that changed no file. `updatedAt` is the same
+  // proxy ContextMeter and MessageList use: the append writers skip `touch()`, and
+  // an artifact only ever lands via `updateMessage`, which doesn't.
+  const artifactPanel = useMemo(() => {
+    const artifacts: Artifact[] = conversation.messages
+      .filter((m) => m.role === 'assistant' && !m.streaming)
+      .flatMap((m) => (m.metadata?.artifacts as Artifact[]) ?? []);
+    if (artifacts.length === 0) return null;
+    return (
+      <Suspense fallback={null}>
+        <ArtifactPanel artifacts={artifacts} />
+      </Suspense>
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id, conversation.updatedAt]);
 
   const handleSlash = (command: string) => {
     switch (command) {
@@ -166,11 +179,7 @@ function ChatViewInner({
       {hasMessages ? (
         <div className="flex min-h-0 flex-1 flex-col">
           <MessageList conversation={conversation} generating={generating} actions={actions} />
-          {allArtifacts.length > 0 && (
-            <Suspense fallback={null}>
-              <ArtifactPanel artifacts={allArtifacts} />
-            </Suspense>
-          )}
+          {artifactPanel}
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">

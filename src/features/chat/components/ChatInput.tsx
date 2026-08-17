@@ -1,6 +1,6 @@
 'use client';
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, m } from 'framer-motion';
 import {
   ArrowUp,
@@ -112,10 +112,14 @@ export function ChatInput({
         setEffortOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMenuOpen(false);
-        setEffortOpen(false);
-      }
+      if (e.key !== 'Escape') return;
+      // Escape also reaches the global shortcut handler, which reads it as "stop
+      // generating": dismissing this popover during a reply aborted the reply.
+      // Stopped at `document` the way modal.tsx and ArtifactPanel do it, which is
+      // what keeps it off the window listener.
+      e.stopPropagation();
+      setMenuOpen(false);
+      setEffortOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
@@ -158,7 +162,12 @@ export function ChatInput({
   );
 
   const submit = useCallback(() => {
-    if (disabled || generating) return;
+    // `busy` belongs in this gate because `addFiles` is asynchronous — a PDF is
+    // seconds of parsing. Sending mid-read went out with the attachment list as it
+    // was *before* the picker and then cleared it, so the file appeared in the
+    // composer for the NEXT message while the question about it had already been
+    // answered without it.
+    if (disabled || generating || busy) return;
     const trimmed = value.trim();
 
     // Slash command dispatch (commands without inline templates run actions).
@@ -181,21 +190,43 @@ export function ChatInput({
     onSend(trimmed, attachments, searchMode);
     setValue('');
     setAttachments([]);
-  }, [disabled, generating, value, slashOpen, attachments, onSend, onSlashCommand, searchMode]);
+  }, [
+    disabled,
+    generating,
+    busy,
+    value,
+    slashOpen,
+    attachments,
+    onSend,
+    onSlashCommand,
+    searchMode,
+  ]);
 
   const runCommand = useCallback(
     (cmd: (typeof SLASH_COMMANDS)[number]) => {
       if (cmd.template) {
+        // The same gate `submit` applies, and only on the branch that sends:
+        // `runStream` aborts whatever is in flight to take the single generation
+        // slot, so Enter on a lone slash match used to cut a streaming reply off
+        // mid-word. The commands that merely open a panel still work mid-reply.
+        if (disabled || generating) return;
         onSend(cmd.template, [], 'off');
       } else {
         onSlashCommand(cmd.command);
       }
       setValue('');
     },
-    [onSend, onSlashCommand],
+    [disabled, generating, onSend, onSlashCommand],
   );
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // While an IME is composing, Enter is the key that CONFIRMS the candidate —
+    // it belongs to the composition, not to us. Sending on it swallowed the
+    // confirmation and posted the half-composed text, so every Japanese, Chinese
+    // or Korean turn (and any layout with a candidate window) had to be typed
+    // with Shift+Enter to survive. `keyCode === 229` is the same keystroke on the
+    // engines that report composition that way instead of setting `isComposing`.
+    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
     // Ctrl/Cmd+Enter always sends. Enter sends when sendOnEnter is on.
     if (e.key === 'Enter') {
       const wantSend = e.metaKey || e.ctrlKey || (sendOnEnter && !e.shiftKey);
@@ -215,11 +246,15 @@ export function ChatInput({
 
   const onPaste = (e: React.ClipboardEvent) => {
     const imageItems = Array.from(e.clipboardData.items).filter((i) => i.type.startsWith('image/'));
-    if (imageItems.length) {
-      e.preventDefault();
-      const files = imageItems.map((i) => i.getAsFile()).filter(Boolean) as File[];
-      void addFiles(files);
-    }
+    if (!imageItems.length) return;
+    // Only when the image IS the payload. Word, Excel and Outlook put a bitmap of
+    // the selection on the clipboard alongside the text, so intercepting on the
+    // presence of an image alone threw away the table someone copied and attached
+    // a picture of it instead.
+    if (e.clipboardData.getData('text/plain')) return;
+    e.preventDefault();
+    const files = imageItems.map((i) => i.getAsFile()).filter(Boolean) as File[];
+    void addFiles(files);
   };
 
   // Drag & drop with a counter so nested dragenter/leave don't flicker.
@@ -240,7 +275,15 @@ export function ChatInput({
     if (e.dataTransfer.files.length) void addFiles(e.dataTransfer.files);
   };
 
-  const tokenCount = estimateTokens(value);
+  // Memoized because this component re-renders on every streamed frame (the
+  // conversation object it is handed is new each flush), and `estimateTokens`
+  // splits the whole draft on whitespace: a pasted file was re-split ~60x/sec for
+  // a counter that only moves when the draft does — and that the setting may be
+  // hiding altogether.
+  const tokenCount = useMemo(
+    () => (showTokenCounter ? estimateTokens(value) : 0),
+    [showTokenCounter, value],
+  );
 
   return (
     <div className="chat-container relative pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-5">
@@ -587,7 +630,9 @@ export function ChatInput({
           ) : (
             <button
               onClick={submit}
-              disabled={disabled || (!value.trim() && attachments.length === 0)}
+              // `busy` here so the gate inside `submit` is visible rather than a
+              // click that quietly does nothing while a file is still being read.
+              disabled={disabled || busy || (!value.trim() && attachments.length === 0)}
               /* No bespoke scale on hover. `.btn-primary` already defines one
                  hover and one press for every button in the product, and a
                  send key that grew while its neighbours did not was exactly

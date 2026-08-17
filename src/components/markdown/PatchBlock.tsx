@@ -28,9 +28,11 @@ export function PatchBlock({ raw, streaming }: { raw: string; streaming: boolean
 
   // Memoized: this used to sit in the component body and so re-ran the full LCS
   // table on every re-render, including every parent render while the next
-  // message streamed.
+  // message streamed. Skipped entirely while this fence is still arriving, too —
+  // the streaming branch below renders `raw`, so every ~100 ms re-parse was
+  // re-diffing the already-complete hunks and throwing the result away.
   const diff = useMemo<DiffLine[]>(() => {
-    if (!parsed) return [];
+    if (streaming || !parsed) return [];
     return parsed.hunks.flatMap((h, i) => {
       const searchLines = h.search.split('\n');
       const replaceLines = h.replace.split('\n');
@@ -44,7 +46,7 @@ export function PatchBlock({ raw, streaming }: { raw: string; streaming: boolean
       // Blank separator between multiple hunks.
       return i === 0 ? rows : [{ kind: 'context' as const, text: '' }, ...rows];
     });
-  }, [parsed]);
+  }, [parsed, streaming]);
 
   useEffect(
     () => () => {

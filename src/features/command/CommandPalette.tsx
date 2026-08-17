@@ -26,6 +26,10 @@ interface Item {
 /** Stable empty identity, so the gated selector below doesn't fire a re-render. */
 const NO_CONVERSATIONS: Conversation[] = [];
 
+/** Same set `Modal` traps, kept local because that constant isn't exported. */
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 export function CommandPalette({ open, onClose, onNewChat }: Props) {
   const router = useRouter();
   // Gated on `open`. This selector runs on every store write — including all
@@ -42,6 +46,7 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
   const [cursor, setCursor] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   /** Element to restore focus to when the palette closes. */
   const restoreFocus = useRef<Element | null>(null);
 
@@ -123,6 +128,32 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
       onClose();
       return;
     }
+    if (e.key === 'Tab') {
+      // The panel claimed `aria-modal` but nothing was inert behind it, so Tab
+      // walked out to the sidebar search and the composer under the scrim — and
+      // since this handler sits on the container, it went with them: arrows,
+      // Enter and Escape all died the moment focus left the dialog.
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        (el) => el.offsetParent !== null,
+      );
+      if (focusable.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+      if (e.shiftKey && active === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+      return;
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       // `1 % 0` is NaN. With no results, one arrow press permanently broke
@@ -164,6 +195,7 @@ export function CommandPalette({ open, onClose, onNewChat }: Props) {
             exit={{ opacity: 0, y: -16, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 340, damping: 30 }}
             className="popover relative z-10 w-full max-w-xl overflow-hidden rounded-2xl"
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"

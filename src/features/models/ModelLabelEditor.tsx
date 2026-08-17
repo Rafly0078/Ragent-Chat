@@ -29,12 +29,14 @@ export function ModelLabelEditor({
   const [hidden, setHidden] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Seed the fields from the model each time the dialog opens.
+  // Seed the fields from the model each time the dialog opens — `hidden` included.
+  // It used to be reset to false here, so an owner who reopened a hidden model just
+  // to fix its name un-hid it on save without ever touching the switch.
   useEffect(() => {
     if (open && model) {
       setDisplayName(model.customLabel ? model.label : '');
       setDescription(model.description ?? '');
-      setHidden(false);
+      setHidden(Boolean(model.hidden));
     }
   }, [open, model]);
 

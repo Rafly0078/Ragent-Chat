@@ -104,7 +104,11 @@ function makeComponents(streaming: boolean): Components {
         </CodeBlock>
       );
     },
-    a({ children, href, ...props }) {
+    // `node` is react-markdown's hast node, passed to every custom component;
+    // left in `props` it was spread onto the anchor as node="[object Object]".
+    // `href` needs no scheme check of its own — react-markdown's default
+    // urlTransform has already blanked javascript:/data:/vbscript: URLs.
+    a({ children, href, node: _node, ...props }) {
       return (
         <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
           {children}

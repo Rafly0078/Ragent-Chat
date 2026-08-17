@@ -13,8 +13,11 @@ export default function manifest(): MetadataRoute.Manifest {
     // The installed app opens straight into chat; `/` is the marketing page.
     start_url: '/chat',
     display: 'standalone',
-    background_color: '#F1F0EC',
-    theme_color: '#F1F0EC',
+    // Both are `.terminal-field`'s `--surface` (globals.css), because that is
+    // what `start_url` paints. As linen they made every cold start flash a white
+    // splash before chat drew, and tinted the task switcher.
+    background_color: '#101111',
+    theme_color: '#101111',
     orientation: 'any',
     categories: ['productivity', 'utilities', 'ai'],
     icons: [

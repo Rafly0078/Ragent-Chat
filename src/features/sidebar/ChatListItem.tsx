@@ -138,9 +138,13 @@ export const ChatListItem = memo(function ChatListItem({
         ) : (
           <span
             className="truncate"
+            // Through `startRename`, not a bare `setEditing(true)`: `draft` is
+            // seeded at mount, so opening the input this way handed back the
+            // title the row had when it first rendered — committing it overwrote
+            // the name the model auto-titled the chat with in between.
             onDoubleClick={(e) => {
               e.stopPropagation();
-              setEditing(true);
+              startRename();
             }}
           >
             {title}

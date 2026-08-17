@@ -8,7 +8,7 @@ import { useChatStore } from '@/lib/store/chat-store';
 import { useSettings } from '@/lib/store/settings-store';
 import { ChatListItem } from './ChatListItem';
 import { dateBucket } from '@/lib/utils/format';
-import { useHydrated } from '@/lib/hooks/use-hydrated';
+import { useHydrated, useChatHydrated } from '@/lib/hooks/use-hydrated';
 import { useIsMobile } from '@/lib/hooks/use-media-query';
 import { Kbd } from '@/components/ui/kbd';
 import { BrandMark } from '@/components/BrandMark';
@@ -81,6 +81,8 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
   const defaultModel = useSettings((s) => s.defaultModel);
   const isMobile = useIsMobile();
   const hydrated = useHydrated();
+  /** The store, not React. See the list gate below. */
+  const chatsLoaded = useChatHydrated();
 
   // Debounce the raw query so the expensive message-body scan doesn't run on
   // every keystroke.
@@ -170,19 +172,28 @@ export function Sidebar({ open, onClose, onNewChat }: Props) {
 
       {/* List */}
       <nav className="scrollbar-thin flex-1 overflow-y-auto px-3 pb-3" aria-label="Conversations">
-        {/* Gated on hydration: the store rehydrates from localStorage before the
-            first client render, so rendering this straight from persisted state
-            produced a server/client mismatch in guest-only deployments. */}
-        {hydrated && rows.length === 0 && (
+        {/* Gated on React having mounted AND the store having actually loaded.
+            `hydrated` alone is a mount effect, while the snapshot comes out of
+            IndexedDB a round trip later — so a returning user with 50 chats was
+            told they had none until the read landed. `hydrated` still has to be
+            here: `useChatHydrated()` reads true during SSR, which is the
+            server/client mismatch that gate exists for. */}
+        {hydrated && chatsLoaded && rows.length === 0 && (
           <p className="px-3 py-8 font-mono text-xs leading-6 text-content-subtle">
             no conversations yet.
             <br />
             start one above.
           </p>
         )}
-        {hydrated && rows.length > 0 && pinned.length === 0 && groups.length === 0 && (
-          <p className="px-3 py-8 font-mono text-xs text-content-subtle">no match for “{query}”</p>
-        )}
+        {hydrated &&
+          chatsLoaded &&
+          rows.length > 0 &&
+          pinned.length === 0 &&
+          groups.length === 0 && (
+            <p className="px-3 py-8 font-mono text-xs text-content-subtle">
+              no match for “{query}”
+            </p>
+          )}
 
         {pinned.length > 0 && (
           <Section title="Pinned">

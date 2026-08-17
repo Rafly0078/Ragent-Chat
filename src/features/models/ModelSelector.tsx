@@ -46,11 +46,13 @@ export function ModelSelector({ value, onChange }: Props) {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  // Auto-select the first model once loaded if none is set.
+  // Auto-select the first model once loaded if none is set. Hidden entries are
+  // skipped: the owner is the one user who still sees them listed, and landing them
+  // on a model they just took out of circulation is the opposite of hiding it.
   useEffect(() => {
-    if (models.length > 0 && models[0] && !models.some((model) => model.name === value)) {
-      onChange(models[0].name);
-    }
+    if (models.some((model) => model.name === value)) return;
+    const first = models.find((model) => !model.hidden);
+    if (first) onChange(first.name);
   }, [value, models, onChange]);
 
   const active = models.find((m) => m.name === value);
@@ -218,6 +220,9 @@ function ModelRow({
       className={cn(
         'flex w-full items-start gap-2 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-border/5',
         selected && 'bg-accent/10',
+        // Only the owner ever gets a hidden row, and it looks identical to a live
+        // one without this — the chip says which, the dimming says at a glance.
+        model.hidden && 'opacity-60',
       )}
     >
       <div className="mt-0.5 h-4 w-4 shrink-0">
@@ -227,6 +232,11 @@ function ModelRow({
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium text-content">{model.label}</span>
           {model.supportsVision && <Eye className="h-3.5 w-3.5 shrink-0 text-accent-soft" />}
+          {model.hidden && (
+            <span className="shrink-0 rounded-md bg-border/15 px-1.5 py-0.5 text-[0.68rem] text-content-muted">
+              hidden
+            </span>
+          )}
         </div>
         {model.description && (
           <p className="mt-0.5 truncate text-xs text-content-muted">{model.description}</p>

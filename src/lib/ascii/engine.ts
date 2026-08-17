@@ -92,7 +92,8 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
 
   // One static frame instead of a loop. The reduced-motion block in globals.css
   // can only reach CSS animation; a canvas has to opt in itself.
-  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let still = motion.matches;
 
   // next/font hands out a hashed family name and only ever exposes it through the
   // CSS variable, so a literal 'JetBrains Mono' here would silently miss and lay
@@ -200,6 +201,23 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
     }
   };
 
+  // The preference is not a mount-time constant. Read once, the landing field
+  // kept looping for the rest of the visit when Reduce Motion was switched on
+  // mid-session, and stayed a single frozen frame when it was switched off.
+  const onMotion = () => {
+    still = motion.matches;
+    if (still) {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      draw(0);
+    } else if (!raf && !document.hidden) {
+      // Only while visible: `onVisibility` owns the phase of a hidden tab, and a
+      // loop started behind its back is one it never accounts for on return.
+      originAt = performance.now();
+      start();
+    }
+  };
+
   const observer = new ResizeObserver(relayout);
 
   measure();
@@ -211,6 +229,7 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
   }
   observer.observe(canvas);
   document.addEventListener('visibilitychange', onVisibility);
+  motion.addEventListener('change', onMotion);
 
   // A canvas never starts a font load of its own; the page's own mono text does.
   // Until that face lands the grid sits on fallback metrics, so measure once more
@@ -224,5 +243,6 @@ export function mountAscii(canvas: HTMLCanvasElement, preset: AsciiPreset): () =
     if (raf) cancelAnimationFrame(raf);
     observer.disconnect();
     document.removeEventListener('visibilitychange', onVisibility);
+    motion.removeEventListener('change', onMotion);
   };
 }

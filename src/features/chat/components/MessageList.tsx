@@ -48,7 +48,21 @@ export function MessageList({ conversation, generating, actions }: Props) {
   // `updateMessage` that ends a stream) goes through `touch()` and does move it.
   // So this recomputes exactly when a settled message can actually have changed,
   // and not once during a stream.
-  const settledKey = `${conversation.id}:${messages.length}:${conversation.updatedAt}`;
+  //
+  // `liveKey` is the exception that assumption misses: Regenerate and Retry are
+  // offered on EVERY assistant turn, and `regenerate` re-streams into that turn
+  // in place without truncating what follows. When the live message isn't the
+  // last one it is a row inside the memo below, and nothing in the key moves
+  // while it grows — so it sat on a blinking caret for the whole generation and
+  // then popped in complete on the terminal write. Empty whenever the live
+  // message IS the last one, which is every ordinary turn, so the memo still
+  // holds across a stream.
+  const liveIdx = messages.findIndex((m) => m.streaming === true);
+  const live = liveIdx !== -1 && liveIdx < messages.length - 1 ? messages[liveIdx] : undefined;
+  const liveKey = live
+    ? `${liveIdx}:${live.content.length}:${live.reasoning?.length ?? 0}:${live.parts?.length ?? 0}`
+    : '';
+  const settledKey = `${conversation.id}:${messages.length}:${conversation.updatedAt}:${liveKey}`;
 
   const settledRows = useMemo(
     () =>
@@ -66,9 +80,9 @@ export function MessageList({ conversation, generating, actions }: Props) {
           />
         )),
     // `messages` is deliberately not a dep — `settledKey` is its proxy. Between
-    // key changes the only message that can have changed is the last one, and
-    // that one is sliced off here, so the closed-over array is never stale for
-    // what this actually renders.
+    // key changes the only message that can have changed is the live one, which
+    // is either sliced off here or accounted for by `liveKey`, so the closed-over
+    // array is never stale for what this actually renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [settledKey, generating, actions, summary, conversation.id],
   );

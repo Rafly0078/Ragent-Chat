@@ -53,8 +53,21 @@ export function TopBar({ conversation, onToggleSidebar, onOpenParams, onOpenSyst
     const onClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     };
+    // The menu had no Escape at all, so the key went straight past it to the
+    // global shortcut, which reads it as "stop generating": dismissing this menu
+    // during a reply aborted the reply and left the menu open. Stopped at
+    // `document`, the way modal.tsx and ArtifactPanel do it.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setMenuOpen(false);
+    };
     document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onClick);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [menuOpen]);
 
   const exportMd = () => {

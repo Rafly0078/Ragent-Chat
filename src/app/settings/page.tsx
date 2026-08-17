@@ -156,11 +156,24 @@ export default function SettingsPage() {
       toast('Invalid conversations file', 'error');
       return;
     }
+    // The store only de-dupes ids within one file, and this is a merge: a backup
+    // re-imported onto a browser that still holds those chats used to produce two
+    // entries answering to one id — the sidebar rendered both under the same key,
+    // and deleting the visible twin filtered on that id and took both. Anything
+    // already held gets a fresh id on the way in, read here rather than from the
+    // render, since the file read above is awaited and a sync can land in between.
+    const held = new Set(useChatStore.getState().conversations.map((c) => c.id));
+    const incoming: unknown = Array.isArray(data)
+      ? (data as unknown[]).map((c) => {
+          const id = (c as { id?: unknown } | null)?.id;
+          return typeof id === 'string' && held.has(id) ? { ...(c as object), id: uid() } : c;
+        })
+      : data;
     // The store validates and coerces, and reports how many survived. A file
     // that parses as JSON but holds nothing usable used to be written straight
     // into the store — and localStorage — where it crashed the sidebar on every
     // render, including after a reload.
-    const imported = importConversations(data, false);
+    const imported = importConversations(incoming, false);
     if (imported === 0) {
       toast('No valid conversations found in that file', 'error');
       return;
@@ -316,6 +329,17 @@ export default function SettingsPage() {
                     onChange={(event) => s.setApiProvider(event.target.value as ApiProvider)}
                     className="input"
                   >
+                    {/* A <select> whose value matches no option displays the
+                        first one instead: with the built-in provider turned off,
+                        a browser that persisted 'default' read "Ollama" while the
+                        store still said 'default' — so neither connection block
+                        below rendered, and picking the Ollama already on screen
+                        fired no change event, leaving no way out of the panel.
+                        The stored value gets an option of its own, the same
+                        escape hatch the default-model select uses. */}
+                    {!PROVIDERS.includes(s.apiProvider) && (
+                      <option value={s.apiProvider}>{providerLabel(s.apiProvider)}</option>
+                    )}
                     {PROVIDERS.map((provider) => (
                       <option key={provider} value={provider}>
                         {providerLabel(provider)}
@@ -354,6 +378,7 @@ export default function SettingsPage() {
                           <button
                             key={opt.value}
                             onClick={() => s.setConnectionMode(opt.value)}
+                            aria-pressed={s.connectionMode === opt.value}
                             className={cn(
                               'btn-surface h-9 flex-1',
                               s.connectionMode === opt.value &&
@@ -462,6 +487,7 @@ export default function SettingsPage() {
                               <button
                                 key={protocol}
                                 onClick={() => s.setProviderProtocol(protocol)}
+                                aria-pressed={s.providerProtocol === protocol}
                                 className={cn(
                                   'btn-surface h-11 flex-1 capitalize sm:h-9',
                                   s.providerProtocol === protocol &&
@@ -693,7 +719,7 @@ export default function SettingsPage() {
                     onChange={() => s.toggle('sandboxAutoHeal')}
                   />
                   <Slider
-                    label="Maksimum iterasi perbaikan"
+                    label="Max fix iterations"
                     value={s.sandboxMaxIterations}
                     min={1}
                     max={8}
@@ -751,7 +777,8 @@ export default function SettingsPage() {
                 <div className="mt-4 rounded-xl border border-error/20 bg-error/5 p-4">
                   <p className="text-sm font-medium text-content">Reset settings</p>
                   <p className="mt-0.5 text-xs text-content-muted">
-                    Restores default theme, prompts and parameters. Conversations are kept.
+                    Restores default prompts, parameters and connection settings — including the API
+                    key or access token stored in this browser. Conversations are kept.
                   </p>
                   <Button
                     variant="danger"
