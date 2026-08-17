@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServer, getSupabaseAdmin } from '@/lib/supabase/server';
 import { isOwner } from '@/lib/supabase/owner';
 import { guard } from '@/lib/server/guard';
+import { clientKey, hit, tooManyRequests } from '@/lib/server/rate-limit';
 import { bodyErrorResponse, readJson } from '@/lib/server/body';
 import type { Database } from '@/lib/supabase/types';
 
@@ -27,7 +28,13 @@ const MAX_DESCRIPTION_CHARS = 1_000;
  * anyone who isn't the configured OWNER_EMAIL before touching the admin client.
  */
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
+  // Rate limit but no guard(): the SELECT is public by design, so a 401 here
+  // would hide the labels from every guest. The ceiling is what was missing —
+  // this was the one route that reached Postgres with nothing in front of it.
+  const rate = hit(`model-labels-read:${clientKey(request)}`, 120, 60_000);
+  if (!rate.ok) return tooManyRequests(rate);
+
   const supabase = await getSupabaseServer();
   if (!supabase) {
     // Supabase not configured — no labels, app still works with raw names.

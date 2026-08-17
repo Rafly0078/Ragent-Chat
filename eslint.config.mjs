@@ -20,11 +20,5 @@ export default defineConfig([
       'react-hooks/immutability': 'off',
     },
   },
-  globalIgnores([
-    '.next/**',
-    '.vercel/**',
-    'node_modules/**',
-    'next-env.d.ts',
-    'public/sw.js',
-  ]),
+  globalIgnores(['.next/**', '.vercel/**', 'node_modules/**', 'next-env.d.ts', 'public/sw.js']),
 ]);

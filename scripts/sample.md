@@ -7,7 +7,7 @@ the first time since launch.
 ## Highlights
 
 - Enterprise ARR crossed **$3.1M**, now 74% of total
-- Median time-to-first-value fell from 11 days to *4 days*
+- Median time-to-first-value fell from 11 days to _4 days_
 - Churn held flat at 1.2% monthly despite the price change
 
 :::success What worked
@@ -22,11 +22,11 @@ the queue exceeds capacity in ~7 weeks.
 
 ## Numbers
 
-| Segment | Q2 | Q3 | Change |
-| --- | ---: | ---: | ---: |
-| Enterprise | 2.4M | 3.1M | +29% |
-| Team | 0.9M | 0.8M | -11% |
-| Individual | 0.3M | 0.3M | 0% |
+| Segment    |   Q2 |   Q3 | Change |
+| ---------- | ---: | ---: | -----: |
+| Enterprise | 2.4M | 3.1M |   +29% |
+| Team       | 0.9M | 0.8M |   -11% |
+| Individual | 0.3M | 0.3M |     0% |
 
 > The enterprise motion is working. The self-serve funnel is not paying for
 > itself yet.

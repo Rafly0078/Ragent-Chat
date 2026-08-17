@@ -28,8 +28,11 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const res = await upstreamShow(name, request.signal);
-    const text = await res.text();
-    return new NextResponse(text, {
+    // The path fallback in ollama.ts cancels the body of a 404/405 before it
+    // hands the response back, so reading it threw "Body is unusable" — and the
+    // catch below reported that as a 502, hiding the upstream's own status.
+    const text = await res.text().catch(() => '');
+    return new NextResponse(text || JSON.stringify({ error: 'Upstream error.' }), {
       status: res.status,
       headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
     });

@@ -23,7 +23,10 @@ registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === 'server-only') return { url: 'data:text/javascript,', shortCircuit: true };
     if (specifier.startsWith('@/')) {
-      return nextResolve(pathToFileURL(withExt(path.join(root, 'src', specifier.slice(2)))).href, context);
+      return nextResolve(
+        pathToFileURL(withExt(path.join(root, 'src', specifier.slice(2)))).href,
+        context,
+      );
     }
     if (specifier.startsWith('.') && context.parentURL?.endsWith('.ts')) {
       const abs = withExt(path.resolve(path.dirname(fileURLToPath(context.parentURL)), specifier));
@@ -33,13 +36,21 @@ registerHooks({
   },
 });
 
-const { parseMarkdown } = await import(pathToFileURL(path.join(root, 'src/lib/documents/markdown.ts')).href);
-const { resolveTheme } = await import(pathToFileURL(path.join(root, 'src/lib/documents/theme.ts')).href);
-const { renderHtmlDocument } = await import(pathToFileURL(path.join(root, 'src/lib/documents/html-doc.ts')).href);
-const { launchBrowser } = await import(pathToFileURL(path.join(root, 'src/lib/documents/browser.ts')).href);
+const { parseMarkdown } = await import(
+  pathToFileURL(path.join(root, 'src/lib/documents/markdown.ts')).href
+);
+const { resolveTheme } = await import(
+  pathToFileURL(path.join(root, 'src/lib/documents/theme.ts')).href
+);
+const { renderHtmlDocument } = await import(
+  pathToFileURL(path.join(root, 'src/lib/documents/html-doc.ts')).href
+);
+const { launchBrowser } = await import(
+  pathToFileURL(path.join(root, 'src/lib/documents/browser.ts')).href
+);
 
 const { readFile } = await import('node:fs/promises');
-const MD = (await readFile(path.join(root, 'scripts', 'sample.md'), 'utf8'));
+const MD = await readFile(path.join(root, 'scripts', 'sample.md'), 'utf8');
 
 const theme = resolveTheme({
   accent: '#0F766E',
@@ -58,9 +69,12 @@ try {
     const page = await browser.newPage();
     // A4 at 96dpi.
     await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1.4 });
-    await page.setContent(renderHtmlDocument({ title: 'Quarterly Platform Review', blocks, theme, part }), {
-      waitUntil: 'domcontentloaded',
-    });
+    await page.setContent(
+      renderHtmlDocument({ title: 'Quarterly Platform Review', blocks, theme, part }),
+      {
+        waitUntil: 'domcontentloaded',
+      },
+    );
     const file = path.join(outDir, `${part}.png`);
     await page.screenshot({ path: file, fullPage: part === 'body' });
     console.log(`${part} -> ${file}`);

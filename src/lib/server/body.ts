@@ -53,11 +53,20 @@ export async function readJson<T>(request: Request, maxBytes: number): Promise<T
   }
 
   const text = new TextDecoder().decode(merged);
+  let parsed: unknown;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text);
   } catch {
     throw new BodyError('Invalid JSON body.', 400);
   }
+  // Every caller reads fields off the result, and some do it after their
+  // try/catch has already closed — so the four-byte body `null` parsed fine,
+  // returned null, and threw outside any handler as a 500 where the route
+  // already had a 400 for a missing field. Rejected here so all of them benefit.
+  if (parsed === null || typeof parsed !== 'object') {
+    throw new BodyError('Request body must be a JSON object.', 400);
+  }
+  return parsed as T;
 }
 
 /** Turn a thrown BodyError into its response; rethrow anything else. */

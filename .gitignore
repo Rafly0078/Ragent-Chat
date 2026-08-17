@@ -16,6 +16,9 @@ next-env.d.ts
 *.pem
 .vscode/*
 !.vscode/extensions.json
+# Agent harness tool-approval state: machine-local, and until now kept out of
+# git only by the developer's own global ignore — not by anything in the clone.
+.claude/settings.local.json
 
 # debug
 npm-debug.log*
@@ -24,8 +27,11 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (keep .env.example tracked)
-.env
-.env*.local
+# `.env` plus `.env*.local` left .env.production / .env.development / .env.test
+# committable, and Next loads all three — one `cp .env.local .env.production` to
+# test a prod build would have put SUPABASE_SERVICE_ROLE_KEY in history.
+.env*
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -37,5 +43,10 @@ yarn-error.log*
 # Machine-local — should never have been committed.
 supabase/.temp/
 supabase/.branches/
+
+# Sample documents written by scripts/gen-samples.mjs and scripts/shot-doc.mjs.
+# Was tracked, so every run left modified binaries in `git status` — jszip
+# re-stamps the docx/pptx entry dates on each generate.
+/tmp-samples/
 
 .vercel

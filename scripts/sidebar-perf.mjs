@@ -17,8 +17,19 @@ const URL = process.argv[2] ?? 'http://localhost:3100/chat';
 const COUNT = Number(process.argv[3] ?? 60);
 
 function chromiumPath() {
-  const root = path.join(process.env.LOCALAPPDATA, 'ms-playwright');
+  // Both lookups are guarded so the errors below are reachable at all: an unset
+  // LOCALAPPDATA (any non-Windows box) or a missing chromium- build reached
+  // `path.join` as undefined and raised ERR_INVALID_ARG_TYPE instead — and the
+  // "no chrome.exe" line threw the same way while trying to report it.
+  const base = process.env.LOCALAPPDATA;
+  if (!base) {
+    throw new Error('LOCALAPPDATA is unset — this probe expects a Windows Playwright install.');
+  }
+  const root = path.join(base, 'ms-playwright');
   const dir = readdirSync(root).find((d) => d.startsWith('chromium-'));
+  if (!dir) {
+    throw new Error(`no chromium- build under ${root} — npx playwright install chromium`);
+  }
   // The build folder is `chrome-win64` on current Playwright, `chrome-win` on older ones.
   for (const sub of ['chrome-win64', 'chrome-win']) {
     const exe = path.join(root, dir, sub, 'chrome.exe');

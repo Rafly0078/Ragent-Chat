@@ -138,26 +138,26 @@ npm run typecheck  # tsc --noEmit
 Ollama needs one reachable endpoint. Cloud providers are configured per browser in Settings and need no provider
 environment variables. Everything else unlocks an optional feature.
 
-| Variable                          | Scope      | Purpose                                                                              |
-| --------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
-| `OLLAMA_API_URL`                  | server     | Upstream Ollama endpoint for bridge mode. **Preferred** — never reaches the browser. |
-| `NEXT_PUBLIC_API_URL`             | public     | Legacy/direct-mode endpoint. Ships in the client bundle.                             |
-| `NEXT_PUBLIC_DISABLE_BRIDGE`      | public     | `true` hides chat (static/demo deploy with no model backend).                        |
-| `NEXT_PUBLIC_SUPABASE_URL`        | public     | Supabase project URL. Leave blank for guest-only mode.                               |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY`   | public     | Anon key — safe in the browser under RLS.                                            |
-| `SUPABASE_SERVICE_ROLE_KEY`       | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
-| `OWNER_EMAIL`                     | server     | Comma-separated emails allowed to curate model display names.                        |
-| `TAVILY_API_KEY`                  | server     | Enables web search. Unset → `/api/search` returns 501.                               |
-| `NEXT_PUBLIC_DEFAULT_PROVIDER_ENABLED` | public | `true` adds the zero-setup **Default** provider and preselects it for new visitors. |
-| `DEFAULT_OPENAI_ENDPOINT`         | **secret** | Built-in provider base URL, normally ending in `/v1`. Server-only.                   |
-| `DEFAULT_OPENAI_API_KEY`          | **secret** | Built-in provider API key. Server-only; never use `NEXT_PUBLIC_`.                    |
-| `DEFAULT_OPENAI_MODEL`            | **secret** | Built-in provider model ID. Seeded into the model picker by the server.              |
-| `DEFAULT_OPENAI_PROTOCOL`         | **secret** | `openai` (default) or `anthropic`.                                                   |
-| `NEXT_PUBLIC_DEFAULT_AI_PROVIDER` | public     | Set `custom` to make the environment-configured provider the chatbot default.        |
-| `NEXT_PUBLIC_DEFAULT_AI_API_URL`  | public     | Default custom provider base URL, normally ending in `/v1`.                          |
-| `NEXT_PUBLIC_DEFAULT_AI_MODEL`    | public     | Optional default model ID.                                                           |
-| `NEXT_PUBLIC_DEFAULT_AI_PROTOCOL` | public     | `openai` (default) or `anthropic`.                                                   |
-| `DEFAULT_AI_API_KEY`              | **secret** | Default custom provider API key. Server-only; never use `NEXT_PUBLIC_`.              |
+| Variable                               | Scope      | Purpose                                                                              |
+| -------------------------------------- | ---------- | ------------------------------------------------------------------------------------ |
+| `OLLAMA_API_URL`                       | server     | Upstream Ollama endpoint for bridge mode. **Preferred** — never reaches the browser. |
+| `NEXT_PUBLIC_API_URL`                  | public     | Legacy/direct-mode endpoint. Ships in the client bundle.                             |
+| `NEXT_PUBLIC_DISABLE_BRIDGE`           | public     | `true` hides chat (static/demo deploy with no model backend).                        |
+| `NEXT_PUBLIC_SUPABASE_URL`             | public     | Supabase project URL. Leave blank for guest-only mode.                               |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY`        | public     | Anon key — safe in the browser under RLS.                                            |
+| `SUPABASE_SERVICE_ROLE_KEY`            | **secret** | Bypasses RLS. Server-only, used behind the owner check.                              |
+| `OWNER_EMAIL`                          | server     | Comma-separated emails allowed to curate model display names.                        |
+| `TAVILY_API_KEY`                       | server     | Enables web search. Unset → `/api/search` returns 501.                               |
+| `NEXT_PUBLIC_DEFAULT_PROVIDER_ENABLED` | public     | `true` adds the zero-setup **Default** provider and preselects it for new visitors.  |
+| `DEFAULT_OPENAI_ENDPOINT`              | **secret** | Built-in provider base URL, normally ending in `/v1`. Server-only.                   |
+| `DEFAULT_OPENAI_API_KEY`               | **secret** | Built-in provider API key. Server-only; never use `NEXT_PUBLIC_`.                    |
+| `DEFAULT_OPENAI_MODEL`                 | **secret** | Built-in provider model ID. Seeded into the model picker by the server.              |
+| `DEFAULT_OPENAI_PROTOCOL`              | **secret** | `openai` (default) or `anthropic`.                                                   |
+| `NEXT_PUBLIC_DEFAULT_AI_PROVIDER`      | public     | Set `custom` to make the environment-configured provider the chatbot default.        |
+| `NEXT_PUBLIC_DEFAULT_AI_API_URL`       | public     | Default custom provider base URL, normally ending in `/v1`.                          |
+| `NEXT_PUBLIC_DEFAULT_AI_MODEL`         | public     | Optional default model ID.                                                           |
+| `NEXT_PUBLIC_DEFAULT_AI_PROTOCOL`      | public     | `openai` (default) or `anthropic`.                                                   |
+| `DEFAULT_AI_API_KEY`                   | **secret** | Default custom provider API key. Server-only; never use `NEXT_PUBLIC_`.              |
 
 `.env.local` is gitignored. Never commit it.
 

@@ -17,8 +17,11 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const res = await upstreamModels(request.signal);
-    const text = await res.text();
-    return new NextResponse(text, {
+    // Both tag paths 404 on an upstream that serves neither, and ollama.ts
+    // cancels each discarded body — so reading the last one threw "Body is
+    // unusable" and the indicator showed that 502 instead of the real 404.
+    const text = await res.text().catch(() => '');
+    return new NextResponse(text || JSON.stringify({ error: 'Upstream error.' }), {
       status: res.status,
       headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json' },
     });
