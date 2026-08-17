@@ -21,6 +21,7 @@
 
 import type { FileSpec, GenerateRequest, SheetSpec, SlideSpec, ToolName } from '@/lib/tools/types';
 import { isToolName, getTool } from '@/lib/tools/registry';
+import { sanitizeTheme } from '@/lib/tools/detect';
 
 /** Longest single string field we'll accept, before the executor sees it. */
 const MAX_TEXT = 2_000_000;
@@ -159,9 +160,11 @@ export function validateGenerateRequest(raw: unknown): ValidationResult {
   if (str(b.conversationId)) request.conversationId = str(b.conversationId);
   if (str(b.messageId)) request.messageId = str(b.messageId);
   if (b.data !== undefined) request.data = b.data;
-  if (b.theme && typeof b.theme === 'object' && !Array.isArray(b.theme)) {
-    request.theme = b.theme as GenerateRequest['theme'];
-  }
+  // Per field, not `as ThemeSpec`: these reach a stylesheet and a `.trim()` in
+  // theme.ts, so a numeric `subtitle` threw there instead of being dropped here —
+  // a 500 whose message named no field. Same treatment the directive path applies.
+  const theme = sanitizeTheme(b.theme);
+  if (theme) request.theme = theme;
 
   const rows = toRows(b.rows);
   if (rows) request.rows = rows;

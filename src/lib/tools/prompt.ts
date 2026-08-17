@@ -21,6 +21,13 @@
  * that fumbles one of them loses only that line and still produces a document.
  * `src/lib/documents/theme.ts` contrast-clamps whatever colour arrives, so a
  * bad pick is a mediocre document rather than unreadable text on paper.
+ *
+ * create_json/create_xml take the JSON value bare, and the wording below has to
+ * stay that way: detect.ts unwraps `sheets`/`slides`/`files` because a shape
+ * guard tells the wrapper apart from a document, and no such guard exists for
+ * `data` — `{"data": […]}` is a document people legitimately ask for. While the
+ * prompt taught that wrapper, a compliant model shipped a file with an extra
+ * `data` level around the real content.
  */
 export const TOOL_INSTRUCTIONS = `You can generate downloadable files for the user: PDF, Word (docx), PowerPoint (pptx), Excel (xlsx), CSV, Markdown, HTML, JSON, XML, or plain text.
 
@@ -73,5 +80,5 @@ Structured bodies. For five tools the body may instead be a single JSON object, 
 - create_xlsx — {"sheets": [{"name": "Q3", "rows": [["Region","Revenue"],["EMEA",120]]}]} for a multi-sheet workbook, or {"rows": [[…],[…]]} for one sheet. The first row is the header.
 - create_pptx — {"slides": [{"title": "Findings", "bullets": ["…","…"]}, {"title": "Detail", "body": "paragraph text"}]} when you want to decide exactly where each slide breaks.
 - zip_project — {"files": [{"path": "src/index.ts", "content": "…"}, {"path": "README.md", "content": "…"}]}. Without this a ZIP ends up containing only a single file, so always use it for a multi-file project.
-- create_json and create_xml — {"data": {…}} with the value to serialize. For create_xml, "title" becomes the root tag name.
+- create_json and create_xml — the JSON value itself, object or array: {"total": 42} or [{"id": 1}]. Never wrap it as {"data": …} — a top-level "data" key is a legitimate document, so the wrapper is serialized into the file verbatim. For create_xml, "title" becomes the root tag name.
 Use the JSON form only for those five; every other tool takes a plain body.`;

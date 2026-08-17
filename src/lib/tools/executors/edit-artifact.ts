@@ -31,10 +31,27 @@ interface StoredSource {
   theme?: unknown;
 }
 
+/**
+ * A re-rendered file, plus the metadata its row has to carry.
+ *
+ * `route.ts` derives `artifacts.metadata` from the REQUEST, and an edit request
+ * holds hunks rather than text — so a revision was written with no source, and
+ * the SECOND edit of any document was refused ("no editable source stored"). The
+ * patched text exists nowhere but this executor, so it travels back out with the
+ * file it was rendered into.
+ *
+ * Declared on this executor rather than on `ToolFileOutput`, because this is the
+ * one tool whose source the route cannot see in the request; every other tool's
+ * is `req.content`. `route.ts` reads it back through `editedSourceMetadata`.
+ */
+export interface EditedArtifactOutput extends ToolFileOutput {
+  metadata: Record<string, unknown>;
+}
+
 export default async function editArtifact(
   req: GenerateRequest,
   ctx: ExecutorContext,
-): Promise<ToolFileOutput> {
+): Promise<EditedArtifactOutput> {
   const artifactId = req.artifactId?.trim();
   if (!artifactId) throw new Error('edit_artifact needs the "artifactId" of the file to revise.');
 
@@ -88,20 +105,47 @@ export default async function editArtifact(
       )}. Read the document's current text before editing, and match it exactly.`,
     );
   }
+  // A PARTIAL application is a failure too. `applied.length > 0` was the only
+  // check, so a three-hunk edit with one SEARCH off by a word stored a new
+  // version carrying two of the three changes — and the tool result the model
+  // reads says nothing but `Created "report.md" (… version 2)`, so it reported
+  // all three as done and the user downloaded a document still containing the
+  // text they asked to have changed. Same stance as `applyPatch`'s on ambiguity:
+  // refuse, and let the model re-send corrected hunks.
+  if (patch.failed.length > 0) {
+    throw new Error(
+      `${patch.failed.length} of ${hunks.length} edits didn't match "${row.name}". Not found: ` +
+        `${JSON.stringify(patch.failed[0]!.search.slice(0, 200))}. Nothing was changed — ` +
+        're-send every hunk, matching the current text exactly.',
+    );
+  }
 
   const kind = row.kind as ArtifactKind;
   const tool = TOOL_FOR_KIND[kind];
   const executor = tool ? await getExecutor(tool) : undefined;
   if (!executor) throw new Error(`Cannot re-render a "${kind}" file.`);
 
+  // Title and theme are carried out of the row and back into the new one below:
+  // an edit request has neither, so a revision was retitled "Document" and
+  // rebuilt with the default palette rather than the accent it was created with.
+  const carried: Pick<GenerateRequest, 'title' | 'theme'> = {
+    ...(typeof stored.title === 'string' ? { title: stored.title } : {}),
+    ...(stored.theme && typeof stored.theme === 'object'
+      ? { theme: stored.theme as ThemeSpec }
+      : {}),
+  };
+
   const rendered = await executor(
     {
       tool,
       content: patch.result,
-      ...(typeof stored.title === 'string' ? { title: stored.title } : {}),
-      ...(stored.theme && typeof stored.theme === 'object'
-        ? { theme: stored.theme as ThemeSpec }
-        : {}),
+      // The stored filename, because for `create_txt` the extension decides what
+      // the file IS: without it `textFileExt` sees nothing, so every revision of
+      // `style.css` lost the verbatim guard and came back reflowed as markdown
+      // prose. It is also what `displayTitle` falls back to, so an untitled
+      // `notes.md` stops being retitled "# Document" on every edit.
+      name: row.name,
+      ...carried,
     },
     ctx,
   );
@@ -114,6 +158,9 @@ export default async function editArtifact(
     // revision of one document rather than two unrelated files.
     filename: row.name,
     version: (typeof row.version === 'number' ? row.version : 1) + 1,
+    // The source the NEXT edit will patch. Built here because `route.ts` only
+    // sees the request, and this request holds hunks rather than the new text.
+    metadata: sourceMetadata({ content: patch.result, ...carried }),
   };
 }
 
@@ -121,12 +168,30 @@ export default async function editArtifact(
  * What `route.ts` stores in `artifacts.metadata` so a later edit is possible.
  * Absent for tools whose input isn't text (rows, sheets, slides, files), which is
  * why `edit_artifact` reports that case explicitly instead of failing obscurely.
+ *
+ * Takes the text fields rather than a whole request so the edit path can build
+ * the same shape from what it actually rendered — one definition of what a row
+ * has to carry, instead of two that can drift.
  */
-export function sourceMetadata(req: GenerateRequest): Record<string, unknown> {
+export function sourceMetadata(
+  req: Pick<GenerateRequest, 'content' | 'title' | 'theme'>,
+): Record<string, unknown> {
   if (typeof req.content !== 'string' || !req.content) return {};
   return {
     source: req.content,
     ...(req.title ? { title: req.title } : {}),
     ...(req.theme ? { theme: req.theme } : {}),
   };
+}
+
+/**
+ * The metadata a re-render came back with, for `route.ts` to store instead of
+ * deriving it from the request. Undefined for every other tool.
+ *
+ * The cast is what not widening `ToolFileOutput` costs: `metadata` is set by this
+ * executor alone, and adding it to the shared contract would invite the other
+ * executors to answer a question only this one has.
+ */
+export function editedSourceMetadata(out: ToolFileOutput): Record<string, unknown> | undefined {
+  return (out as Partial<EditedArtifactOutput>).metadata;
 }

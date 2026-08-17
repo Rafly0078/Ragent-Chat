@@ -34,6 +34,11 @@ import { findFences, hasFenceTag, type FenceMatch } from './fences';
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/** Rows for a single-sheet workbook — the `{"rows": [[…],[…]]}` body prompt.ts documents. */
+function isRowsArray(v: unknown): v is SheetSpec['rows'] {
+  return Array.isArray(v) && v.length > 0 && v.every(Array.isArray);
+}
+
 function isSheetSpecArray(v: unknown): v is SheetSpec[] {
   return (
     Array.isArray(v) &&
@@ -122,8 +127,13 @@ function themeFromFields(fields: Record<string, string>): ThemeSpec | undefined 
   return any ? theme : undefined;
 }
 
-/** Validate a `theme` object arriving through the legacy JSON shape. */
-function sanitizeTheme(v: unknown): ThemeSpec | undefined {
+/**
+ * Validate a `theme` object arriving as JSON — the legacy directive shape here, or
+ * an HTTP body in validate.ts, which had no per-field checks of its own. Every
+ * field ends up at a `.trim()` in theme.ts, whose stated contract is that it never
+ * throws, so an unchecked non-string there surfaced as a 500 naming no field.
+ */
+export function sanitizeTheme(v: unknown): ThemeSpec | undefined {
   if (!isRecord(v)) return undefined;
   const out: ThemeSpec = {};
   let any = false;
@@ -322,9 +332,20 @@ function parseDirective(rawBody: string): GenerateRequest | null {
     // and surfaced as a 500 with a message like "rows.map is not a function".
     try {
       const parsedBody = JSON.parse(content) as unknown;
-      if (tool === 'create_xlsx' && isSheetSpecArray(parsedBody)) req.sheets = parsedBody;
-      else if (tool === 'create_pptx' && isSlideSpecArray(parsedBody)) req.slides = parsedBody;
-      else if (tool === 'zip_project' && isFileSpecArray(parsedBody)) req.files = parsedBody;
+      // prompt.ts teaches the WRAPPED form — `{"sheets": […]}`, `{"rows": […]}`,
+      // `{"slides": […]}`, `{"files": […]}` — and the guards below only ever
+      // accepted the bare array, so every body a compliant model sent failed all
+      // of them and landed in `content`. xlsx.ts never reads `content`: that was a
+      // 200 and a download of an empty workbook.
+      const field = (key: string): unknown => (isRecord(parsedBody) ? parsedBody[key] : parsedBody);
+      const sheets = field('sheets');
+      const rows = field('rows');
+      const slides = field('slides');
+      const files = field('files');
+      if (tool === 'create_xlsx' && isSheetSpecArray(sheets)) req.sheets = sheets;
+      else if (tool === 'create_xlsx' && isRowsArray(rows)) req.rows = rows;
+      else if (tool === 'create_pptx' && isSlideSpecArray(slides)) req.slides = slides;
+      else if (tool === 'zip_project' && isFileSpecArray(files)) req.files = files;
       else req.content = content;
     } catch {
       req.content = content;

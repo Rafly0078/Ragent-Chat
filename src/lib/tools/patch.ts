@@ -163,8 +163,9 @@ export interface CodeBlock {
 }
 
 // Fenced code blocks. Longer opening fences are matched with a backreference so a
-// block containing ``` inside it round-trips.
-const CODE_FENCE = /(`{3,})([a-zA-Z0-9+#._-]*)[ \t]*\n([\s\S]*?)\1/g;
+// block containing ``` inside it round-trips. `\r?\n` for the same reason as the
+// shared scanner: a CRLF response otherwise yields no candidates at all.
+const CODE_FENCE = /(`{3,})([a-zA-Z0-9+#._-]*)[ \t]*\r?\n([\s\S]*?)\1/g;
 
 /**
  * Extract fenced code blocks from a markdown message.
@@ -198,18 +199,26 @@ export function extractCodeBlocks(text: string): CodeBlock[] {
 /**
  * Locate the code block a set of hunks applies to, searching newest-first
  * across candidate source texts (e.g. earlier assistant messages). Returns the
- * chosen block's code and the apply result, or null if no candidate matches.
- * A candidate qualifies only if at least one hunk's SEARCH text is found in it.
+ * best-matching block's code and the apply result, or null if no candidate
+ * matches. A candidate qualifies only if at least one hunk's SEARCH text is found
+ * in it; among those, the one that applies the MOST hunks wins.
  */
 export function locateAndApply(
   candidates: string[],
   hunks: PatchHunk[],
 ): (ApplyResult & { source: string }) | null {
+  // Returning the first candidate with any match let a short quoted fragment from a
+  // later message beat the full file it was quoted from: the hunks the fragment
+  // didn't contain were dropped, and the enriched fence then advertised that
+  // fragment as the corrected source. Newest still wins a tie.
+  let best: (ApplyResult & { source: string }) | null = null;
   for (const source of candidates) {
     const res = applyPatch(source, hunks);
-    if (res.applied.length > 0) return { ...res, source };
+    if (res.applied.length === 0) continue;
+    if (!best || res.applied.length > best.applied.length) best = { ...res, source };
+    if (best.failed.length === 0) break; // nothing later can beat a clean apply
   }
-  return null;
+  return best;
 }
 
 export interface EnrichResult {
@@ -224,10 +233,11 @@ export interface EnrichResult {
 /**
  * Rewrite every ```codepatch fence in `content` into an *enriched* fence that
  * embeds the fully-patched source, by locating the target among `priorCode`
- * blocks (raw code strings, ordered newest-first). Fences whose SEARCH text
- * can't be found anywhere are left as plain hunk fences — the PatchBlock then
- * shows the intended change with an "couldn't auto-apply" note. Leaves the
- * fence in place either way so the renderer can show the diff.
+ * blocks (raw code strings, ordered newest-first). Fences that don't apply
+ * cleanly — SEARCH text found nowhere, or only some hunks matching — are left as
+ * plain hunk fences; the PatchBlock then shows the intended change with a
+ * "couldn't auto-apply" note. Leaves the fence in place either way so the
+ * renderer can show the diff.
  */
 export function enrichPatches(content: string, priorCode: string[]): EnrichResult {
   if (!content || !hasFenceTag(content, 'codepatch')) {
@@ -246,7 +256,11 @@ export function enrichPatches(content: string, priorCode: string[]): EnrichResul
       return null;
     }
     const located = locateAndApply(priorCode, directive.hunks);
-    if (!located) return null; // couldn't find source; keep bare hunks
+    // Partial is not applied. Embedding a result makes `parsePatchBlock` report
+    // `unresolved: false`, so a patch where one hunk failed to locate rendered the
+    // full diff with no warning and a "Copy fixed code" button handing over source
+    // that was missing that change. Bare hunks get the note the renderer already has.
+    if (!located || located.failed.length > 0) return null;
     applied = true;
     const body = buildEnrichedBody(directive, located.result);
     const fence = fenceFor(body);

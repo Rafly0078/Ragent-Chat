@@ -117,6 +117,22 @@ interface Word {
   spaceBefore: boolean;
 }
 
+/**
+ * Longest prefix of `text` that fits `maxW`. Binary-searched: walking back one
+ * character at a time re-measures the whole string on every step, which is what
+ * made a single minified line cost seconds of CPU in the `code` case below.
+ */
+function fitChars(text: string, font: PDFFont, size: number, maxW: number): number {
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (font.widthOfTextAtSize(text.slice(0, mid), size) <= maxW) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
 const createPdf: ExecutorFn = async (req) => {
   const pdfDoc = await PDFDocument.create();
   const fonts: Fonts = {
@@ -196,9 +212,28 @@ const createPdf: ExecutorFn = async (req) => {
     const lines: Word[][] = [];
     let line: Word[] = [];
     let lineW = 0;
-    for (const w of words) {
-      const spaceW = w.spaceBefore && line.length ? w.font.widthOfTextAtSize(' ', w.size) : 0;
+    for (const word of words) {
+      let w = word;
       // Hard-wrap a single word longer than the whole line so it can't overflow.
+      // Nothing here used to split `w.text` — the oversized word was simply pushed
+      // onto the empty line — so a 150-character signed URL or a base64 blob was
+      // drawn from the left margin past the right one and clipped by the page edge.
+      while (w.width > maxW) {
+        if (line.length) {
+          lines.push(line);
+          line = [];
+          lineW = 0;
+        }
+        const cut = fitChars(w.text, w.font, w.size, maxW);
+        if (cut === 0) break; // not even one glyph fits: let it overflow, as before
+        const head = w.text.slice(0, cut);
+        const tail = w.text.slice(cut);
+        lines.push([
+          { ...w, text: head, width: w.font.widthOfTextAtSize(head, w.size), spaceBefore: false },
+        ]);
+        w = { ...w, text: tail, width: w.font.widthOfTextAtSize(tail, w.size), spaceBefore: false };
+      }
+      const spaceW = w.spaceBefore && line.length ? w.font.widthOfTextAtSize(' ', w.size) : 0;
       if (line.length && lineW + spaceW + w.width > maxW) {
         lines.push(line);
         line = [];
@@ -290,18 +325,21 @@ const createPdf: ExecutorFn = async (req) => {
       case 'quote': {
         const words = toWords(parseInline(b.text), bodySize, MUTED);
         const lines = layout(words, contentW - 24);
-        const top = y;
         lines.forEach((line) => {
           ensure(bodyLead);
           drawLine(line, marginX + 20, bodySize);
+          // A segment per line, on the page that line landed on. Sizing the rule
+          // from a cursor captured before the loop gave it a NEGATIVE height once
+          // the quote broke across a page — pdf-lib happily drew a 3pt bar down
+          // most of the new page's left margin — and left it short otherwise.
+          page.drawRectangle({
+            x: marginX + 6,
+            y: y - 2,
+            width: 3,
+            height: bodyLead,
+            color: RULE,
+          });
           y -= bodyLead;
-        });
-        page.drawRectangle({
-          x: marginX + 6,
-          y: y + bodyLead - 2,
-          width: 3,
-          height: top - y - bodyLead + bodySize,
-          color: RULE,
         });
         y -= 6;
         break;

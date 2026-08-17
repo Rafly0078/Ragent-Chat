@@ -37,7 +37,11 @@ export function findFences(
   keyword: string,
 ): { lines: string[]; matches: FenceMatch[] } {
   const openRe = new RegExp('^[ \\t]*(`{3,})[ \\t]*' + keyword + '\\b.*$', 'i');
-  const lines = text.split('\n');
+  // `\r?\n`, because both fence patterns end at `$` and `.` excludes `\r`: a CRLF
+  // response passed `hasFenceTag` (unanchored) and then matched zero fences, so the
+  // directive never ran and the renderer replaced its whole body with a "file
+  // wasn't created" notice. Callers rejoin with `\n`, so this normalizes.
+  const lines = text.split(/\r?\n/);
   const matches: FenceMatch[] = [];
 
   for (let i = 0; i < lines.length; i++) {

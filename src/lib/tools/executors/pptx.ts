@@ -311,7 +311,7 @@ function drawBlock(s: Slide, b: Block, t: DocTheme, x: number, y: number, w: num
     }
     case 'table': {
       const cols = b.rows.reduce((max, r) => Math.max(max, r.length), b.header.length) || 1;
-      const cell = (text: string, ri: number): PptxGenJS.TableCell => ({
+      const cell = (text: string, ri: number, ci: number): PptxGenJS.TableCell => ({
         text: stripInline(text),
         options: {
           fontSize: FS.cell,
@@ -319,15 +319,15 @@ function drawBlock(s: Slide, b: Block, t: DocTheme, x: number, y: number, w: num
           color: ri < 0 ? t.accentFg : t.ink,
           bold: ri < 0,
           fill: ri < 0 ? { color: t.accent } : ri % 2 === 1 ? { color: t.accentSoft } : undefined,
-          align: b.align?.[0] ?? 'left',
+          align: b.align?.[ci] ?? 'left',
           valign: 'top',
           margin: 4,
         },
       });
       const rows: PptxGenJS.TableRow[] = [
-        Array.from({ length: cols }, (_, ci) => cell(b.header[ci] ?? '', -1)),
+        Array.from({ length: cols }, (_, ci) => cell(b.header[ci] ?? '', -1, ci)),
         ...b.rows.map((row, ri) =>
-          Array.from({ length: cols }, (_, ci) => cell(row[ci] ?? '', ri)),
+          Array.from({ length: cols }, (_, ci) => cell(row[ci] ?? '', ri, ci)),
         ),
       ];
       s.addTable(rows, {

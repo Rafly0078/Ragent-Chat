@@ -108,7 +108,12 @@ export async function fileToAttachment(file: File): Promise<Attachment> {
     size: file.size,
   };
 
-  if (isImage(file)) {
+  // SVG is checked out of the raster path deliberately: it is markup, and the
+  // `svg` entry in `isText`'s extension list was unreachable while `isImage`
+  // won first. The file was base64'd as a vision image, `inferImageMediaType`
+  // found no PNG/JPEG magic bytes and labelled the XML `image/png`, and the
+  // provider was handed a data URL whose bytes are not an image at all.
+  if (isImage(file) && file.type !== 'image/svg+xml') {
     if (file.size > MAX_IMAGE_BYTES) throw new Error(`Image "${file.name}" exceeds 12MB.`);
     const dataUrl = await readAsDataUrl(file);
     // Only the base64 payload is kept; the preview is derived from it on render
@@ -187,16 +192,13 @@ async function extractOffice(file: File): Promise<string> {
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
 
   const xmlToText = (xml: string): string =>
-    xml
-      // Keep paragraph/line/cell boundaries as whitespace before stripping tags.
-      .replace(/<\/(w:p|a:p|text:p)>/g, '\n')
-      .replace(/<(w:br|a:br)\b[^>]*\/?>/g, '\n')
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;|&apos;/g, "'")
+    decodeEntities(
+      xml
+        // Keep paragraph/line/cell boundaries as whitespace before stripping tags.
+        .replace(/<\/(w:p|a:p|text:p)>/g, '\n')
+        .replace(/<(w:br|a:br)\b[^>]*\/?>/g, '\n')
+        .replace(/<[^>]+>/g, ''),
+    )
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
@@ -226,12 +228,21 @@ async function extractOffice(file: File): Promise<string> {
   }
 
   // xlsx: read shared strings + each sheet's cell values into a simple grid.
+  //
+  // Read as a flat list of `<t>` and `<c>` elements this went quietly wrong in
+  // three ways, all of which hand the model a plausible grid holding the wrong
+  // values: a cell with mixed formatting is several `<t>` runs inside one
+  // `<si>`, so collecting per `<t>` shifted every later string cell; empty cells
+  // are either omitted from the row or written self-closing, so reading cells
+  // positionally moved every later value in the row under the wrong header; and
+  // the entity decoding the docx/pptx path does was never applied, so "P&L"
+  // arrived as "P&amp;L".
   const shared: string[] = [];
   const ssFile = zip.file('xl/sharedStrings.xml');
   if (ssFile) {
     const ss = await ssFile.async('string');
-    for (const m of ss.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)) {
-      shared.push((m[1] ?? '').replace(/<[^>]+>/g, ''));
+    for (const si of ss.matchAll(/<si\b[^>]*?(?:\/>|>([\s\S]*?)<\/si>)/g)) {
+      shared.push(runsToText(si[1] ?? ''));
     }
   }
   const sheetNames = Object.keys(zip.files)
@@ -243,22 +254,65 @@ async function extractOffice(file: File): Promise<string> {
     if (!f) continue;
     const xml = await f.async('string');
     const rows: string[] = [];
-    for (const rowMatch of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+    for (const rowMatch of xml.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
       const cells: string[] = [];
-      for (const c of (rowMatch[1] ?? '').matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)) {
+      for (const c of (rowMatch[1] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
         const attrs = c[1] ?? '';
+        // Position the cell by its own reference rather than by arrival order.
+        const col = columnIndex(/\br="([A-Za-z]+)/.exec(attrs)?.[1]);
+        while (col > cells.length) cells.push('');
+        const inner = c[2];
+        if (inner === undefined) {
+          cells.push(''); // self-closing `<c/>`: styled, but holds no value
+          continue;
+        }
         const type = /\bt="([^"]*)"/.exec(attrs)?.[1];
-        const inner = c[2] ?? '';
         if (type === 'inlineStr') {
-          cells.push((inner.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? '').replace(/<[^>]+>/g, ''));
+          cells.push(runsToText(inner));
           continue;
         }
         const v = inner.match(/<v[^>]*>([\s\S]*?)<\/v>/)?.[1] ?? '';
-        cells.push(type === 's' ? (shared[Number(v)] ?? '') : v);
+        cells.push(type === 's' ? (shared[Number(v)] ?? '') : decodeEntities(v));
       }
       if (cells.some((x) => x !== '')) rows.push(cells.join('\t'));
     }
     if (rows.length) out.push(rows.join('\n'));
   }
   return out.join('\n\n');
+}
+
+/**
+ * The five entities XML requires. `&amp;` is decoded last on purpose: decoding
+ * it first turns the escaped text `&amp;lt;` into `<` instead of the `&lt;` the
+ * document actually says.
+ */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * The text of one shared or inline string: its formatting runs joined back into
+ * a single value. Phonetic runs (`<rPh>`, which Japanese input adds) are dropped
+ * — they repeat the value as furigana rather than continuing it.
+ */
+function runsToText(inner: string): string {
+  let text = '';
+  const body = inner.replace(/<rPh\b[^>]*>[\s\S]*?<\/rPh>/g, '');
+  for (const t of body.matchAll(/<t\b[^>]*?(?:\/>|>([\s\S]*?)<\/t>)/g)) {
+    text += decodeEntities(t[1] ?? '');
+  }
+  return text;
+}
+
+/** `r="AB7"` → 27, the 0-based column. -1 when the cell carries no reference. */
+function columnIndex(ref: string | undefined): number {
+  if (!ref) return -1;
+  let n = 0;
+  for (const ch of ref.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n - 1;
 }

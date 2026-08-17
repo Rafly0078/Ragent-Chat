@@ -2,6 +2,8 @@ import 'server-only';
 
 import ExcelJS from 'exceljs';
 import type { ExecutorFn } from './index';
+import { parseMarkdown } from '@/lib/documents/markdown';
+import { parseCsvBody } from '../detect';
 import { MIME_BY_KIND, EXT_BY_KIND, type SheetSpec } from '../types';
 
 type Cell = string | number | boolean | null;
@@ -48,30 +50,24 @@ function fillSheet(ws: ExcelJS.Worksheet, rows: Cell[][]): void {
   // stack (RangeError) somewhere north of ~100k rows.
   const width = rows.reduce((max, r) => Math.max(max, r.length), 0);
   if (width === 0) return;
-  /** Per data column: how many numeric cells, and how many of those were "42%". */
-  const numericByCol = new Map<number, number>();
-  const pctByCol = new Map<number, number>();
 
   rows.forEach((row, ri) => {
     const cells = Array.from({ length: width }, (_, ci) => {
       const raw = row[ci] ?? null;
-      if (ri === 0) return raw; // header stays as-is (labels)
-      const c = coerce(raw);
-      if (typeof c === 'number') {
-        const col = ci + 1;
-        numericByCol.set(col, (numericByCol.get(col) ?? 0) + 1);
-        if (typeof raw === 'string' && /%$/.test(raw.trim())) {
-          pctByCol.set(col, (pctByCol.get(col) ?? 0) + 1);
-        }
-      }
-      return c;
+      return ri === 0 ? raw : coerce(raw); // header stays as-is (labels)
     });
     const added = ws.addRow(cells);
-    added.eachCell({ includeEmpty: true }, (cell) => {
+    added.eachCell({ includeEmpty: true }, (cell, col) => {
       cell.border = THIN;
       cell.alignment = { vertical: 'top', wrapText: true };
-      if (typeof cell.value === 'number')
-        cell.alignment = { ...cell.alignment, horizontal: 'right' };
+      if (typeof cell.value !== 'number') return;
+      cell.alignment = { ...cell.alignment, horizontal: 'right' };
+      // Percent format on the cell, never the column: `coerce` divides by 100 per
+      // cell, so a column-wide rule had to be all-or-nothing. A mixed "Growth"
+      // column ("42%" in one row, a raw count of 20 in another) either rendered the
+      // 20 as 2000.0%, or dropped the format and delivered the 42% reading 0.42.
+      const raw = row[col - 1];
+      if (typeof raw === 'string' && /%$/.test(raw.trim())) cell.numFmt = '0.0%';
     });
   });
 
@@ -81,13 +77,6 @@ function fillSheet(ws: ExcelJS.Worksheet, rows: Cell[][]): void {
   header.fill = HEADER_FILL;
   header.alignment = { vertical: 'middle', wrapText: true };
   header.height = 20;
-
-  // Percent format only when EVERY numeric cell in the column was a percentage.
-  // A mixed "Growth" column ("12%" in one row, a raw count of 20 in another)
-  // used to render the 20 as 2000.0%.
-  pctByCol.forEach((pctCount, col) => {
-    if (pctCount === numericByCol.get(col)) ws.getColumn(col).numFmt = '0.0%';
-  });
 
   // Freeze the header row and enable an autofilter over the data extent.
   ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -130,7 +119,19 @@ const createXlsx: ExecutorFn = async (req) => {
   } else if ((req.rows ?? []).length > 0) {
     fillSheet(workbook.addWorksheet('Sheet 1'), req.rows!);
   } else {
-    workbook.addWorksheet('Sheet 1');
+    // A model that emits the legacy JSON shape puts a Markdown table — or raw CSV
+    // — in `content`, and validate.ts deliberately accepts a content-only request.
+    // Ignoring it here handed back a "successful" download of one blank sheet, the
+    // same failure csv.ts already carries a fallback for. One table per sheet, so
+    // a second table is neither dropped nor stacked under the first one's header.
+    const tables = parseMarkdown(req.content ?? '').filter((b) => b.type === 'table');
+    if (tables.length > 0) {
+      tables.forEach((t, i) =>
+        fillSheet(workbook.addWorksheet(`Sheet ${i + 1}`), [t.header, ...t.rows]),
+      );
+    } else {
+      fillSheet(workbook.addWorksheet('Sheet 1'), parseCsvBody(req.content ?? ''));
+    }
   }
 
   const buffer = Buffer.from(await workbook.xlsx.writeBuffer());

@@ -6,6 +6,13 @@ import { parseCsvBody } from '../detect';
 
 /** Characters that make Excel/LibreOffice/Sheets evaluate a cell as a formula. */
 const FORMULA_LEAD = /^[=+\-@\t\r]/;
+/**
+ * A signed number is not an expression. `-120` leads with `-`, so the guard below
+ * marked every negative value as text: the column was left-aligned, `SUM(B:B)`
+ * over a set of deltas came back 0, and importers that ignore the marker showed a
+ * literal `'-120`.
+ */
+const PLAIN_NUMBER = /^[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?$/;
 
 function escapeCsvField(val: string | number | boolean | null): string {
   if (val === null || val === undefined) return '';
@@ -14,7 +21,7 @@ function escapeCsvField(val: string | number | boolean | null): string {
   // quotes are a transport construct that the parser strips before evaluation, so
   // `"=cmd|' /C calc'!A0"` still fires. Neutralize by prefixing an apostrophe,
   // which spreadsheets treat as "the rest is literal text".
-  if (FORMULA_LEAD.test(s)) s = `'${s}`;
+  if (FORMULA_LEAD.test(s) && !PLAIN_NUMBER.test(s)) s = `'${s}`;
   // RFC 4180: quote fields containing comma, quote, or CR/LF; double embedded quotes.
   if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getExecutor, isTextOutput } from '@/lib/tools/executors';
-import { sourceMetadata } from '@/lib/tools/executors/edit-artifact';
+import { editedSourceMetadata, sourceMetadata } from '@/lib/tools/executors/edit-artifact';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import {
   EXT_BY_KIND,
@@ -106,8 +106,14 @@ export async function POST(request: Request): Promise<Response> {
     // A generic text file keeps the extension the model asked for: `create_txt` is
     // the only writer for a stylesheet or a script, and returning `style.css.txt`
     // as `text/plain` made those files useless for the thing they were asked for.
+    // The executor's `filename` is consulted first because an `edit_artifact`
+    // revision carries the name on the RESULT and nothing on the request — read
+    // only from the request, an edited `style.css` went back to `text/plain`.
     // Other kinds ignore the request — a PDF is a PDF whatever the name claims.
-    const keptExt = result.ext === EXT_BY_KIND.txt ? textFileExt(body.name ?? body.title) : null;
+    const keptExt =
+      result.ext === EXT_BY_KIND.txt
+        ? textFileExt(result.filename ?? body.name ?? body.title)
+        : null;
     const ext = keptExt ?? result.ext;
     // `filename`/`version` may be overridden by the executor: `edit_artifact`
     // produces revision N+1 of an existing document and keeps its name, neither
@@ -200,7 +206,13 @@ export async function POST(request: Request): Promise<Response> {
           // later without the model re-emitting the whole document. Empty for
           // tools whose input is structured (rows/sheets/slides/files) rather
           // than text — `edit_artifact` reports that case rather than guessing.
-          metadata: sourceMetadata(body),
+          //
+          // A revision brings its own, and has to: `body` is then the *edit*
+          // request, which carries hunks and no source at all, so deriving it
+          // here left every revision with empty metadata — and the second edit
+          // of a document was refused because the row the model had just been
+          // told to edit had no source stored.
+          metadata: editedSourceMetadata(result) ?? sourceMetadata(body),
         };
         let artifactSaved = true;
         const { error: artifactInsertErr } = await supabase.from('artifacts').insert({
