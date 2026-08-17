@@ -66,6 +66,12 @@ export function estimateHistoryTokens(
  * `MIN_KEEP_RECENT` messages so the current question and its immediate context
  * survive even when they're individually larger than the budget. Returns the
  * index of the first message to KEEP — everything before it is summarizable.
+ *
+ * The kept slice never STARTS on an assistant turn. It could, and then the
+ * request began with an answer to a question the model could no longer see:
+ * Anthropic rejects that outright ("first message must use the user role") and
+ * every other protocol reads it as the model having spoken unprompted. One extra
+ * message is a cheap price for a well-formed conversation.
  */
 function recentKeepStart(messages: Message[], tokenBudget: number): number {
   let used = 0;
@@ -79,7 +85,12 @@ function recentKeepStart(messages: Message[], tokenBudget: number): number {
     used += cost;
     kept++;
   }
-  return i + 1;
+  let start = i + 1;
+  // Reach back over an answer (and the tool traffic that produced it) to the turn
+  // that asked for it. `system` is hoisted out of `messages` by every protocol
+  // builder, so only 'user' is a valid opening.
+  while (start > 0 && start < messages.length && messages[start]!.role !== 'user') start--;
+  return start;
 }
 
 /**

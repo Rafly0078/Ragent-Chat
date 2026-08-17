@@ -108,18 +108,19 @@ function holdPartialTag(buf: string): [safe: string, held: string] {
  * Three cases, and all three have to work:
  *
  *  - The server sent `part` metadata (cloud providers through
- *    `/api/providers/chat`). Ordering is already authoritative — pass it
- *    through. Anthropic gives real block indices; the OpenAI-compatible branch
- *    synthesizes them from thinking↔text transitions.
+ *    `/api/providers/chat`). For a thinking part that ordering is already
+ *    authoritative — pass it through. Anthropic gives real block indices; the
+ *    OpenAI-compatible branch synthesizes them from thinking↔text transitions.
  *  - No `part`, but `message.thinking` and `message.content` are separate
  *    fields (Ollama, direct or over the raw-passthrough bridge — neither goes
  *    near our server). Indices are synthesized here the same way, so a model
  *    that alternates still produces ordered blocks.
- *  - No `part`, and the reasoning is inline in `content` as `<think>…</think>`
- *    (Qwen/QwQ/R1 through a gateway that doesn't split it out). Nothing used to
- *    handle this at all: the tags rendered as literal text, and because they are
- *    HTML-shaped the markdown renderer swallowed them, so the reasoning silently
- *    became part of the answer. Split here.
+ *  - The reasoning is inline in `content` as `<think>…</think>` (Qwen/QwQ/R1
+ *    through an endpoint that doesn't split it out), with or without `part`.
+ *    Nothing used to handle this at all: the tags rendered as literal text, and
+ *    because they are HTML-shaped the markdown renderer swallowed them, so the
+ *    reasoning silently became part of the answer. Split here — which is why a
+ *    text block's index is always this router's own, never the server's.
  *
  * Stateful — one router per stream. Call `flush()` at the end to release any
  * text held back as a possible partial tag.
@@ -171,12 +172,32 @@ export function createPartRouter(): {
 
       if (chunk.part) {
         const { kind, index, done, signature, redacted } = chunk.part;
-        const text = kind === 'thinking' ? thinking : content;
-        if (text || done || signature || redacted) {
+        // `part` says which of the two streams a delta belongs to. It does NOT
+        // say the provider separated its reasoning from its answer — and this
+        // branch used to return unconditionally, which made case 3 above dead
+        // code for every cloud provider, because the server stamps `part` on
+        // every text delta it forwards. A self-hosted OpenAI-compatible endpoint
+        // (vLLM, llama.cpp, LM Studio) serving Qwen3 or R1 with no reasoning
+        // parser configured — the default — streams `<think>…</think>` inside
+        // `content`, so the whole chain of thought arrived as a text part. The
+        // tags are HTML-shaped, so the markdown renderer dropped them silently
+        // and the reasoning rendered as ordinary answer prose. Text therefore
+        // goes through the splitter here too; it is a no-op when there are no
+        // tags, beyond renumbering the block.
+        if (kind === 'text') {
+          // Metadata-only text events are dropped rather than forwarded. A text
+          // block's `done` carries the UPSTREAM index while the routed text
+          // carries a synthesized one, so passing it on would append a spurious
+          // empty text part at an index nothing else uses — and `done` is only
+          // ever read for thinking blocks, which still pass through untouched.
+          if (content) routeInline(out, content);
+          return out;
+        }
+        if (thinking || done || signature || redacted) {
           out.push({
             kind,
             index,
-            text,
+            text: thinking,
             ...(done ? { done } : {}),
             ...(signature ? { signature } : {}),
             ...(redacted ? { redacted } : {}),

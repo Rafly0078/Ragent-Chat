@@ -62,9 +62,51 @@ eq(
   [
     ['thinking', 0, 'weigh'],
     ['thinking', 0, ' options'],
-    ['text', 1, 'So: '],
-    ['text', 1, 'yes.'],
+    // The upstream called this block 1; the router calls it 0. Text now always
+    // goes through the <think> splitter (see below), which owns its own counter —
+    // a thinking block's index is still the upstream's, and the ORDER, which is
+    // what any of this is for, is untouched either way.
+    ['text', 0, 'So: '],
+    ['text', 0, 'yes.'],
     ['thinking', 2, 'but wait'],
+  ],
+);
+eq(
+  'a thinking block close passes through with its flag and upstream index',
+  createPartRouter().route(msg('', '', { kind: 'thinking', index: 4, done: true })),
+  [{ kind: 'thinking', index: 4, text: '', done: true }],
+);
+eq(
+  'a text block close carries no part of its own',
+  route([
+    msg('all done.', '', { kind: 'text', index: 0 }),
+    msg('', '', { kind: 'text', index: 0, done: true }),
+  ]),
+  [['text', 0, 'all done.']],
+);
+// Anthropic encrypts a reasoning block now and then; `content_block.data` is the
+// only copy of it that exists, and the server dropped it on the floor, so the
+// block was stored empty and replayed as `{data: ''}` on every later turn.
+eq(
+  'a redacted thinking block carries the opaque payload the model needs back',
+  createPartRouter().route(msg('', 'ENCRYPTED', { kind: 'thinking', index: 0, redacted: true })),
+  [{ kind: 'thinking', index: 0, text: 'ENCRYPTED', redacted: true }],
+);
+// The regression this ordering metadata used to cause: `part` says which stream a
+// delta belongs to, not that the provider split its reasoning out of `content`.
+// A self-hosted OpenAI-compatible endpoint with no reasoning parser streams the
+// tags inline AND gets `part` stamped on by our server, so the splitter never ran
+// and the whole chain of thought rendered as answer prose.
+eq(
+  'inline <think> inside a part-stamped text delta is still split out',
+  route([
+    msg('<think>hidden', '', { kind: 'text', index: 0 }),
+    msg(' reasoning</think>answer', '', { kind: 'text', index: 0 }),
+  ]),
+  [
+    ['thinking', 0, 'hidden'],
+    ['thinking', 0, ' reasoning'],
+    ['text', 1, 'answer'],
   ],
 );
 

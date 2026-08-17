@@ -129,6 +129,12 @@ export interface Message {
  *
  * One place, so the store, the Supabase mapper and the migration cannot drift
  * on what "the text of this message" means.
+ *
+ * A redacted block contributes its duration but not its text: what it holds is
+ * the provider's opaque payload, kept on the part so the next turn can replay it
+ * verbatim. Folded into `reasoning` it would go back upstream as
+ * `reasoning_content` — and into every export and copy of the message — as a
+ * wall of base64.
  */
 export function flattenParts(parts: MessagePart[]): {
   content: string;
@@ -144,7 +150,7 @@ export function flattenParts(parts: MessagePart[]): {
       content += p.text;
       continue;
     }
-    reasoning += p.text;
+    reasoning += p.redacted === true ? '' : p.text;
     if (p.endedAt !== undefined) {
       reasoningTimeMs += p.endedAt - p.startedAt;
       sawTiming = true;
@@ -227,6 +233,8 @@ export interface ModelInfo {
   label: string;
   /** True when `label` comes from an owner-curated override (not the raw name). */
   customLabel?: boolean;
+  /** Owner-hidden: kept in the list but shown only to the owner, who can un-hide it. */
+  hidden?: boolean;
   /** Optional owner-authored description shown in the picker. */
   description?: string;
   /** Size on disk in bytes. */

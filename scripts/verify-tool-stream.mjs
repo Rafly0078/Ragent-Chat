@@ -74,7 +74,7 @@ const indexOfStart = (out) => out.findIndex((c) => c.tool_call_start);
 const indexOfCalls = (out) => out.findIndex((c) => c.tool_calls?.length);
 
 /** Capture the body the proxy POSTS upstream, without caring what comes back. */
-async function sentBody(protocol, messages) {
+async function sentBody(protocol, messages, options) {
   let captured;
   globalThis.fetch = async (_url, init) => {
     captured = JSON.parse(init.body);
@@ -82,7 +82,7 @@ async function sentBody(protocol, messages) {
   };
   const res = await providerChat(
     { provider: 'custom', baseUrl: 'https://example.com/v1', apiKey: 'k', protocol },
-    { model: 'test-model', messages, stream: true },
+    { model: 'test-model', messages, stream: true, ...(options ? { options } : {}) },
   );
   await res.text();
   return captured;
@@ -228,6 +228,111 @@ console.log('\n5. the reasoning goes back with the tool call that produced it');
     'no reasoning, no field',
     'reasoning_content' in (plain.messages.find((m) => m.role === 'assistant') ?? {}),
     false,
+  );
+}
+
+console.log('\n6. anthropic: the request never starts on the assistant');
+{
+  // What context compaction can leave behind. It picks its cut by token budget, so
+  // the keep window can open on the model's ANSWER rather than the question that
+  // produced it — and on this protocol every system message, the summary included,
+  // is folded into `system`, so nothing stands in front of it. Anthropic answers
+  // 400 ("first message must use the \"user\" role"), the client reads that 400 as
+  // "this model can't do thinking" and disables the toggle, and the next send
+  // recomputes the same cut — so the conversation stays bricked rather than
+  // recovering on its own.
+  const compacted = await sentBody('anthropic', [
+    { role: 'system', content: 'Summary of the earlier conversation: the build broke.' },
+    { role: 'assistant', content: 'so that is why it failed.' },
+    { role: 'user', content: 'ok, fix it' },
+  ]);
+  eq(
+    'the orphaned answer is dropped',
+    compacted.messages.map((m) => m.role),
+    ['user'],
+  );
+  eq('the summary still travels as system', typeof compacted.system, 'string');
+
+  const normal = await sentBody('anthropic', [
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: 'hello' },
+    { role: 'user', content: 'more' },
+  ]);
+  eq(
+    'a well-formed history is untouched',
+    normal.messages.map((m) => m.role),
+    ['user', 'assistant', 'user'],
+  );
+}
+
+console.log('\n7. max_tokens is clamped by context headroom, not only by the ceiling');
+{
+  // `num_predict` arriving here is usually NOT a number the user typed: with
+  // maxTokensAuto on (the default) the client resolves the slider's -1 into the
+  // provider's published output ceiling and sends that. Passing it through
+  // untouched put a ~95k-token prompt plus a 32768-token completion reservation
+  // into a 128k window, and the upstream's "maximum context length is 128000
+  // tokens" reply names no max_tokens field, so `rejectsMaxTokens` didn't match
+  // and there was no retry either — the turn just died.
+  const clamped = await sentBody('openai', [{ role: 'user', content: 'x'.repeat(380_000) }], {
+    num_ctx: 128_000,
+    num_predict: 32_768,
+  });
+  eq('asks for what is left of the window', clamped.max_tokens < 32_768, true);
+  eq('and still asks for something usable', clamped.max_tokens >= 4_096, true);
+
+  const explicit = await sentBody('openai', [{ role: 'user', content: 'hi' }], {
+    num_ctx: 128_000,
+    num_predict: 1_000,
+  });
+  eq('a small deliberate budget is never raised', explicit.max_tokens, 1_000);
+}
+
+console.log('\n8. an encrypted thinking block keeps the one copy of itself that exists');
+{
+  // `content_block.data` is reasoning Anthropic's classifier encrypted: opaque to
+  // us, readable by the model, and never sent again. It used to be parsed off the
+  // event and dropped, so the block was stored with empty text — the reasoning was
+  // gone for good, and every later turn replayed it as `{data: ''}`, which the API
+  // documents as a block that must go back unmodified.
+  const out = await chunks('anthropic', [
+    {
+      type: 'content_block_start',
+      index: 0,
+      content_block: { type: 'redacted_thinking', data: 'ENCRYPTEDBLOB' },
+    },
+    { type: 'content_block_stop', index: 0 },
+    { type: 'content_block_start', index: 1, content_block: { type: 'text' } },
+    { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'answer' } },
+    { type: 'message_stop' },
+  ]);
+  const block = out.find((c) => c.part?.redacted);
+  eq('the payload reaches the client as the block text', block?.message?.thinking, 'ENCRYPTEDBLOB');
+  eq('and is still flagged redacted', block?.part, {
+    kind: 'thinking',
+    index: 0,
+    redacted: true,
+  });
+
+  const replayed = await sentBody('anthropic', [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'a', thinking: [{ text: 'ENCRYPTEDBLOB', redacted: true }] },
+    { role: 'user', content: 'q2' },
+  ]);
+  eq('it goes back unmodified', replayed.messages[1].content[0], {
+    type: 'redacted_thinking',
+    data: 'ENCRYPTEDBLOB',
+  });
+
+  const legacy = await sentBody('anthropic', [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: 'a', thinking: [{ text: '', redacted: true }] },
+    { role: 'user', content: 'q2' },
+  ]);
+  eq(
+    'a block stored empty before the fix is skipped, not sent as data:""',
+    legacy.messages[1].content.map((c) => c.type),
+    ['text'],
   );
 }
 

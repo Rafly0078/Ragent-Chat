@@ -265,6 +265,40 @@ async function providerError(response: Response): Promise<ProviderError> {
   return new ProviderError(message, response.status);
 }
 
+/** All a caller learns when the BUILT-IN provider's upstream fails. */
+const BUILT_IN_UNAVAILABLE = 'The built-in provider is unavailable right now.';
+
+/**
+ * Replace an upstream error with a generic line on its way OUT to the caller.
+ *
+ * The built-in provider's endpoint and key are the deployment owner's, not the
+ * caller's — so the gateway's own wording is about the owner: which host it sits
+ * behind, that *their* account is out of quota, the masked prefix of *their*
+ * key. All of it used to reach the browser verbatim (up to 4 KB of it), because
+ * the providers/chat route serializes `ProviderError.message` into its JSON body
+ * and nothing in between touched it. Same policy the search route already
+ * applies to Tavily: log the upstream's words, hand back a generic sentence.
+ *
+ * Every other provider is the *user's* own endpoint talking, and that text is the
+ * entire diagnostic they get ("insufficient balance", "model not found") — so it
+ * passes through untouched.
+ *
+ * Applied here rather than inside `providerError` on purpose: `providerChat`
+ * feeds that message to `rejectsMaxTokens`/`suggestedMaxTokens`, so scrubbing it
+ * any earlier would silently kill the max_tokens retry. The status is preserved
+ * for the same reason — the client keys "this model can't do thinking" off a
+ * 400, not off the text.
+ */
+function clientSafe(connection: ProviderConnection, error: ProviderError): ProviderError {
+  if (connection.provider !== 'default') return error;
+  console.error(
+    '[providers] built-in upstream returned',
+    error.status,
+    error.message.slice(0, 500),
+  );
+  return new ProviderError(BUILT_IN_UNAVAILABLE, error.status);
+}
+
 function inferImageMediaType(base64: string): string {
   if (base64.startsWith('/9j/')) return 'image/jpeg';
   if (base64.startsWith('iVBOR')) return 'image/png';
@@ -358,12 +392,32 @@ function suggestedMaxTokens(message: string, requested: number): number | null {
  */
 function resolveMaxTokens(request: ChatRequest, ceiling: number): number {
   const requested = request.options?.num_predict;
-  // A positive value is the user's explicit choice — pass it through untouched.
-  if (typeof requested === 'number' && requested > 0) return Math.min(requested, ceiling);
-
   const context = request.options?.num_ctx;
   const window = typeof context === 'number' && context > 0 ? context : ASSUMED_CONTEXT;
   const headroom = window - estimatePromptTokens(request);
+
+  // A positive value used to be treated as the user's explicit choice and passed
+  // through untouched. It usually isn't one: with `maxTokensAuto` on — the
+  // default, and undefined counts as on — the client resolves the slider's -1
+  // into the provider's published output ceiling (resolve-limits.ts) and sends
+  // *that* as `num_predict`, so the number arriving here is one WE computed. The
+  // wire has no field that tells the two apart.
+  //
+  // Skipping the headroom clamp for it meant a big paste on a 128k-window model
+  // went out as ~95k prompt tokens plus a 32768 completion reservation, and the
+  // upstream answered "maximum context length is 128000 tokens, however you
+  // requested ..." — which names no max_tokens field, so `rejectsMaxTokens`
+  // below doesn't match, there is no retry, and the turn simply dies. Asking for
+  // the ~8k that actually fit would have answered it.
+  //
+  // So clamp against the headroom as well, but never *raise* the request: a
+  // deliberate `num_predict: 1000` stays 1000. The floor only guards the case
+  // where the headroom is tiny or negative (the prompt already overflows), where
+  // it is the unlimited branch's behaviour that applies.
+  if (typeof requested === 'number' && requested > 0) {
+    return Math.min(requested, ceiling, Math.max(OUTPUT_FLOOR, headroom));
+  }
+
   return Math.max(OUTPUT_FLOOR, Math.min(ceiling, headroom));
 }
 
@@ -500,8 +554,17 @@ function anthropicBody(request: ChatRequest): Record<string, unknown> {
     // signature. Without this, interleaved thinking only ever worked for a single
     // turn: the next request referenced blocks it hadn't sent, and was rejected.
     for (const block of message.thinking ?? []) {
-      if (block.redacted) content.push({ type: 'redacted_thinking', data: block.text });
-      else if (block.signature) {
+      // A redacted block goes back only when its payload actually survived the
+      // round trip. The encrypted blob used to be dropped the moment it arrived
+      // (see `openBlock`), so every one of these was stored with empty text and
+      // then replayed as `{ data: '' }` on every later turn of that conversation
+      // — a block Anthropic documents as one that must be handed back
+      // *unmodified*. Messages persisted before that was fixed still hold the
+      // empty ones, so skipping them here is what keeps an old conversation
+      // sendable instead of poisoning every new request with it.
+      if (block.redacted) {
+        if (block.text) content.push({ type: 'redacted_thinking', data: block.text });
+      } else if (block.signature) {
         content.push({ type: 'thinking', thinking: block.text, signature: block.signature });
       }
     }
@@ -524,6 +587,28 @@ function anthropicBody(request: ChatRequest): Record<string, unknown> {
     if (previous?.role === message.role) previous.content.push(...content);
     else messages.push({ role: message.role, content });
   }
+
+  // The first turn on this protocol MUST be `user` — Anthropic answers a 400
+  // ("first message must use the \"user\" role") otherwise, and that 400 is
+  // indistinguishable from an unsupported-parameter one on the client, which
+  // reacts by permanently disabling the thinking toggle for the model.
+  //
+  // We can arrive here with an assistant turn first. Context compaction picks
+  // the cut for its running summary by token budget, so the keep window can open
+  // on the model's answer rather than the question that produced it; every
+  // system message above (including the summary itself) has just been folded
+  // into `system`, so nothing shields it. It does not heal on its own either —
+  // the errored turn is skipped when the next request is built, so the same cut
+  // is recomputed and the same 400 comes back for the rest of the conversation.
+  //
+  // Dropping the orphaned answer is the only repair that doesn't invent a user
+  // message the user never wrote: the summary block already carries the context
+  // that answer came out of. This is the same shape of normalization the loop
+  // above already does for empty text blocks and same-role runs, and it also
+  // covers a mid-history edit that leaves an assistant turn leading. The last
+  // remaining turn is kept whatever its role, because an empty `messages` is
+  // simply a different 400.
+  while (messages.length > 1 && messages[0]?.role === 'assistant') messages.shift();
 
   let maxTokens = resolveMaxTokens(request, ANTHROPIC_OUTPUT_CEILING);
   const body: Record<string, unknown> = {
@@ -774,6 +859,14 @@ function providerStream(
   response: Response,
   protocol: ProviderProtocol,
   fallbackModel: string,
+  /**
+   * Scrub the upstream's own error text before it reaches the caller. Set for the
+   * built-in provider only — `clientSafe` does this for every error that arrives
+   * *before* the stream opens, and an upstream that fails mid-generation leaks by
+   * exactly the same route: the `error` event's message is forwarded verbatim in
+   * an NDJSON chunk, and the client raises it as the turn's error text.
+   */
+  scrubErrors = false,
 ): ReadableStream<Uint8Array> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
@@ -793,6 +886,16 @@ function providerStream(
   /** Synthesized block state for protocols with no upstream index. */
   let synthKind: 'text' | 'thinking' | null = null;
   let synthCounter = -1;
+  /**
+   * One upstream `error` event's message, as the caller may see it. Whether it is
+   * theirs to read is decided by `scrubErrors` above; a user-configured endpoint's
+   * words are the only diagnostic they get, so those pass straight through.
+   */
+  const errorText = (message: string): string => {
+    if (!scrubErrors) return message;
+    console.error('[providers] built-in upstream stream error', message.slice(0, 500));
+    return BUILT_IN_UNAVAILABLE;
+  };
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -839,10 +942,21 @@ function providerStream(
         );
       };
 
-      /** Anthropic `content_block_start` — remember the kind for this index. */
-      const openBlock = (index: number, kind: 'text' | 'thinking', redacted = false) => {
+      /**
+       * Anthropic `content_block_start` — remember the kind for this index.
+       *
+       * `data` is a `redacted_thinking` block's payload: reasoning the provider's
+       * own classifier encrypted, opaque to us but not to the model. It used to
+       * be read off the event type and then dropped right here, so the block
+       * reached the client with empty text, the reasoning was lost for good (and
+       * persisted that way, so no reload could recover it), and every later turn
+       * replayed the block as `{ data: '' }` — see the replay guard in
+       * `anthropicBody`. Carrying it through as the block's text is what closes
+       * that round trip; there is no other field on the wire to put it in.
+       */
+      const openBlock = (index: number, kind: 'text' | 'thinking', redacted = false, data = '') => {
         blockKinds.set(index, kind);
-        if (redacted) emitPart(index, 'thinking', '', { redacted: true });
+        if (redacted) emitPart(index, 'thinking', data, { redacted: true });
       };
 
       /**
@@ -962,7 +1076,10 @@ function providerStream(
           };
           if (data.type === 'error') {
             controller.enqueue(
-              ndjson({ error: data.error?.message ?? 'Anthropic stream error.', done: true }),
+              ndjson({
+                error: errorText(data.error?.message ?? 'Anthropic stream error.'),
+                done: true,
+              }),
             );
             finished = true;
             return;
@@ -983,7 +1100,12 @@ function providerStream(
           if (data.type === 'content_block_start') {
             const kind = data.content_block?.type;
             if (kind === 'thinking' || kind === 'redacted_thinking') {
-              openBlock(data.index ?? 0, 'thinking', kind === 'redacted_thinking');
+              openBlock(
+                data.index ?? 0,
+                'thinking',
+                kind === 'redacted_thinking',
+                data.content_block?.data ?? '',
+              );
             } else if (kind === 'text') {
               openBlock(data.index ?? 0, 'text');
             } else if (kind === 'tool_use') {
@@ -1047,7 +1169,7 @@ function providerStream(
           error?: { message?: string };
         };
         if (data.error?.message) {
-          controller.enqueue(ndjson({ error: data.error.message, done: true }));
+          controller.enqueue(ndjson({ error: errorText(data.error.message), done: true }));
           finished = true;
           return;
         }
@@ -1195,7 +1317,9 @@ export async function providerChat(
     // individual models will emit in one reply — those providers reject the
     // request outright instead of clamping. Retry at the ceiling they named, or
     // uncapped if they named none: a shorter answer beats a failed turn.
-    if (!rejectsMaxTokens(error)) throw error;
+    // `rejectsMaxTokens` and `suggestedMaxTokens` read the upstream's raw words,
+    // which is why `clientSafe` is applied on the way out and not before.
+    if (!rejectsMaxTokens(error)) throw clientSafe(connection, error);
     const field = MAX_TOKEN_FIELDS.find((name) => typeof body[name] === 'number');
     const requested = field ? (body[field] as number) : 0;
     const suggested = field ? suggestedMaxTokens(error.message, requested) : null;
@@ -1203,18 +1327,21 @@ export async function providerChat(
     if (suggested !== null && field) relaxed[field] = suggested;
     else for (const name of MAX_TOKEN_FIELDS) delete relaxed[name];
     response = await post(relaxed);
-    if (!response.ok) throw await providerError(response);
+    if (!response.ok) throw clientSafe(connection, await providerError(response));
   }
 
   if (request.stream) {
     if (!response.body) throw new ProviderError('Provider returned no stream body.');
-    return new Response(providerStream(response, protocol, request.model), {
-      headers: {
-        'Content-Type': 'application/x-ndjson',
-        'Cache-Control': 'no-store, no-transform',
-        Connection: 'keep-alive',
+    return new Response(
+      providerStream(response, protocol, request.model, connection.provider === 'default'),
+      {
+        headers: {
+          'Content-Type': 'application/x-ndjson',
+          'Cache-Control': 'no-store, no-transform',
+          Connection: 'keep-alive',
+        },
       },
-    });
+    );
   }
 
   const normalized = normalizedNonStream(protocol, await response.json(), request.model);
