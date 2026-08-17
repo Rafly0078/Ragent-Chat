@@ -90,7 +90,17 @@ function escapeRawText(code: string): string {
  */
 export function composeDocument(src: WebSource, bootstrap: string): string {
   const styleTag = src.css ? `<style>\n${escapeRawText(src.css)}\n</style>` : '';
-  const scriptTag = src.js ? `<script>\n${escapeRawText(src.js)}\n</script>` : '';
+  // `/* --> */` is the counterpart to escapeRawText's `<\/`. Escaping `</script`
+  // also removes the only exit from the tokenizer's script-data-double-escaped
+  // state, which page JS holding an unbalanced `<!--` before a `<script` token puts
+  // us in — so the injected `</script>` was swallowed as script text and the
+  // element closed at EOF already "started". The page then rendered its markup and
+  // ran none of its JavaScript, which raises no error and isn't blank, so the audit
+  // reported "Ran clean, no errors" and the heal loop stopped there. `-->` puts the
+  // tokenizer back in script data, and a JS comment executes nothing. Built once, so
+  // both the full-document and the wrapped-fragment path get it; `<style>` has no
+  // escaped states, so CSS needs no equivalent.
+  const scriptTag = src.js ? `<script>\n${escapeRawText(src.js)}\n/* --> */\n</script>` : '';
   const bootstrapTag = `<script>\n${bootstrap}\n</script>`;
 
   if (isFullDocument(src.html)) {

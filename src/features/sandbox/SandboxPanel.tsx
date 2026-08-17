@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, m } from 'framer-motion';
+import { m } from 'framer-motion';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,9 +13,10 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { WebSource } from '@/lib/sandbox/types';
-import { composeDocument } from '@/lib/sandbox/compose';
+import { composeDocument, extractWebSource } from '@/lib/sandbox/compose';
 import { buildBootstrap } from '@/lib/sandbox/bootstrap';
 import { useSelfHeal } from './use-self-heal';
+import { useChatStore } from '@/lib/store/chat-store';
 import { useSettings } from '@/lib/store/settings-store';
 import { cn } from '@/lib/utils/cn';
 
@@ -25,6 +26,36 @@ interface Props {
   source: WebSource;
   /** True while the parent message is still streaming (defer running). */
   streaming?: boolean;
+}
+
+/**
+ * How recently the conversation must have been written to for a mounting panel to
+ * count as "this code just streamed in". Generous, because the panel is imported
+ * lazily: the first one in a session waits on a chunk fetch before it can mount.
+ */
+const JUST_STREAMED_MS = 10_000;
+
+/**
+ * True when this panel's code is the newest message in its conversation AND that
+ * conversation was written to moments ago — i.e. a stream just ended, rather than
+ * the panel having been mounted by a history load.
+ *
+ * Both halves are needed. `updatedAt` alone would fire for every panel in the
+ * conversation at once, and being the last message alone is exactly the state of an
+ * old conversation the user opened to read.
+ */
+function justStreamed(conversationId: string, source: WebSource): boolean {
+  const convo = useChatStore.getState().conversations.find((c) => c.id === conversationId);
+  if (!convo || Date.now() - convo.updatedAt > JUST_STREAMED_MS) return false;
+  const last = convo.messages[convo.messages.length - 1];
+  if (!last || last.role !== 'assistant') return false;
+  const newest = extractWebSource(last.content);
+  return (
+    newest !== null &&
+    newest.html === source.html &&
+    newest.css === source.css &&
+    newest.js === source.js
+  );
 }
 
 /**
@@ -40,6 +71,9 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
   const autoHeal = useSettings((s) => s.sandboxAutoHeal);
   const { state, run, stop, reset } = useSelfHeal(conversationId, source);
   const autoStarted = useRef(false);
+  // Sampled once, at mount: this is a question about why the panel appeared, and
+  // both halves of the answer keep moving as the conversation is written to.
+  const [fresh] = useState(() => justStreamed(conversationId, source));
 
   const busy = state.phase === 'running' || state.phase === 'healing';
   const finished = state.phase === 'done' || state.phase === 'stopped' || state.phase === 'error';
@@ -57,12 +91,17 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
     el.srcdoc = composeDocument(source, buildBootstrap('preview'));
   }, [source, streaming, busy, finished]);
 
-  // Auto-run once when enabled and streaming has finished.
+  // Auto-run once, and only for code that just streamed in. The `streaming` guard
+  // cannot tell the difference on its own: MessageBubble extracts a source only
+  // from a settled message, so the panel always mounts with `streaming` already
+  // false. Opening a conversation with four old code messages therefore started
+  // four audit loops at once — four sandbox runs and, for anything not clean, a
+  // model call per iteration on history the user had only opened to read.
   useEffect(() => {
-    if (streaming || !autoHeal || autoStarted.current) return;
+    if (!fresh || streaming || !autoHeal || autoStarted.current) return;
     autoStarted.current = true;
     void run(iframeRef.current);
-  }, [streaming, autoHeal, run]);
+  }, [fresh, streaming, autoHeal, run]);
 
   const errorIssues = state.report?.issues.filter(
     (i) => i.kind === 'error' || i.kind === 'console-error',
@@ -129,63 +168,69 @@ export function SandboxPanel({ conversationId, source, streaming }: Props) {
         </div>
       </div>
 
-      <AnimatePresence initial={false}>
-        {open && (
-          <m.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            {/* Preview */}
-            <iframe
-              ref={iframeRef}
-              sandbox="allow-scripts"
-              title="Sandbox preview"
-              className="h-[360px] w-full border-0 bg-white"
-            />
+      {/* The body collapses; it never unmounts. The iframe used to live inside an
+          `{open && …}` branch, so the header toggle threw the frame away:
+          re-expanding mounted a blank one and the paint effect above, whose deps had
+          not changed, never repainted it — and collapsing mid-run discarded the
+          browsing context runSandbox was driving, which its 8s timer then reported
+          as "the page did not finish loading" and the heal loop spent a model call
+          fixing code that had run fine. Collapsed by height rather than
+          `display:none`/`visibility:hidden`: a frame that isn't rendered has no
+          visible text, and the guest's own blank-render check would call a working
+          page a white screen. */}
+      <m.div
+        inert={!open}
+        initial={false}
+        animate={{ height: open ? 'auto' : 0, opacity: open ? 1 : 0 }}
+        transition={{ duration: 0.2 }}
+        className="overflow-hidden"
+      >
+        {/* Preview */}
+        <iframe
+          ref={iframeRef}
+          sandbox="allow-scripts"
+          title="Sandbox preview"
+          className="h-[360px] w-full border-0 bg-white"
+        />
 
-            {/* Issue report */}
-            {state.report && (
-              <div className="border-t border-border/15 px-3 py-2.5 text-xs">
-                {errorIssues && errorIssues.length > 0 && (
-                  <IssueGroup
-                    tone="error"
-                    icon={<XCircle className="h-3.5 w-3.5" />}
-                    title={`${errorIssues.length} error`}
-                    issues={errorIssues.map((i) => i.message)}
-                  />
-                )}
-                {state.report.blank && (!errorIssues || errorIssues.length === 0) && (
-                  <p className="flex items-center gap-1.5 text-warning">
-                    <AlertTriangle className="h-3.5 w-3.5" /> Halaman render kosong.
-                  </p>
-                )}
-                {warnIssues && warnIssues.length > 0 && (
-                  <IssueGroup
-                    tone="warn"
-                    icon={<AlertTriangle className="h-3.5 w-3.5" />}
-                    title={`${warnIssues.length} peringatan`}
-                    issues={warnIssues.map((i) => i.message)}
-                  />
-                )}
-                {state.clean && (
-                  <p className="flex items-center gap-1.5 text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Ran clean, no errors.
-                  </p>
-                )}
-              </div>
+        {/* Issue report */}
+        {state.report && (
+          <div className="border-t border-border/15 px-3 py-2.5 text-xs">
+            {errorIssues && errorIssues.length > 0 && (
+              <IssueGroup
+                tone="error"
+                icon={<XCircle className="h-3.5 w-3.5" />}
+                title={`${errorIssues.length} error`}
+                issues={errorIssues.map((i) => i.message)}
+              />
             )}
-
-            {state.error && (
-              <div className="border-t border-border/15 px-3 py-2.5 text-xs text-error">
-                {state.error}
-              </div>
+            {state.report.blank && (!errorIssues || errorIssues.length === 0) && (
+              <p className="flex items-center gap-1.5 text-warning">
+                <AlertTriangle className="h-3.5 w-3.5" /> Halaman render kosong.
+              </p>
             )}
-          </m.div>
+            {warnIssues && warnIssues.length > 0 && (
+              <IssueGroup
+                tone="warn"
+                icon={<AlertTriangle className="h-3.5 w-3.5" />}
+                title={`${warnIssues.length} peringatan`}
+                issues={warnIssues.map((i) => i.message)}
+              />
+            )}
+            {state.clean && (
+              <p className="flex items-center gap-1.5 text-success">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Ran clean, no errors.
+              </p>
+            )}
+          </div>
         )}
-      </AnimatePresence>
+
+        {state.error && (
+          <div className="border-t border-border/15 px-3 py-2.5 text-xs text-error">
+            {state.error}
+          </div>
+        )}
+      </m.div>
     </div>
   );
 }
