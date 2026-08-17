@@ -13,9 +13,12 @@ export function formatDuration(ms?: number): string {
   if (ms == null) return '—';
   if (ms < 1000) return `${Math.round(ms)}ms`;
   const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m ${Math.round(s % 60)}s`;
+  // Both branches decide on the value they are about to *print*, not on `s`.
+  // Rounding the parts independently of the comparison produced durations that
+  // can't exist: 59,960ms printed "60.0s" and 119,600ms printed "1m 60s".
+  if (Math.round(s * 10) / 10 < 60) return `${s.toFixed(1)}s`;
+  const total = Math.round(s);
+  return `${Math.floor(total / 60)}m ${total % 60}s`;
 }
 
 export function formatNumber(n?: number): string {

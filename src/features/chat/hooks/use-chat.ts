@@ -906,6 +906,16 @@ export function useChat(conversationId: string | null) {
       const merged = mergeSearchResponses(responses);
       const context = formatSearchContext(merged);
 
+      // The provider answered but nothing in it was usable. `formatSearchContext`
+      // returns '' for that now, rather than a "cite as [1], [2]" header with no
+      // results under it — so there is nothing to give the model and nothing to
+      // cite, and stamping `analyzing` with an empty source list would show a
+      // finished search that had found something.
+      if (!context) {
+        setMeta({ searching: false, searchPhase: undefined });
+        return '';
+      }
+
       // Phase 3 — hand off to the reasoning turn. `analyzing` marks the moment
       // the model starts thinking over the gathered data (runStream takes over).
       setMeta({

@@ -151,7 +151,7 @@ export function fallbackPlan(userText: string): SearchPlan {
   return { goal: '', queries: [userText.trim()].filter(Boolean) };
 }
 
-/** Find and JSON-parse the first balanced `{…}` object in a string. */
+/** Find and JSON-parse the first balanced `{…}` object that parses. */
 function extractJsonObject(text: string): Record<string, unknown> | null {
   const start = text.indexOf('{');
   if (start < 0) return null;
@@ -179,7 +179,15 @@ function extractJsonObject(text: string): Record<string, unknown> | null {
             ? (parsed as Record<string, unknown>)
             : null;
         } catch {
-          return null;
+          // Resume at the next `{` rather than giving up. A balanced-but-invalid
+          // brace pair in the model's preamble ("I'll look up {next.js} build
+          // times") used to defeat the tolerance this function exists for, and
+          // in `auto` mode an unparseable plan reads as "no consent to search" —
+          // so a stray pair of braces silently cancelled a search the planner
+          // had just asked for. Advancing brace-to-brace keeps the recursion
+          // depth at the number of `{` in the output, not its length.
+          const next = text.indexOf('{', start + 1);
+          return next < 0 ? null : extractJsonObject(text.slice(next));
         }
       }
     }

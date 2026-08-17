@@ -56,8 +56,12 @@ export function slugify(text: string): string {
   return (
     text
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48) || 'conversation'
+      // Unicode letters/digits, not `a-z0-9`: an ASCII-only class replaced every
+      // character of a Japanese or Cyrillic title, so every such chat exported
+      // as "conversation.md" — a download folder of conversation(1), (2), (3).
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .slice(0, 48)
+      // After the cut, so a truncation landing on a separator doesn't keep it.
+      .replace(/^-+|-+$/g, '') || 'conversation'
   );
 }

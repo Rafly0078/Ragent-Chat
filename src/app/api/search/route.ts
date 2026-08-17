@@ -26,6 +26,15 @@ const HARD_MAX_RESULTS = 8;
 const UPSTREAM_TIMEOUT_MS = 20_000;
 /** Tavily rejects very long queries anyway; truncate rather than round-trip. */
 const MAX_QUERY_CHARS = 400;
+/**
+ * Ceiling on the cleaned page text we forward per result. `include_raw_content`
+ * returns whole page bodies, and forwarding them untruncated meant a 3-query
+ * plan shipped 15 of them to the browser — hundreds of KB to megabytes — for a
+ * consumer that keeps 1500 characters of the top 5 (MAX_CONTENT_CHARS_PER_RESULT
+ * in lib/search/format.ts) and persists none of the rest. The headroom over
+ * 1500 is so that cap can move a little without a matching change here.
+ */
+const MAX_CONTENT_CHARS = 2_000;
 
 interface TavilyResult {
   title?: string;
@@ -107,7 +116,7 @@ export async function POST(request: Request): Promise<Response> {
         title: r.title?.trim() || r.url,
         url: r.url,
         snippet: r.content?.trim() ?? '',
-        content: r.raw_content?.trim() || undefined,
+        content: r.raw_content?.trim().slice(0, MAX_CONTENT_CHARS) || undefined,
         score: r.score,
       }));
 
