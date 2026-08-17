@@ -92,31 +92,74 @@ const INLINE_PATTERNS: Array<{ kind: Token['kind']; re: RegExp; underscore?: boo
 
 const WORD = /[A-Za-z0-9]/;
 
-/** Find the earliest inline construct in `s`, or null if it is all plain text. */
-function nextToken(s: string): Token | null {
+/**
+ * `g`-flagged twins of the patterns above, so a scan can resume from a cursor
+ * instead of re-slicing the string. Built once; `lastIndex` is set explicitly
+ * before every exec, so sharing them across recursive walks is safe.
+ */
+const INLINE_SCANNERS = INLINE_PATTERNS.map(({ re }) => new RegExp(re.source, 'g'));
+
+interface Hit {
+  index: number;
+  length: number;
+  one: string;
+  two?: string;
+}
+
+/** `undefined` = this pattern has not been scanned yet; `null` = it matches nowhere. */
+type HitCache = Array<Hit | null | undefined>;
+
+function scanFrom(pattern: number, s: string, from: number): Hit | null {
+  const re = INLINE_SCANNERS[pattern]!;
+  re.lastIndex = from;
+  const m = re.exec(s);
+  if (!m) return null;
+  return { index: m.index, length: m[0].length, one: m[1] ?? '', two: m[2] };
+}
+
+/**
+ * Find the earliest inline construct at or after `from`, or null if the rest is
+ * plain text.
+ *
+ * `cache` is what keeps this linear. It used to take the remaining string and
+ * re-exec all nine patterns over the whole of it for every single token, so a
+ * pattern that matched nowhere (`~~`, `==`, `__` in ordinary prose) was scanned
+ * to the end once per token: 24 KB of one paragraph cost 0.1s, 96 KB cost 1.5s,
+ * 192 KB cost 10s — and `validate.ts` accepts a 2 MB text field, all of which
+ * `parseBlocks` will join into a single paragraph. That was minutes of
+ * unbreakable synchronous CPU inside the tool route. Now a pattern is only
+ * re-scanned once the cursor passes its cached hit, and "matches nowhere" is
+ * remembered for good.
+ */
+function nextToken(s: string, from: number, cache: HitCache): Token | null {
   let best: Token | null = null;
-  for (const { kind, re, underscore } of INLINE_PATTERNS) {
-    const m = re.exec(s);
-    if (!m || m.index === undefined) continue;
+  for (let p = 0; p < INLINE_PATTERNS.length; p++) {
+    const { kind, underscore } = INLINE_PATTERNS[p]!;
+    let hit = cache[p];
+    if (hit === undefined || (hit !== null && hit.index < from)) {
+      hit = scanFrom(p, s, from);
+      cache[p] = hit;
+    }
+    if (!hit) continue;
     // Underscore emphasis inside a word (file_name, __dunder__ identifiers)
     // is almost always not emphasis — require a non-word boundary on both
     // outer sides before honoring it.
     if (underscore) {
-      const before = s[m.index - 1];
-      const after = s[m.index + m[0].length];
+      const before = hit.index > from ? s[hit.index - 1] : undefined;
+      const after = s[hit.index + hit.length];
       if ((before && WORD.test(before)) || (after && WORD.test(after))) continue;
     }
-    if (best === null || m.index < best.index) {
+    if (best === null || hit.index < best.index) {
       best = {
-        index: m.index,
-        length: m[0].length,
+        index: hit.index,
+        length: hit.length,
         kind,
         // For a link/image with empty text, fall back to the destination —
         // `[](url)` used to emit nothing at all, losing both label and URL.
-        inner: kind === 'link' || kind === 'image' ? m[1] || m[2] || '' : (m[1] ?? ''),
-        href: kind === 'link' || kind === 'image' ? m[2] : undefined,
+        inner: kind === 'link' || kind === 'image' ? hit.one || hit.two || '' : hit.one,
+        href: kind === 'link' || kind === 'image' ? hit.two : undefined,
       };
-      if (m.index === 0) break; // can't beat index 0
+      if (hit.index === from) break; // can't beat the cursor
     }
   }
   return best;
@@ -142,14 +185,15 @@ function emit(out: Span[], text: string, style: Style): void {
 }
 
 function walk(input: string, style: Style, out: Span[]): void {
-  let rest = input;
-  while (rest.length > 0) {
-    const tok = nextToken(rest);
+  const cache: HitCache = new Array(INLINE_PATTERNS.length);
+  let cursor = 0;
+  while (cursor < input.length) {
+    const tok = nextToken(input, cursor, cache);
     if (!tok) {
-      emit(out, rest, style);
+      emit(out, input.slice(cursor), style);
       return;
     }
-    if (tok.index > 0) emit(out, rest.slice(0, tok.index), style);
+    if (tok.index > cursor) emit(out, input.slice(cursor, tok.index), style);
     switch (tok.kind) {
       case 'code':
         // Code spans are literal — no further inline parsing inside them.
@@ -176,7 +220,7 @@ function walk(input: string, style: Style, out: Span[]): void {
         walk(tok.inner, { ...style, highlight: true }, out);
         break;
     }
-    rest = rest.slice(tok.index + tok.length);
+    cursor = tok.index + tok.length;
   }
 }
 
@@ -232,6 +276,11 @@ const CALLOUT_ALIASES: Record<string, CalloutVariant> = {
   fail: 'danger',
 };
 
+/** Alias lookup that ignores inherited keys — `:::constructor` is a title, not a variant. */
+function calloutVariant(word: string): CalloutVariant | undefined {
+  return Object.hasOwn(CALLOUT_ALIASES, word) ? CALLOUT_ALIASES[word] : undefined;
+}
+
 /**
  * Read a `:::warning Optional title` opener.
  *
@@ -249,16 +298,19 @@ function parseCalloutOpen(line: string): { variant: CalloutVariant; title?: stri
   let rest = words;
   const first = words[0]!.toLowerCase();
   if (first === 'callout' && words.length > 1) {
-    const second = words[1]!.toLowerCase();
-    if (CALLOUT_ALIASES[second]) {
-      variant = CALLOUT_ALIASES[second]!;
+    const second = calloutVariant(words[1]!.toLowerCase());
+    if (second) {
+      variant = second;
       rest = words.slice(2);
     } else {
       rest = words.slice(1);
     }
-  } else if (CALLOUT_ALIASES[first]) {
-    variant = CALLOUT_ALIASES[first]!;
-    rest = words.slice(1);
+  } else {
+    const known = calloutVariant(first);
+    if (known) {
+      variant = known;
+      rest = words.slice(1);
+    }
   }
   const title = rest.join(' ').trim();
   return { variant, title: title || undefined };
@@ -271,7 +323,19 @@ export function parseMarkdown(md: string): Block[] {
   return parseBlocks((md ?? '').replace(/\r\n/g, '\n').split('\n'));
 }
 
-function parseBlocks(lines: string[]): Block[] {
+/**
+ * Deepest callout nesting we will build. Any real document is 1 or 2 deep.
+ *
+ * The cap is a cost ceiling, not a style rule: an *unterminated* `:::x` opener
+ * swallows every remaining line and then re-parses it, so N consecutive opener
+ * lines nested N deep and re-scanned the buffer below them at every level.
+ * 2.5 KB of that cost 0.1s, 20 KB cost 4s, and 40 KB cost 20s before dying with
+ * a stack overflow — all of it synchronous, inside the tool route, on input a
+ * model can produce by accident.
+ */
+const MAX_CALLOUT_DEPTH = 6;
+
+function parseBlocks(lines: string[], depth = 0): Block[] {
   const blocks: Block[] = [];
   let i = 0;
 
@@ -284,13 +348,24 @@ function parseBlocks(lines: string[]): Block[] {
       continue;
     }
 
-    // Fenced code
-    const fence = line.match(/^```(\w+)?\s*$/);
+    // Fenced code.
+    //
+    // The info string is whatever the model felt like writing — `c#`, `c++`,
+    // `objective-c`, `js copy` — so it is captured loosely. This used to be
+    // `/^```(\w+)?\s*$/`, which does not match ```` ```c# ````: the line then fell
+    // through to every branch below, and the paragraph branch breaks on /^```/
+    // *without consuming the line*, so `parseBlocks` spun forever. Any document
+    // that merely contained C# was enough to pin a CPU until the platform
+    // killed the request. The marker length is tracked so a nested ``` inside a
+    // ```` fence no longer closes it early.
+    const fence = line.match(/^(`{3,})[ \t]*([^`\s]*)[^`]*$/);
     if (fence) {
-      const lang = fence[1];
+      const marker = fence[1]!;
+      const lang = fence[2] || undefined;
+      const closes = new RegExp(`^\\s*\`{${marker.length},}\\s*$`);
       const buf: string[] = [];
       i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i] ?? '')) {
+      while (i < lines.length && !closes.test(lines[i] ?? '')) {
         buf.push(lines[i] ?? '');
         i++;
       }
@@ -310,21 +385,29 @@ function parseBlocks(lines: string[]): Block[] {
     // containing another callout closes at the right line.
     const open = parseCalloutOpen(line);
     if (open) {
+      // Past the cap the opener is kept as text. It has to be consumed HERE:
+      // falling through to the paragraph branch would hit its /^\s*:{3,}/ break
+      // with an empty buffer and hang the outer loop.
+      if (depth >= MAX_CALLOUT_DEPTH) {
+        blocks.push({ type: 'paragraph', text: line.trim() });
+        i++;
+        continue;
+      }
       const buf: string[] = [];
-      let depth = 0;
+      let nested = 0;
       i++;
       let closed = false;
       while (i < lines.length) {
         const l = lines[i] ?? '';
         if (CLOSE_RE.test(l)) {
-          if (depth === 0) {
+          if (nested === 0) {
             i++;
             closed = true;
             break;
           }
-          depth--;
+          nested--;
         } else if (parseCalloutOpen(l)) {
-          depth++;
+          nested++;
         }
         buf.push(l);
         i++;
@@ -336,7 +419,7 @@ function parseBlocks(lines: string[]): Block[] {
         type: 'callout',
         variant: open.variant,
         title: open.title,
-        blocks: parseBlocks(buf),
+        blocks: parseBlocks(buf, depth + 1),
       });
       continue;
     }
@@ -395,14 +478,14 @@ function parseBlocks(lines: string[]): Block[] {
       // GitHub alert syntax ("> [!WARNING]") is the other spelling models reach
       // for, and it means exactly the same thing as a ":::warning" block.
       const alert = buf[0]?.match(/^\s*\[!(\w+)\]\s*(.*)$/);
-      const variant = alert ? CALLOUT_ALIASES[alert[1]!.toLowerCase()] : undefined;
+      const variant = alert ? calloutVariant(alert[1]!.toLowerCase()) : undefined;
       if (alert && variant) {
         const title = alert[2]!.trim();
         blocks.push({
           type: 'callout',
           variant,
           title: title || undefined,
-          blocks: parseBlocks(buf.slice(1)),
+          blocks: parseBlocks(buf.slice(1), depth + 1),
         });
         continue;
       }
@@ -436,7 +519,7 @@ function parseBlocks(lines: string[]): Block[] {
     const buf: string[] = [];
     while (i < lines.length) {
       line = lines[i] ?? '';
-      if (
+      const structural =
         !line.trim() ||
         /^(#{1,6})\s+/.test(line) ||
         /^```/.test(line) ||
@@ -445,10 +528,13 @@ function parseBlocks(lines: string[]): Block[] {
         /^\s*\d+[.)]\s+/.test(line) ||
         /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line) ||
         /^\s*:{3,}/.test(line) ||
-        PAGEBREAK_RE.test(line)
-      ) {
-        break;
-      }
+        PAGEBREAK_RE.test(line);
+      // The first line is taken unconditionally. Every structural shape has a
+      // branch above, so a line that still looks structural *here* is one none
+      // of them accepted, and reading it as prose is the only option left — as
+      // well as the thing that guarantees the outer loop advances. Breaking on
+      // an empty buffer is precisely how a ```c# line used to hang the parser.
+      if (structural && buf.length) break;
       buf.push(line.trim());
       i++;
     }

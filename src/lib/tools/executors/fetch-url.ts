@@ -43,20 +43,131 @@ const ENTITIES: Record<string, string> = {
   hellip: '…',
 };
 
+/**
+ * `Number.isFinite` also says yes to `&#xFFFFFFFF;`, and the RangeError out of
+ * `fromCodePoint` escaped htmlToText as a 500: one malformed entity anywhere on
+ * the page failed the whole fetch with "Invalid code point 4294967295".
+ */
+const isCodePoint = (n: number): boolean => Number.isInteger(n) && n >= 0 && n <= 0x10ffff;
+
 function decodeEntities(s: string): string {
   return s.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, code: string) => {
     const key = code.toLowerCase();
     if (ENTITIES[key] !== undefined) return ENTITIES[key];
     if (key.startsWith('#x')) {
       const n = Number.parseInt(key.slice(2), 16);
-      return Number.isFinite(n) ? String.fromCodePoint(n) : whole;
+      return isCodePoint(n) ? String.fromCodePoint(n) : whole;
     }
     if (key.startsWith('#')) {
       const n = Number.parseInt(key.slice(1), 10);
-      return Number.isFinite(n) ? String.fromCodePoint(n) : whole;
+      return isCodePoint(n) ? String.fromCodePoint(n) : whole;
     }
     return whole;
   });
+}
+
+/**
+ * Everything below scans forward instead of matching. The passes it replaces used
+ * a lazy `[\s\S]*?` before a closing tag, which is quadratic on a page that never
+ * closes one: every `<script` position rescans to end-of-input. Measured here, 128KB
+ * of `'<script>'` took 367ms and quadrupled per doubling, so a body at the 3MB cap
+ * pinned the event loop — and every other request on the instance — for minutes. The
+ * AbortController below is no protection: it cannot interrupt a synchronous regex.
+ */
+
+/**
+ * Lowercase the ASCII only. `toLowerCase()` is not length-preserving (U+0130
+ * becomes two code units), and offsets found in this copy slice the original.
+ */
+function lowerAscii(s: string): string {
+  return s.replace(/[A-Z]+/g, (run) => run.toLowerCase());
+}
+
+/** Drop `<tag>…</tag>` and everything between, tags included. */
+function dropElements(html: string, tags: readonly string[]): string {
+  const open = new RegExp(`<(${tags.join('|')})\\b`, 'g');
+  const lower = lowerAscii(html);
+  // A close tag that isn't ahead of this match isn't ahead of any later one
+  // either, so a failed search costs one scan per tag, not one per occurrence.
+  const unclosed = new Set<string>();
+  let out = '';
+  let cursor = 0;
+  for (let m = open.exec(lower); m; m = open.exec(lower)) {
+    const tag = m[1]!;
+    if (unclosed.has(tag)) continue;
+    const close = lower.indexOf(`</${tag}>`, open.lastIndex);
+    if (close === -1) {
+      unclosed.add(tag);
+      continue;
+    }
+    out += `${html.slice(cursor, m.index)} `;
+    cursor = close + tag.length + 3;
+    open.lastIndex = cursor;
+  }
+  return cursor === 0 ? html : out + html.slice(cursor);
+}
+
+/** The same for `<!--…-->`, which was the worst: 787ms on 128KB of `'<!--x'`. */
+function dropComments(html: string): string {
+  let out = '';
+  let cursor = 0;
+  for (;;) {
+    const start = html.indexOf('<!--', cursor);
+    if (start === -1) break;
+    const end = html.indexOf('-->', start + 4);
+    // Unterminated, so no later comment closes either: the rest stays as text.
+    if (end === -1) break;
+    out += `${html.slice(cursor, start)} `;
+    cursor = end + 3;
+  }
+  return cursor === 0 ? html : out + html.slice(cursor);
+}
+
+const BLOCK_CLOSE = /^\/(?:p|div|section|article|li|tr|h[1-6]|blockquote|pre)$/i;
+const BR_TAG = /^br\b/i;
+const LI_TAG = /^li\b/i;
+
+/**
+ * Replace every `<…>` with what the text needs in its place. Four passes did this,
+ * and three (`<br\b[^>]*\/?>`, `<li\b[^>]*>`, `<[^>]+>`) backtracked across the
+ * remainder at every `<` with no `>` after it — 1.8s on 128KB of `'<li '` in one
+ * pass alone. A tag is classified by its own text, so one scan does all four.
+ */
+function stripTags(html: string): string {
+  let out = '';
+  let cursor = 0;
+  let at = 0;
+  for (;;) {
+    const lt = html.indexOf('<', at);
+    if (lt === -1) break;
+    const gt = html.indexOf('>', lt + 1);
+    if (gt === -1) break; // never closed: left as text, as `<[^>]+>` also left it
+    if (gt === lt + 1) {
+      // `<>` is not a tag — `[^>]+` needed something in between.
+      at = lt + 1;
+      continue;
+    }
+    const tag = html.slice(lt + 1, gt);
+    // Structure the reader depends on, kept as the tag itself goes.
+    let sep = ' ';
+    if (BLOCK_CLOSE.test(tag) || BR_TAG.test(tag)) sep = '\n';
+    else if (LI_TAG.test(tag)) sep = '- ';
+    out += html.slice(cursor, lt) + sep;
+    cursor = gt + 1;
+    at = cursor;
+  }
+  return cursor === 0 ? html : out + html.slice(cursor);
+}
+
+/** `<title[^>]*>([\s\S]*?)<\/title>` was quadratic the same way: 1.0s at 128KB. */
+function titleOf(html: string): string {
+  const lower = lowerAscii(html);
+  const open = lower.indexOf('<title');
+  if (open === -1) return '';
+  const gt = lower.indexOf('>', open + 6);
+  if (gt === -1) return '';
+  const close = lower.indexOf('</title>', gt + 1);
+  return close === -1 ? '' : html.slice(gt + 1, close);
 }
 
 /**
@@ -68,19 +179,12 @@ function decodeEntities(s: string): string {
  * a remote page is a test that breaks when someone else edits their website.
  */
 export function htmlToText(html: string): { title?: string; text: string } {
-  const title = decodeEntities(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim();
-  const text = decodeEntities(
-    html
-      // Chrome that is never the content the model asked for.
-      .replace(/<(script|style|noscript|template|svg|iframe)\b[\s\S]*?<\/\1>/gi, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ')
-      .replace(/<(nav|header|footer|aside)\b[\s\S]*?<\/\1>/gi, ' ')
-      // Keep structure the reader depends on before dropping tags.
-      .replace(/<\/(p|div|section|article|li|tr|h[1-6]|blockquote|pre)>/gi, '\n')
-      .replace(/<br\b[^>]*\/?>/gi, '\n')
-      .replace(/<li\b[^>]*>/gi, '- ')
-      .replace(/<[^>]+>/g, ' '),
-  )
+  const title = decodeEntities(titleOf(html)).trim();
+  // Chrome that is never the content the model asked for.
+  let body = dropElements(html, ['script', 'style', 'noscript', 'template', 'svg', 'iframe']);
+  body = dropComments(body);
+  body = dropElements(body, ['nav', 'header', 'footer', 'aside']);
+  const text = decodeEntities(stripTags(body))
     .replace(/[ \t ]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{3,}/g, '\n\n')

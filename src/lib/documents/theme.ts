@@ -95,6 +95,11 @@ const NAMED: Record<string, string> = {
   black: '111111',
 };
 
+/** Word lookup that ignores inherited keys — `accent: 'constructor'` is not a colour. */
+function namedColor(word: string): string | undefined {
+  return Object.hasOwn(NAMED, word) ? NAMED[word] : undefined;
+}
+
 const DEFAULT_ACCENT = '2563EB';
 const DEFAULT_INK = '1A1A16';
 
@@ -102,7 +107,8 @@ const DEFAULT_INK = '1A1A16';
 function parseColor(raw: string | undefined): RGB | null {
   if (!raw) return null;
   let s = raw.trim().toLowerCase().replace(/^#/, '');
-  if (NAMED[s]) s = NAMED[s]!.toLowerCase();
+  const named = namedColor(s);
+  if (named) s = named.toLowerCase();
   if (/^[0-9a-f]{3}$/.test(s)) s = s.replace(/./g, (c) => c + c);
   if (!/^[0-9a-f]{6}$/.test(s)) return null;
   return {
@@ -209,7 +215,9 @@ const MONO_STACK = "'JetBrains Mono', 'SF Mono', Consolas, 'Liberation Mono', mo
 
 function fontSet(raw: string | undefined) {
   const key = (raw ?? '').trim().toLowerCase();
-  if (key in FONT_SETS) return FONT_SETS[key as keyof typeof FONT_SETS];
+  // Own-property only, as with the colour words: `font: 'constructor'` satisfied
+  // `in` and handed back Object.prototype, i.e. `font-family: undefined`.
+  if (Object.hasOwn(FONT_SETS, key)) return FONT_SETS[key as keyof typeof FONT_SETS];
   if (/serif/.test(key) && /sans/.test(key)) return FONT_SETS.editorial;
   if (/georgia|times|garamond|book|serif/.test(key)) return FONT_SETS.serif;
   if (/mono|code|consol|courier/.test(key)) return FONT_SETS.mono;
